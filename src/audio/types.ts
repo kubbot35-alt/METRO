@@ -1,0 +1,10 @@
+import type { IAudioEvents, ISimulationSnapshot } from '../domain/types';
+
+export interface IAudioEngine {
+  unlock(): void;
+  setMuted(muted: boolean): void;
+  isMuted(): boolean;
+  update(snapshot: ISimulationSnapshot, events: IAudioEvents): void;
+  silence(): void;
+  dispose(): void;
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Metro M1 — Symulator Maszynisty 3D",
+  "description": "Interaktywny symulator prowadzenia metra 3D w widoku z pierwszej osoby z kabiny maszynisty, realistyczną fizyką bezwładności, pulpitem sterowniczym oraz syntezowanym dźwiękiem.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
