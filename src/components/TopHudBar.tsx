@@ -1,9 +1,12 @@
 import type { FeedbackTone, ISimulationSnapshot } from '../domain/types';
+import { MetroLedDisplay } from './MetroLedDisplay';
 
 interface ITopHudBarProps {
   readonly snapshot: ISimulationSnapshot;
   readonly muted: boolean;
   readonly onToggleMute: () => void;
+  readonly onCycleCamera: () => void;
+  readonly onToggleHelp: () => void;
   readonly onPause: () => void;
   readonly onRestart: () => void;
 }
@@ -25,14 +28,20 @@ export function TopHudBar({
   snapshot,
   muted,
   onToggleMute,
+  onCycleCamera,
+  onToggleHelp,
   onPause,
   onRestart,
 }: ITopHudBarProps) {
-  const { feedback } = snapshot;
+  const { feedback, announcement, cameraNotice } = snapshot;
+  const isRetro = snapshot.trainModel.visual.theme === 'retro';
+  const barClasses = isRetro
+    ? 'bg-[#15201c]/92 border-[#4c6b5f]'
+    : 'bg-[#10141c]/90 border-slate-700/75';
 
   return (
     <div className="fixed top-0 inset-x-0 z-10 pointer-events-none px-4 pt-3 flex items-start justify-between gap-4">
-      <div className="bg-[#10141c]/90 border border-slate-700/75 rounded-md px-3.5 py-2 flex items-center gap-5">
+      <div className={`${barClasses} border rounded-md px-3.5 py-2 flex items-center gap-3.5`}>
         <div className="flex flex-col leading-tight">
           <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
             Punkty
@@ -50,23 +59,86 @@ export function TopHudBar({
             {snapshot.currentStation.stationIndex + 1} / {snapshot.totalStations}
           </span>
         </div>
+        <div className="h-7 w-px bg-slate-700/80" aria-hidden="true" />
+        <div className="flex flex-col leading-tight" data-testid="passengers-counter">
+          <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
+            Pasażerowie
+          </span>
+          <span className="font-mono-tabular text-base font-semibold text-emerald-300">
+            {snapshot.passengersCarried}
+          </span>
+        </div>
+        <div className="h-7 w-px bg-slate-700/80 hidden sm:block" aria-hidden="true" />
+        <div className="hidden sm:flex flex-col leading-tight">
+          <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
+            Skład
+          </span>
+          <span className="font-mono-tabular text-xs font-semibold text-slate-200 whitespace-nowrap">
+            {snapshot.trainModel.name} · {snapshot.timeOfDay.id === 'rush' ? 'Szczyt' : 'Wieczór'}
+          </span>
+        </div>
       </div>
 
-      {feedback && (
-        <div
-          role="status"
-          className={`px-4 py-2 rounded-md border text-sm font-medium flex items-center gap-2.5 shadow-lg ${getFeedbackColor(feedback.tone)}`}
-        >
-          <span>{feedback.text}</span>
-          {feedback.pointsDelta !== 0 && (
-            <span className="font-mono-tabular font-bold">
-              {feedback.pointsDelta > 0 ? `+${feedback.pointsDelta}` : feedback.pointsDelta} pkt
-            </span>
-          )}
-        </div>
-      )}
+      <div className="flex flex-col items-center gap-1.5 max-w-[46vw]">
+        <MetroLedDisplay announcement={announcement} />
+        {cameraNotice && (
+          <div
+            data-testid="camera-notice"
+            className="px-3.5 py-1.5 rounded-md border border-sky-400/70 bg-[#0c1829]/95 text-sky-100 text-xs font-mono-tabular font-semibold tracking-wide shadow-lg"
+          >
+            {cameraNotice.label}
+          </div>
+        )}
+        {feedback && (
+          <div
+            role="status"
+            className={`px-4 py-2 rounded-md border text-sm font-medium flex items-center gap-2.5 shadow-lg ${getFeedbackColor(feedback.tone)}`}
+          >
+            <span>{feedback.text}</span>
+            {feedback.pointsDelta !== 0 && (
+              <span className="font-mono-tabular font-bold">
+                {feedback.pointsDelta > 0 ? `+${feedback.pointsDelta}` : feedback.pointsDelta} pkt
+              </span>
+            )}
+          </div>
+        )}
+      </div>
 
       <div className="pointer-events-auto flex items-center gap-1.5">
+        <button
+          type="button"
+          tabIndex={-1}
+          data-testid="help-toggle-btn"
+          aria-label="Pomoc i skróty klawiszowe [?]"
+          title="Pomoc i skróty klawiszowe [?]"
+          onClick={(e) => {
+            e.currentTarget.blur();
+            onToggleHelp();
+          }}
+          className="w-10 h-10 rounded-md bg-[#10141c]/90 hover:bg-slate-800 border border-slate-700/80 flex items-center justify-center text-amber-300 font-mono-tabular font-bold text-base cursor-pointer"
+        >
+          ?
+        </button>
+
+        <button
+          type="button"
+          tabIndex={-1}
+          data-testid="camera-cycle-btn"
+          aria-label="Zmień kamerę [V]"
+          title="Zmień kamerę [V]"
+          onClick={(e) => {
+            e.currentTarget.blur();
+            onCycleCamera();
+          }}
+          className="h-10 px-2.5 rounded-md bg-[#10141c]/90 hover:bg-slate-800 border border-slate-700/80 flex items-center gap-1.5 text-slate-200 cursor-pointer text-xs font-mono-tabular font-semibold"
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+            <path d="M23 7l-7 5 7 5V7z" />
+            <rect x="1" y="5" width="15" height="14" rx="2" />
+          </svg>
+          <span>[V]</span>
+        </button>
+
         <button
           type="button"
           tabIndex={-1}

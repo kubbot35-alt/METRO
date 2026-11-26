@@ -6,6 +6,85 @@ export type SignalAspect = 'green' | 'yellow' | 'red';
 
 export type FeedbackTone = 'neutral' | 'success' | 'warning' | 'danger';
 
+export type TrainModelId = 'seria81' | 'inspiro';
+
+export type CameraMode = 'cab' | 'mirror' | 'exterior';
+
+export type TimeOfDayId = 'rush' | 'evening';
+
+export interface ITimeOfDaySpec {
+  readonly id: TimeOfDayId;
+  readonly name: string;
+  readonly clockLabel: string;
+  readonly description: string;
+  readonly startClockSec: number;
+  readonly boardingDurationSec: number;
+  readonly passengerMultiplier: number;
+  readonly redSignalProbability: number;
+  readonly trafficSpawnMinSec: number;
+  readonly trafficSpawnMaxSec: number;
+  readonly stationLightIntensityA: number;
+  readonly stationLightIntensityB: number;
+  readonly ambientLightIntensity: number;
+  readonly stationLightColorHex: number;
+  readonly fogDensity: number;
+}
+
+export interface ILeaderboardEntry {
+  readonly id: string;
+  readonly score: number;
+  readonly grade: DriverGrade;
+  readonly trainModelId: TrainModelId;
+  readonly trainName: string;
+  readonly timeOfDayId: TimeOfDayId;
+  readonly timeOfDayLabel: string;
+  readonly dateIso: string;
+}
+
+export interface ITrainAudioProfile {
+  readonly baseFreqHz: number;
+  readonly maxFreqSpanHz: number;
+  readonly harmonicRatio: number;
+  readonly gainScale: number;
+  readonly waveMain: 'triangle' | 'sawtooth';
+  readonly waveHarm: 'sawtooth' | 'sine';
+}
+
+export interface ITrainVisualProfile {
+  readonly bodyHex: number;
+  readonly stripeHex: number;
+  readonly roofHex: number;
+  readonly noseHex: number;
+  readonly cabAccentHex: number;
+  readonly theme: 'retro' | 'modern';
+}
+
+export interface ITrainModelSpec {
+  readonly id: TrainModelId;
+  readonly name: string;
+  readonly subtitle: string;
+  readonly description: string;
+  readonly massLabel: string;
+  readonly accelLabel: string;
+  readonly brakeLabel: string;
+  readonly physics: ITrainPhysicsConfig;
+  readonly audio: ITrainAudioProfile;
+  readonly visual: ITrainVisualProfile;
+}
+
+export interface ICameraNotice {
+  readonly id: number;
+  readonly label: string;
+  readonly remainingSec: number;
+}
+
+export interface IOncomingTrainState {
+  readonly active: boolean;
+  readonly positionM: number;
+  readonly speedMs: number;
+  readonly modelId: TrainModelId;
+}
+
 export interface ISemaphoreState {
   readonly id: number;
   readonly distanceM: number;
@@ -35,12 +114,53 @@ export interface IStationSpec {
   readonly stopZoneHalfWidthM: number;
   readonly platformLengthM: number;
   readonly accentHex: number;
+  readonly waitingPassengers: number;
+}
+
+export interface IAnnouncementState {
+  readonly id: number;
+  readonly text: string;
+  readonly kind: 'next' | 'arrival';
+  readonly remainingSec: number;
 }
 
 export interface ISpeedLimitZone {
   readonly startM: number;
   readonly endM: number;
   readonly limitKmh: number;
+}
+
+export type DriverGrade = 'S' | 'A' | 'B' | 'C' | 'D';
+
+export type PunctualityStatus = 'on-time' | 'slight-delay' | 'heavy-delay';
+
+export type DoorFaultPhase = 'none' | 'awaiting-retry' | 'resetting';
+
+export interface IScheduleSnapshot {
+  readonly currentClockSec: number;
+  readonly nextArrivalClockSec: number;
+  readonly deviationSec: number;
+  readonly status: PunctualityStatus;
+  readonly averageDeviationSec: number;
+  readonly punctualitySamples: number;
+}
+
+export interface ITrackworkZone {
+  readonly id: number;
+  readonly startM: number;
+  readonly endM: number;
+  readonly limitKmh: number;
+}
+
+export interface IDoorFaultState {
+  readonly phase: DoorFaultPhase;
+  readonly remainingSec: number;
+}
+
+export interface ICzuwakState {
+  readonly active: boolean;
+  readonly remainingSec: number;
+  readonly maxWindowSec: number;
 }
 
 export interface IControlInput {
@@ -50,6 +170,10 @@ export interface IControlInput {
   readonly emergencyBrakePressed: boolean;
   readonly forceEmergencyBrake?: boolean;
   readonly toggleDoorsPressed: boolean;
+  readonly toggleHeadlightsPressed?: boolean;
+  readonly acknowledgeCzuwakPressed?: boolean;
+  readonly cycleCameraPressed?: boolean;
+  readonly manualLeverAxis?: number | null;
   readonly hornActive: boolean;
 }
 
@@ -76,6 +200,7 @@ export interface ITrainPhysicsConfig {
 }
 
 export interface ITrainPhysicsModel {
+  setConfig?(config: ITrainPhysicsConfig): void;
   step(
     current: ITrainKinematics,
     input: IControlInput,
@@ -91,12 +216,24 @@ export interface IStopEvaluation {
   readonly offsetM: number;
 }
 
+export interface IGradeInput {
+  readonly score: number;
+  readonly stationsServed: number;
+  readonly totalStations: number;
+  readonly overspeedViolations: number;
+  readonly redSignalViolations: number;
+  readonly czuwakViolations: number;
+}
+
 export interface IScoringEvaluator {
   evaluateStop(offsetM: number): IStopEvaluation;
+  evaluatePunctuality(deviationSec: number): { readonly points: number; readonly label: string; readonly tone: FeedbackTone };
+  evaluateGrade(stats: IGradeInput): DriverGrade;
   getOverspeedPenalty(): number;
   getMissedStationPenalty(): number;
   getEmergencyBrakePenalty(): number;
   getRedSignalPenalty(): number;
+  getCzuwakPenalty(): number;
 }
 
 export interface IStationProgress {
@@ -117,10 +254,19 @@ export interface IAudioEvents {
   readonly brakeStopHiss: boolean;
   readonly atpTriggered: boolean;
   readonly signalClearedChime: boolean;
+  readonly czuwakAlertTriggered: boolean;
+  readonly czuwakAckChime: boolean;
+  readonly doorFaultBeep: boolean;
+  readonly passingTrainWhoosh: boolean;
 }
 
 export interface ISimulationSnapshot {
   readonly phase: GamePhase;
+  readonly trainModel: ITrainModelSpec;
+  readonly timeOfDay: ITimeOfDaySpec;
+  readonly cameraMode: CameraMode;
+  readonly cameraNotice: ICameraNotice | null;
+  readonly oncomingTrain: IOncomingTrainState;
   readonly kinematics: ITrainKinematics;
   readonly speedLimitKmh: number;
   readonly isOverspeeding: boolean;
@@ -128,16 +274,33 @@ export interface ISimulationSnapshot {
   readonly canToggleDoors: boolean;
   readonly boardingTimerSec: number;
   readonly boardingDurationSec: number;
+  readonly boardingProgress: number;
   readonly boardingCompletedForCurrent: boolean;
   readonly currentStation: IStationProgress;
   readonly signals: readonly ISemaphoreState[];
   readonly nextSignal: ISemaphoreProgress | null;
   readonly atpActive: boolean;
+  readonly headlightsOn: boolean;
+  readonly leverTarget: number;
+  readonly passengersCarried: number;
+  readonly currentStationBoardedCount: number;
+  readonly effectiveWaitingPassengers: number;
+  readonly announcement: IAnnouncementState | null;
+  readonly schedule: IScheduleSnapshot;
+  readonly trackworkZones: readonly ITrackworkZone[];
+  readonly activeTrackworkZone: ITrackworkZone | null;
+  readonly upcomingTrackworkDistanceM: number | null;
+  readonly doorFault: IDoorFaultState;
+  readonly czuwak: ICzuwakState;
   readonly totalStations: number;
   readonly stationsServed: number;
   readonly stationsMissed: number;
   readonly score: number;
   readonly penaltiesCount: number;
+  readonly overspeedViolations: number;
+  readonly redSignalViolations: number;
+  readonly czuwakViolations: number;
+  readonly driverGrade: DriverGrade;
   readonly totalStopErrorM: number;
   readonly elapsedTimeSec: number;
   readonly feedback: IFeedbackMessage | null;
@@ -146,6 +309,8 @@ export interface ISimulationSnapshot {
 
 export interface IMetroSimulation {
   getSnapshot(): ISimulationSnapshot;
+  setTrainModel(modelId: TrainModelId): void;
+  setTimeOfDay(timeOfDayId: TimeOfDayId): void;
   start(): void;
   pause(): void;
   resume(): void;

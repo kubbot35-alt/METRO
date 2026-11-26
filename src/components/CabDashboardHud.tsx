@@ -1,73 +1,113 @@
 import type { ISimulationSnapshot } from '../domain/types';
+import { CzuwakIndicator } from './CzuwakIndicator';
+import { MasterControllerSlider } from './MasterControllerSlider';
+import { ScheduleIndicator } from './ScheduleIndicator';
 import { SignalIndicator } from './SignalIndicator';
 import { SpeedometerGauge } from './SpeedometerGauge';
 
 interface ICabDashboardHudProps {
   readonly snapshot: ISimulationSnapshot;
   readonly onToggleDoors: () => void;
+  readonly onToggleHeadlights: () => void;
+  readonly onAcknowledgeCzuwak: () => void;
+  readonly onCycleCamera: () => void;
   readonly onEmergencyBrake: () => void;
   readonly onHornChange: (active: boolean) => void;
+  readonly onLeverChange: (axis: number | null) => void;
 }
 
 export function CabDashboardHud({
   snapshot,
   onToggleDoors,
+  onToggleHeadlights,
+  onAcknowledgeCzuwak,
+  onCycleCamera,
   onEmergencyBrake,
   onHornChange,
+  onLeverChange,
 }: ICabDashboardHudProps) {
-  const { kinematics, currentStation, doorState, canToggleDoors } = snapshot;
+  const { kinematics, currentStation, doorState, canToggleDoors, doorFault } = snapshot;
   const distM = Math.round(currentStation.distanceToTargetM);
   const boardingPct = Math.min(100, (snapshot.boardingTimerSec / snapshot.boardingDurationSec) * 100);
   const remainingBoarding = Math.max(0, snapshot.boardingDurationSec - snapshot.boardingTimerSec);
   const throttlePct = Math.round(kinematics.throttle * 100);
   const brakePct = kinematics.emergencyBrake ? 100 : Math.round(kinematics.serviceBrake * 100);
+  const trackworkAlert = snapshot.activeTrackworkZone !== null || snapshot.upcomingTrackworkDistanceM !== null;
+  const theme = snapshot.trainModel.visual.theme;
+  const isRetro = theme === 'retro';
+  const panelClasses = isRetro
+    ? 'bg-[#15201c]/95 border-[#4c6b5f]'
+    : 'bg-[#0d121b]/95 border-slate-700/80';
+  const dividerClass = isRetro ? 'border-[#2f453d]' : 'border-slate-800';
 
   return (
     <div className="fixed bottom-0 inset-x-0 z-10 pointer-events-none flex justify-center px-3 pb-2">
       <section
         aria-label="Pulpit maszynisty"
-        className="pointer-events-auto w-full max-w-[1280px] bg-[#10141c]/95 border border-slate-700/80 rounded-t-xl rounded-b-md px-4 py-2.5 shadow-2xl grid grid-cols-1 md:grid-cols-[auto_auto_1fr_auto_auto] items-center gap-3.5"
+        data-theme={theme}
+        className={`pointer-events-auto w-full max-w-[1380px] ${panelClasses} border rounded-t-xl rounded-b-md px-3.5 py-2.5 shadow-2xl grid grid-cols-1 lg:grid-cols-[auto_auto_auto_1fr_auto_auto] items-center gap-3`}
       >
         <SpeedometerGauge
           speedKmh={kinematics.speedKmh}
           limitKmh={snapshot.speedLimitKmh}
           isOverspeeding={snapshot.isOverspeeding}
+          theme={theme}
         />
 
         <SignalIndicator nextSignal={snapshot.nextSignal} atpActive={snapshot.atpActive} />
 
-        <div className="min-w-0 border-l border-slate-800 pl-3.5 flex flex-col gap-1.5">
+        <ScheduleIndicator schedule={snapshot.schedule} />
+
+        <div className={`min-w-0 border-l ${dividerClass} pl-3.5 flex flex-col gap-1`}>
           <div className="flex items-baseline justify-between gap-2">
-            <span className="text-xs font-mono-tabular uppercase tracking-wider text-slate-400">
-              Następna stacja · {currentStation.station.code}
+            <span className="text-[11px] font-mono-tabular uppercase tracking-wider text-slate-400 truncate">
+              Stacja · {currentStation.station.code}
             </span>
-            <span className="font-mono-tabular text-lg font-bold text-slate-50">
+            <span className="font-mono-tabular text-base font-bold text-slate-50 whitespace-nowrap">
               {distM >= 0 ? `${distM} m` : `+${Math.abs(distM)} m`}
             </span>
           </div>
 
           <div className="flex items-center justify-between gap-2">
-            <span className="font-display text-lg font-semibold text-amber-300 truncate">
+            <span className="font-display text-base font-semibold text-amber-300 truncate">
               {currentStation.station.name}
             </span>
-            <span className="text-xs font-mono-tabular text-emerald-400 whitespace-nowrap">
-              {currentStation.inStopZone ? 'W STREFIE STOP' : 'STREFY CO 600 m'}
+            <span
+              className={`text-[11px] font-mono-tabular whitespace-nowrap ${
+                trackworkAlert ? 'text-amber-400 font-bold' : 'text-emerald-400'
+              }`}
+            >
+              {trackworkAlert
+                ? 'ROBOTY 25 km/h'
+                : currentStation.inStopZone
+                  ? 'W STREFIE STOP'
+                  : 'CO 600 m'}
             </span>
           </div>
 
           {doorState === 'open' ? (
             <div className="flex flex-col gap-1">
               <div className="flex justify-between text-[11px] font-mono-tabular text-emerald-300">
-                <span>
-                  {snapshot.boardingCompletedForCurrent
-                    ? 'Wymiana zakończona — zamknij drzwi [O]'
-                    : 'Wymiana pasażerów'}
+                <span className="truncate">
+                  {doorFault.phase === 'awaiting-retry'
+                    ? 'AWARIA DRZWI — powtórz [O]'
+                    : doorFault.phase === 'resetting'
+                      ? 'Reset drzwi...'
+                      : snapshot.boardingCompletedForCurrent
+                        ? 'Wymiana zakończona — zamknij [O]'
+                        : 'Wymiana pasażerów'}
                 </span>
-                <span>{remainingBoarding.toFixed(1)} s</span>
+                <span className="whitespace-nowrap">
+                  {doorFault.phase === 'resetting'
+                    ? `${doorFault.remainingSec.toFixed(1)} s`
+                    : `${remainingBoarding.toFixed(1)} s`}
+                </span>
               </div>
               <div className="w-full h-2 bg-slate-800 rounded overflow-hidden">
                 <div
-                  className="h-full bg-emerald-500 transition-transform origin-left"
+                  className={`h-full transition-transform origin-left ${
+                    doorFault.phase !== 'none' ? 'bg-amber-400' : 'bg-emerald-500'
+                  }`}
                   style={{ transform: `scaleX(${boardingPct / 100})` }}
                 />
               </div>
@@ -77,11 +117,23 @@ export function CabDashboardHud({
           )}
         </div>
 
-        <div className="border-l border-slate-800 pl-4 flex flex-col gap-1.5 min-w-[168px]">
+        <div className={`border-l ${dividerClass} pl-3.5 flex flex-col gap-1.5 min-w-[152px]`}>
           <div className="flex items-center justify-between text-xs font-mono-tabular">
             <span className="text-slate-400 uppercase">Drzwi</span>
-            <span className={doorState === 'open' ? 'text-emerald-400 font-bold' : 'text-slate-200 font-semibold'}>
-              {doorState === 'open' ? 'OTWARTE' : 'ZAMKNIĘTE'}
+            <span
+              className={
+                doorFault.phase !== 'none'
+                  ? 'text-amber-400 font-bold'
+                  : doorState === 'open'
+                    ? 'text-emerald-400 font-bold'
+                    : 'text-slate-200 font-semibold'
+              }
+            >
+              {doorFault.phase !== 'none'
+                ? 'AWARIA'
+                : doorState === 'open'
+                  ? 'OTWARTE'
+                  : 'ZAMKNIĘTE'}
             </span>
           </div>
           <button
@@ -91,80 +143,130 @@ export function CabDashboardHud({
               e.currentTarget.blur();
               onToggleDoors();
             }}
-            className={`px-3 py-1.5 rounded text-xs font-mono-tabular font-semibold whitespace-nowrap transition-colors ${
-              canToggleDoors
-                ? 'bg-emerald-600 hover:bg-emerald-500 text-slate-950 cursor-pointer'
-                : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+            className={`px-2.5 py-1.5 rounded text-xs font-mono-tabular font-semibold whitespace-nowrap transition-colors ${
+              doorFault.phase === 'awaiting-retry'
+                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer'
+                : canToggleDoors
+                  ? 'bg-emerald-600 hover:bg-emerald-500 text-slate-950 cursor-pointer'
+                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'
             }`}
           >
-            {doorState === 'open' ? 'Zamknij drzwi [O]' : 'Otwórz drzwi [O]'}
+            {doorFault.phase === 'awaiting-retry'
+              ? 'Powtórz [O]'
+              : doorFault.phase === 'resetting'
+                ? `Reset ${doorFault.remainingSec.toFixed(1)}s`
+                : doorState === 'open'
+                  ? 'Zamknij drzwi [O]'
+                  : 'Otwórz drzwi [O]'}
           </button>
           <span className="text-[10px] text-slate-400 font-mono-tabular">
-            Wymaga: 0 km/h w strefie
+            0 km/h w strefie STOP
           </span>
         </div>
 
-        <div className="border-l border-slate-800 pl-4 flex flex-col gap-1.5 min-w-[205px]">
-          <div className="flex items-center justify-between text-xs font-mono-tabular">
-            <span className="text-slate-400 uppercase">Nastawnik / Hamulec</span>
-            <span
-              className={
-                kinematics.emergencyBrake
-                  ? 'text-red-400 font-bold'
+        <div className={`border-l ${dividerClass} pl-3.5 flex items-center gap-3 min-w-[295px]`}>
+          <MasterControllerSlider
+            leverTarget={snapshot.leverTarget}
+            emergencyBrake={kinematics.emergencyBrake}
+            theme={theme}
+            onLeverChange={onLeverChange}
+          />
+
+          <div className="flex-1 flex flex-col gap-1.5 min-w-[238px]">
+            <div className="flex items-center justify-between text-xs font-mono-tabular">
+              <span className="text-slate-400 uppercase">Nastawnik</span>
+              <span
+                className={
+                  kinematics.emergencyBrake
+                    ? 'text-red-400 font-bold'
+                    : brakePct > 0
+                      ? 'text-amber-400 font-bold'
+                      : 'text-emerald-400 font-bold'
+                }
+              >
+                {kinematics.emergencyBrake
+                  ? 'AWARYJNY'
                   : brakePct > 0
-                    ? 'text-amber-400 font-bold'
-                    : 'text-emerald-400 font-bold'
-              }
-            >
-              {kinematics.emergencyBrake
-                ? 'AWARYJNY'
-                : brakePct > 0
-                  ? `HAM -${brakePct}%`
-                  : `MOC +${throttlePct}%`}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-1 h-2.5 bg-slate-900 rounded p-0.5 border border-slate-800">
-            <div className="w-full h-full bg-slate-800 rounded-l overflow-hidden flex justify-end">
-              <div
-                className={`h-full origin-right ${kinematics.emergencyBrake ? 'bg-red-500' : 'bg-amber-500'}`}
-                style={{ width: `${brakePct}%` }}
-              />
+                    ? `HAM -${brakePct}%`
+                    : `MOC +${throttlePct}%`}
+              </span>
             </div>
-            <div className="w-full h-full bg-slate-800 rounded-r overflow-hidden">
-              <div className="h-full bg-emerald-400" style={{ width: `${throttlePct}%` }} />
-            </div>
-          </div>
 
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onMouseDown={() => onHornChange(true)}
-              onMouseUp={() => onHornChange(false)}
-              onMouseLeave={() => onHornChange(false)}
-              onClick={(e) => e.currentTarget.blur()}
-              className={`flex-1 px-2 py-1 rounded text-[11px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer ${
-                snapshot.hornActive
-                  ? 'bg-amber-400 text-slate-950'
-                  : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
-              }`}
-            >
-              Klakson [H]
-            </button>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.currentTarget.blur();
-                onEmergencyBrake();
-              }}
-              className={`flex-1 px-2 py-1 rounded text-[11px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer ${
-                kinematics.emergencyBrake
-                  ? 'bg-red-600 text-white'
-                  : 'bg-slate-800 hover:bg-red-900/70 text-red-300'
-              }`}
-            >
-              Awaryjny [B]
-            </button>
+            <div className="grid grid-cols-2 gap-1 h-2 bg-slate-900 rounded p-0.5 border border-slate-800">
+              <div className="w-full h-full bg-slate-800 rounded-l overflow-hidden flex justify-end">
+                <div
+                  className={`h-full origin-right ${kinematics.emergencyBrake ? 'bg-red-500' : 'bg-amber-500'}`}
+                  style={{ width: `${brakePct}%` }}
+                />
+              </div>
+              <div className="w-full h-full bg-slate-800 rounded-r overflow-hidden">
+                <div className="h-full bg-emerald-400" style={{ width: `${throttlePct}%` }} />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-3 gap-1">
+              <CzuwakIndicator czuwak={snapshot.czuwak} onAcknowledge={onAcknowledgeCzuwak} />
+              <button
+                type="button"
+                data-testid="headlights-toggle"
+                aria-pressed={snapshot.headlightsOn}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onToggleHeadlights();
+                }}
+                className={`px-1.5 py-1 rounded text-[11px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer flex items-center justify-center gap-1 border ${
+                  snapshot.headlightsOn
+                    ? 'bg-amber-500/20 border-amber-400/70 text-amber-200 hover:bg-amber-500/30'
+                    : 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-800'
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full ${snapshot.headlightsOn ? 'bg-amber-300' : 'bg-slate-600'}`}
+                  aria-hidden="true"
+                />
+                <span>Światła [L]</span>
+              </button>
+              <button
+                type="button"
+                data-testid="hud-camera-btn"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onCycleCamera();
+                }}
+                className="px-1.5 py-1 rounded text-[11px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer bg-slate-800 hover:bg-slate-700 text-sky-200 border border-slate-700"
+              >
+                Kamera [V]
+              </button>
+              <button
+                type="button"
+                onPointerDown={() => onHornChange(true)}
+                onPointerUp={() => onHornChange(false)}
+                onPointerLeave={() => onHornChange(false)}
+                onPointerCancel={() => onHornChange(false)}
+                onClick={(e) => e.currentTarget.blur()}
+                className={`px-1.5 py-1 rounded text-[11px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer ${
+                  snapshot.hornActive
+                    ? 'bg-amber-400 text-slate-950'
+                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
+                }`}
+              >
+                Klakson [H]
+              </button>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onEmergencyBrake();
+                }}
+                className={`col-span-2 px-1.5 py-1 rounded text-[11px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer ${
+                  kinematics.emergencyBrake
+                    ? 'bg-red-600 text-white'
+                    : 'bg-slate-800 hover:bg-red-900/70 text-red-300'
+                }`}
+              >
+                Hamulec awaryjny [B]
+              </button>
+            </div>
           </div>
         </div>
       </section>
@@ -187,8 +289,8 @@ function StopApproachBar({ distanceToTargetM }: { readonly distanceToTargetM: nu
           style={{ left: `${Math.max(0, Math.min(98, progressRatio * 100))}%` }}
         />
       </div>
-      <span className="text-[10px] font-mono-tabular text-slate-400">
-        W/S Moc · Spacja Hamulec · Cel: zielona strefa na końcu peronu
+      <span className="text-[10px] font-mono-tabular text-slate-400 truncate">
+        W/S Moc · Spacja Hamulec · ? Skróty · Cel: STOP
       </span>
     </div>
   );

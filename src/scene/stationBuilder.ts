@@ -45,8 +45,6 @@ interface ISharedStationMats {
   stopBoard: THREE.MeshStandardMaterial;
   benchWood: THREE.MeshStandardMaterial;
   benchMetal: THREE.MeshStandardMaterial;
-  coatA: THREE.MeshStandardMaterial;
-  coatB: THREE.MeshStandardMaterial;
 }
 
 function createSharedStationMaterials(
@@ -78,8 +76,6 @@ function createSharedStationMaterials(
     }),
     benchWood: new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.78, metalness: 0.05 }),
     benchMetal: new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.35, metalness: 0.75 }),
-    coatA: new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.85, metalness: 0.04 }),
-    coatB: new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.82, metalness: 0.05 }),
   };
 }
 
@@ -108,7 +104,7 @@ function createSingleStation(
   addHallShell(group, centerZ, hallLength, wallMat, mats, disposables);
   addPlatformAndStopZone(group, station, centerZ, mats, disposables);
   addStationSignsAndColumns(group, station, centerZ, signMat, mats, disposables);
-  addBenchesAndPassengers(group, centerZ, mats, disposables);
+  addPlatformBenches(group, centerZ, mats, disposables);
   return group;
 }
 
@@ -122,22 +118,24 @@ function addHallShell(
 ): void {
   const leftWallGeo = new THREE.BoxGeometry(0.4, 5.4, hallLength);
   const rightWallGeo = new THREE.BoxGeometry(0.4, 5.4, hallLength);
-  const ceilGeo = new THREE.BoxGeometry(10.8, 0.4, hallLength);
+  const ceilGeo = new THREE.BoxGeometry(15.2, 0.4, hallLength);
   const stripGeo = new THREE.BoxGeometry(0.45, 0.1, hallLength - 8);
 
   const leftWall = new THREE.Mesh(leftWallGeo, wallMat);
-  leftWall.position.set(-3.2, 2.7, centerZ);
+  leftWall.position.set(-7.6, 2.7, centerZ);
   const rightWall = new THREE.Mesh(rightWallGeo, wallMat);
   rightWall.position.set(7.1, 2.7, centerZ);
   const ceiling = new THREE.Mesh(ceilGeo, mats.ceiling);
-  ceiling.position.set(1.95, 5.35, centerZ);
+  ceiling.position.set(-0.25, 5.35, centerZ);
 
   const stripA = new THREE.Mesh(stripGeo, mats.lightStrip);
   stripA.position.set(0.3, 5.1, centerZ);
   const stripB = new THREE.Mesh(stripGeo, mats.lightStrip);
   stripB.position.set(4.1, 5.1, centerZ);
+  const stripC = new THREE.Mesh(stripGeo, mats.lightStrip);
+  stripC.position.set(-4.6, 5.1, centerZ);
 
-  group.add(leftWall, rightWall, ceiling, stripA, stripB);
+  group.add(leftWall, rightWall, ceiling, stripA, stripB, stripC);
   disposables.push(leftWallGeo, rightWallGeo, ceilGeo, stripGeo);
 }
 
@@ -189,7 +187,9 @@ function addStationSignsAndColumns(
   for (let offset = -40; offset <= 40; offset += 20) {
     const col = new THREE.Mesh(colGeo, mats.column);
     col.position.set(4.4, 3.22, centerZ + offset);
-    group.add(col);
+    const dividerCol = new THREE.Mesh(colGeo, mats.column);
+    dividerCol.position.set(-2.35, 2.65, centerZ + offset);
+    group.add(col, dividerCol);
   }
 
   [-36, 0, 28].forEach((offset) => {
@@ -204,7 +204,7 @@ function addStationSignsAndColumns(
   group.add(overheadSign);
 }
 
-function addBenchesAndPassengers(
+function addPlatformBenches(
   group: THREE.Group,
   centerZ: number,
   mats: ISharedStationMats,
@@ -212,11 +212,9 @@ function addBenchesAndPassengers(
 ): void {
   const seatGeo = new THREE.BoxGeometry(0.65, 0.08, 2.4);
   const legGeo = new THREE.BoxGeometry(0.55, 0.44, 0.14);
-  const torsoGeo = new THREE.CylinderGeometry(0.18, 0.22, 0.92, 8);
-  const headGeo = new THREE.SphereGeometry(0.15, 10, 10);
-  disposables.push(seatGeo, legGeo, torsoGeo, headGeo);
+  disposables.push(seatGeo, legGeo);
 
-  [-28, 4, 32].forEach((offset, idx) => {
+  [-28, 4, 32].forEach((offset) => {
     const bench = new THREE.Group();
     const seat = new THREE.Mesh(seatGeo, mats.benchWood);
     seat.position.set(5.4, 1.52, centerZ + offset);
@@ -226,14 +224,5 @@ function addBenchesAndPassengers(
     legB.position.set(5.4, 1.3, centerZ + offset + 0.9);
     bench.add(seat, legA, legB);
     group.add(bench);
-
-    const pax = new THREE.Group();
-    const torso = new THREE.Mesh(torsoGeo, idx % 2 === 0 ? mats.coatA : mats.coatB);
-    torso.position.y = 0.78;
-    const head = new THREE.Mesh(headGeo, mats.column);
-    head.position.y = 1.42;
-    pax.add(torso, head);
-    pax.position.set(3.3 + (idx % 2) * 0.7, 1.08, centerZ + offset - 6);
-    group.add(pax);
   });
 }

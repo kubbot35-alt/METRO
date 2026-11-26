@@ -45,7 +45,7 @@ export function createTunnelConcreteTexture(maxAnisotropy: number): THREE.Canvas
   return finalizeTexture(canvas, 1, 1, maxAnisotropy, true);
 }
 
-export function createBallastTexture(maxAnisotropy: number): THREE.CanvasTexture {
+export function createBallastTexture(maxAnisotropy: number, repeatY = 920): THREE.CanvasTexture {
   const [canvas, ctx] = createCanvas(256, 256);
   ctx.fillStyle = '#1b1d22';
   ctx.fillRect(0, 0, 256, 256);
@@ -54,7 +54,7 @@ export function createBallastTexture(maxAnisotropy: number): THREE.CanvasTexture
     ctx.fillStyle = `rgb(${v + 4}, ${v + 2}, ${v})`;
     ctx.fillRect((i * 71) % 256, (i * 43) % 256, 4, 4);
   }
-  return finalizeTexture(canvas, 2, 420, maxAnisotropy, true);
+  return finalizeTexture(canvas, 2, repeatY, maxAnisotropy, true);
 }
 
 export function createPlatformTileTexture(maxAnisotropy: number): THREE.CanvasTexture {

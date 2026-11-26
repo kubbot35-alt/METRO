@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { MetroIncidentSystem } from './incidentSystem';
 import { MetroSimulationEngine } from './metroSimulation';
 import { MetroScoringRules } from './scoringRules';
 import { MetroTrainPhysics } from './trainPhysics';
@@ -34,10 +35,21 @@ test('doors cannot open outside station or while moving', () => {
 
 test('precision stop, 5s boarding, and door close advances station and awards points', () => {
   const shortRoute: readonly IStationSpec[] = [
-    { id: 1, name: 'Test A', code: 'T1', distanceM: 0, stopZoneHalfWidthM: 14, platformLengthM: 100, accentHex: 0xffffff },
-    { id: 2, name: 'Test B', code: 'T2', distanceM: 600, stopZoneHalfWidthM: 14, platformLengthM: 100, accentHex: 0xffffff },
+    { id: 1, name: 'Test A', code: 'T1', distanceM: 0, stopZoneHalfWidthM: 14, platformLengthM: 100, accentHex: 0xffffff, waitingPassengers: 14 },
+    { id: 2, name: 'Test B', code: 'T2', distanceM: 600, stopZoneHalfWidthM: 14, platformLengthM: 100, accentHex: 0xffffff, waitingPassengers: 12 },
   ];
-  const sim = new MetroSimulationEngine(new MetroTrainPhysics(), new MetroScoringRules(), shortRoute);
+  const noFaultIncidents = new MetroIncidentSystem(shortRoute, () => 0.9);
+  const sim = new MetroSimulationEngine(
+    new MetroTrainPhysics(),
+    new MetroScoringRules(),
+    shortRoute,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    noFaultIncidents,
+  );
   sim.start();
 
   const openEvt = sim.step(makeInput({ toggleDoorsPressed: true }), 0.05);
@@ -53,6 +65,7 @@ test('precision stop, 5s boarding, and door close advances station and awards po
   }
   assert.equal(chimeHeard, true);
   assert.equal(sim.getSnapshot().boardingCompletedForCurrent, true);
+  assert.equal(sim.getSnapshot().passengersCarried, 14);
 
   const closeEvt = sim.step(makeInput({ toggleDoorsPressed: true }), 0.05);
   assert.equal(closeEvt.doorToggledTo, 'closed');
@@ -62,8 +75,8 @@ test('precision stop, 5s boarding, and door close advances station and awards po
 
 test('overshooting a station applies missed station penalty and advances route', () => {
   const shortRoute: readonly IStationSpec[] = [
-    { id: 1, name: 'Near', code: 'T1', distanceM: 2, stopZoneHalfWidthM: 3, platformLengthM: 80, accentHex: 0xffffff },
-    { id: 2, name: 'Next', code: 'T2', distanceM: 600, stopZoneHalfWidthM: 14, platformLengthM: 80, accentHex: 0xffffff },
+    { id: 1, name: 'Near', code: 'T1', distanceM: 2, stopZoneHalfWidthM: 3, platformLengthM: 80, accentHex: 0xffffff, waitingPassengers: 12 },
+    { id: 2, name: 'Next', code: 'T2', distanceM: 600, stopZoneHalfWidthM: 14, platformLengthM: 80, accentHex: 0xffffff, waitingPassengers: 12 },
   ];
   const sim = new MetroSimulationEngine(new MetroTrainPhysics(), new MetroScoringRules(), shortRoute);
   sim.start();

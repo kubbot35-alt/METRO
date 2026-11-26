@@ -44,13 +44,13 @@ export function StatusModal({ snapshot, onResume, onRestart, onTitle }: IStatusM
             label="Obsłużone stacje"
             value={`${snapshot.stationsServed} / ${snapshot.totalStations}`}
           />
-          <StatTile label="Średni błąd zatrzymania" value={avgError} />
+          <StatTile label="Przewiezieni pasażerowie" value={String(snapshot.passengersCarried)} />
           <StatTile
-            label={isPause ? 'Czas jazdy' : 'Kary / Czas'}
+            label={isPause ? 'Czas jazdy' : 'Błąd / Czas'}
             value={
               isPause
                 ? formatDuration(snapshot.elapsedTimeSec)
-                : `${snapshot.penaltiesCount} · ${formatDuration(snapshot.elapsedTimeSec)}`
+                : `${avgError} · ${formatDuration(snapshot.elapsedTimeSec)}`
             }
           />
         </div>

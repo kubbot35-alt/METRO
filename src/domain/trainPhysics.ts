@@ -25,9 +25,13 @@ function clamp(value: number, min: number, max: number): number {
 }
 
 export class MetroTrainPhysics implements ITrainPhysicsModel {
-  private readonly config: ITrainPhysicsConfig;
+  private config: ITrainPhysicsConfig;
 
   public constructor(config: ITrainPhysicsConfig = DEFAULT_METRO_PHYSICS_CONFIG) {
+    this.config = config;
+  }
+
+  public setConfig(config: ITrainPhysicsConfig): void {
     this.config = config;
   }
 
@@ -59,15 +63,21 @@ export class MetroTrainPhysics implements ITrainPhysicsModel {
     if (input.emergencyBrakePressed) {
       return !current.emergencyBrake;
     }
-    if (current.emergencyBrake && current.speedMs <= 0.05 && input.throttleUp) {
+    const releasingWithPower =
+      input.throttleUp || (input.manualLeverAxis !== undefined && input.manualLeverAxis !== null && input.manualLeverAxis > 0.1);
+    if (current.emergencyBrake && current.speedMs <= 0.05 && releasingWithPower) {
       return false;
     }
     return current.emergencyBrake;
   }
 
   private resolveServiceBrake(currentBrake: number, input: IControlInput, dt: number): number {
-    const target = input.serviceBrake ? 1 : 0;
-    const rate = input.serviceBrake ? this.config.brakeRampPerSec : this.config.brakeRampPerSec * 1.8;
+    const manualAxis = input.manualLeverAxis;
+    let target = input.serviceBrake ? 1 : 0;
+    if (manualAxis !== undefined && manualAxis !== null) {
+      target = manualAxis < -0.05 ? clamp(-manualAxis, 0, 1) : 0;
+    }
+    const rate = target > currentBrake ? this.config.brakeRampPerSec : this.config.brakeRampPerSec * 1.8;
     if (currentBrake < target) {
       return Math.min(target, currentBrake + rate * dt);
     }
@@ -84,6 +94,15 @@ export class MetroTrainPhysics implements ITrainPhysicsModel {
   ): number {
     if (doorsOpen || emergencyBrake || serviceBrake > 0.1) {
       return Math.max(0, currentThrottle - this.config.throttleRatePerSec * 3.0 * dt);
+    }
+    const manualAxis = input.manualLeverAxis;
+    if (manualAxis !== undefined && manualAxis !== null) {
+      const target = manualAxis > 0.05 ? clamp(manualAxis, 0, 1) : 0;
+      const maxDelta = this.config.throttleRatePerSec * 2.2 * dt;
+      if (currentThrottle < target) {
+        return Math.min(target, currentThrottle + maxDelta);
+      }
+      return Math.max(target, currentThrottle - maxDelta);
     }
     let next = currentThrottle;
     if (input.throttleUp) {

@@ -1,4 +1,5 @@
-import type { ISemaphoreState, SignalAspect } from './types';
+import { LINE_M1_STATIONS } from './routeData';
+import type { ISemaphoreState, IStationSpec, SignalAspect } from './types';
 
 export interface ISignalStepResult {
   readonly redSignalViolated: boolean;
@@ -8,15 +9,24 @@ export interface ISignalStepResult {
 }
 
 export interface ISignalController {
+  setRedProbability?(probability: number): void;
   reset(): void;
   step(prevPosM: number, nextPosM: number, speedKmh: number, dtSec: number): ISignalStepResult;
   getSignals(): readonly ISemaphoreState[];
   getNextSignal(positionM: number): ISemaphoreState | null;
 }
 
-export const SEMAPHORE_DISTANCES_M: readonly number[] = [
-  250, 495, 790, 1095, 1390, 1695, 1990, 2295, 2590, 2895,
-];
+export function buildSemaphoreDistances(stations: readonly IStationSpec[]): readonly number[] {
+  const distances: number[] = [];
+  stations.forEach((station, idx) => {
+    const midDistance = idx === 0 ? 250 : station.distanceM - 410;
+    const homeDistance = station.distanceM - 105;
+    distances.push(midDistance, homeDistance);
+  });
+  return distances;
+}
+
+export const SEMAPHORE_DISTANCES_M: readonly number[] = buildSemaphoreDistances(LINE_M1_STATIONS);
 
 const RED_PROBABILITY = 0.2;
 const CAUTION_SPEED_LIMIT_KMH = 30;
@@ -37,6 +47,7 @@ interface IMutableSemaphore {
 export class TunnelSignalSystem implements ISignalController {
   private readonly distances: readonly number[];
   private readonly rng: () => number;
+  private redProbability = RED_PROBABILITY;
   private signals: IMutableSemaphore[] = [];
   private cautionActive = false;
 
@@ -46,6 +57,11 @@ export class TunnelSignalSystem implements ISignalController {
   ) {
     this.distances = distances;
     this.rng = rng;
+    this.reset();
+  }
+
+  public setRedProbability(probability: number): void {
+    this.redProbability = Math.max(0, Math.min(0.6, probability));
     this.reset();
   }
 
@@ -117,7 +133,7 @@ export class TunnelSignalSystem implements ISignalController {
   private assignInitialAspects(): void {
     for (let i = 0; i < this.signals.length; i += 1) {
       const prevWasRed = i > 0 && this.signals[i - 1].aspect === 'red';
-      if (!prevWasRed && this.rng() < RED_PROBABILITY) {
+      if (!prevWasRed && this.rng() < this.redProbability) {
         this.signals[i].aspect = 'red';
         if (i > 0 && this.signals[i - 1].aspect === 'green') {
           this.signals[i - 1].aspect = 'yellow';

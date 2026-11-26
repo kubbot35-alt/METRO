@@ -6,67 +6,58 @@ export const STOP_ZONE_HALF_WIDTH_M = 14;
 export const PLATFORM_LENGTH_M = 110;
 export const ROUTE_END_BUFFER_M = 45;
 
-export const LINE_M1_STATIONS: readonly IStationSpec[] = [
-  {
-    id: 1,
-    name: 'Centrum',
-    code: 'M1-01',
-    distanceM: 600,
-    stopZoneHalfWidthM: STOP_ZONE_HALF_WIDTH_M,
-    platformLengthM: PLATFORM_LENGTH_M,
-    accentHex: 0xd97706,
-  },
-  {
-    id: 2,
-    name: 'Politechnika',
-    code: 'M1-02',
-    distanceM: 1200,
-    stopZoneHalfWidthM: STOP_ZONE_HALF_WIDTH_M,
-    platformLengthM: PLATFORM_LENGTH_M,
-    accentHex: 0x0284c7,
-  },
-  {
-    id: 3,
-    name: 'Ratusz Arsenał',
-    code: 'M1-03',
-    distanceM: 1800,
-    stopZoneHalfWidthM: STOP_ZONE_HALF_WIDTH_M,
-    platformLengthM: PLATFORM_LENGTH_M,
-    accentHex: 0x059669,
-  },
-  {
-    id: 4,
-    name: 'Dworzec Gdański',
-    code: 'M1-04',
-    distanceM: 2400,
-    stopZoneHalfWidthM: STOP_ZONE_HALF_WIDTH_M,
-    platformLengthM: PLATFORM_LENGTH_M,
-    accentHex: 0x7c3aed,
-  },
-  {
-    id: 5,
-    name: 'Młociny',
-    code: 'M1-05',
-    distanceM: 3000,
-    stopZoneHalfWidthM: STOP_ZONE_HALF_WIDTH_M,
-    platformLengthM: PLATFORM_LENGTH_M,
-    accentHex: 0xe11d48,
-  },
+interface IStationSeed {
+  readonly name: string;
+  readonly accentHex: number;
+  readonly waitingPassengers: number;
+}
+
+const WARSAW_M1_SEEDS: readonly IStationSeed[] = [
+  { name: 'Kabaty', accentHex: 0xd97706, waitingPassengers: 14 },
+  { name: 'Natolin', accentHex: 0x0284c7, waitingPassengers: 13 },
+  { name: 'Imielin', accentHex: 0x059669, waitingPassengers: 15 },
+  { name: 'Stokłosy', accentHex: 0x7c3aed, waitingPassengers: 12 },
+  { name: 'Ursynów', accentHex: 0xe11d48, waitingPassengers: 16 },
+  { name: 'Służew', accentHex: 0x0891b2, waitingPassengers: 14 },
+  { name: 'Wilanowska', accentHex: 0xd97706, waitingPassengers: 16 },
+  { name: 'Wierzbno', accentHex: 0x2563eb, waitingPassengers: 13 },
+  { name: 'Racławicka', accentHex: 0x059669, waitingPassengers: 14 },
+  { name: 'Pole Mokotowskie', accentHex: 0x9333ea, waitingPassengers: 15 },
+  { name: 'Politechnika', accentHex: 0xe11d48, waitingPassengers: 16 },
+  { name: 'Centrum', accentHex: 0x0284c7, waitingPassengers: 16 },
 ];
 
-export const LINE_M1_SPEED_ZONES: readonly ISpeedLimitZone[] = [
-  { startM: 0, endM: 150, limitKmh: 60 },
-  { startM: 150, endM: 430, limitKmh: 75 },
-  { startM: 430, endM: 640, limitKmh: 45 },
-  { startM: 640, endM: 1020, limitKmh: 80 },
-  { startM: 1020, endM: 1240, limitKmh: 45 },
-  { startM: 1240, endM: 1620, limitKmh: 70 },
-  { startM: 1620, endM: 1840, limitKmh: 45 },
-  { startM: 1840, endM: 2220, limitKmh: 80 },
-  { startM: 2220, endM: 2440, limitKmh: 45 },
-  { startM: 2440, endM: 2800, limitKmh: 75 },
-  { startM: 2800, endM: 3200, limitKmh: 45 },
-];
+function buildStations(seeds: readonly IStationSeed[]): readonly IStationSpec[] {
+  return seeds.map((seed, index) => ({
+    id: index + 1,
+    name: seed.name,
+    code: `M1-${String(index + 1).padStart(2, '0')}`,
+    distanceM: (index + 1) * STATION_SPACING_M,
+    stopZoneHalfWidthM: STOP_ZONE_HALF_WIDTH_M,
+    platformLengthM: PLATFORM_LENGTH_M,
+    accentHex: seed.accentHex,
+    waitingPassengers: seed.waitingPassengers,
+  }));
+}
+
+function buildSpeedZones(stations: readonly IStationSpec[]): readonly ISpeedLimitZone[] {
+  const cruiseLimits = [75, 80, 70, 80, 75, 80, 70, 80, 75, 80, 75, 70];
+  const zones: ISpeedLimitZone[] = [{ startM: 0, endM: 150, limitKmh: 60 }];
+  stations.forEach((station, idx) => {
+    const cruiseStart = idx === 0 ? 150 : stations[idx - 1].distanceM + 40;
+    const approachStart = station.distanceM - 170;
+    const approachEnd = station.distanceM + 40;
+    zones.push({ startM: cruiseStart, endM: approachStart, limitKmh: cruiseLimits[idx % cruiseLimits.length] });
+    zones.push({ startM: approachStart, endM: approachEnd, limitKmh: 45 });
+  });
+  const lastDist = stations[stations.length - 1]?.distanceM ?? 7200;
+  zones.push({ startM: lastDist + 40, endM: lastDist + 240, limitKmh: 45 });
+  return zones;
+}
+
+export const LINE_M1_STATIONS: readonly IStationSpec[] = buildStations(WARSAW_M1_SEEDS);
+
+export const LINE_M1_SPEED_ZONES: readonly ISpeedLimitZone[] = buildSpeedZones(LINE_M1_STATIONS);
 
 export function getSpeedLimitAt(
   positionM: number,

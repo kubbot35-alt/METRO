@@ -1,5 +1,9 @@
 import type { IAudioEvents, ISimulationSnapshot } from '../domain/types';
-import { createContinuousSoundLayers, type IContinuousSoundLayers } from './soundLayers';
+import {
+  createContinuousSoundLayers,
+  playPassingTrainWhoosh,
+  type IContinuousSoundLayers,
+} from './soundLayers';
 import type { IAudioEngine } from './types';
 
 export class MetroAudioEngine implements IAudioEngine {
@@ -117,6 +121,20 @@ export class MetroAudioEngine implements IAudioEngine {
     }
     if (events.railJointPulse) {
       this.playNoiseBurst(0.06, 260, 0.07);
+    }
+    if (events.czuwakAlertTriggered) {
+      this.playTone(1320, 0.14, 0.17, 'triangle', 0);
+      this.playTone(1320, 0.14, 0.17, 'triangle', 0.2);
+    }
+    if (events.czuwakAckChime) {
+      this.playTone(760, 0.07, 0.12, 'sine', 0);
+    }
+    if (events.doorFaultBeep) {
+      this.playTone(340, 0.14, 0.16, 'sawtooth', 0);
+      this.playTone(300, 0.18, 0.16, 'sawtooth', 0.18);
+    }
+    if (events.passingTrainWhoosh && this.ctx && this.masterGain) {
+      playPassingTrainWhoosh(this.ctx, this.masterGain);
     }
   }
 
