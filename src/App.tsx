@@ -50,6 +50,9 @@ export default function App() {
       data-grade-pct={snapshot.trackProfile.gradePercent.toFixed(1)}
       data-elevation-m={snapshot.trackProfile.elevationM.toFixed(1)}
       data-outdoor={snapshot.trackProfile.outdoorBlend.toFixed(2)}
+      data-challenge={snapshot.challenge?.id ?? 'none'}
+      data-radio-active={snapshot.radio.active ? '1' : '0'}
+      data-radio-ack={snapshot.radio.acknowledgedCount}
     >
       <div
         ref={mountRef}
@@ -63,6 +66,7 @@ export default function App() {
           selectedModelId={snapshot.trainModel.id}
           selectedTimeOfDayId={snapshot.timeOfDay.id}
           selectedGameMode={snapshot.gameMode}
+          selectedChallengeId={snapshot.challenge?.id ?? 'inverter_fault'}
           leaderboard={game.leaderboard}
           achievementsUnlocked={game.unlockedAchievements.length}
           achievementsTotal={game.achievementCatalog.length}
@@ -70,6 +74,7 @@ export default function App() {
           onSelectModel={game.selectTrainModel}
           onSelectTimeOfDay={game.selectTimeOfDay}
           onSelectGameMode={game.selectGameMode}
+          onSelectChallenge={game.selectChallenge}
           onOpenAchievements={game.openAchievements}
           onToggleHelp={game.toggleHelp}
           onStart={game.startGame}
@@ -86,6 +91,7 @@ export default function App() {
             onToggleHelp={game.toggleHelp}
             onPause={game.pauseGame}
             onRestart={game.restartGame}
+            onAcknowledgeRadio={game.acknowledgeRadio}
             onSandboxSpawnTrain={game.triggerSandboxOncomingTrain}
             onSandboxCycleSignal={game.cycleSandboxNextSignal}
           />
@@ -95,6 +101,7 @@ export default function App() {
             onToggleDoorsRight={game.toggleDoorsRight}
             onToggleHeadlights={game.toggleHeadlights}
             onAcknowledgeCzuwak={game.acknowledgeCzuwak}
+            onAcknowledgeRadio={game.acknowledgeRadio}
             onCycleCamera={game.cycleCamera}
             onEmergencyBrake={game.triggerEmergencyBrake}
             onHornChange={game.setHornActive}

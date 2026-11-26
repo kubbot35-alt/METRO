@@ -8,6 +8,7 @@ import type { TimeOfDayId } from '../domain/types';
 import {
   createDepotBuildingTexture,
   createDepotPortalSignTexture,
+  createDepotSignboardTexture,
 } from './proceduralTextures';
 
 export interface ISurfaceDepotRig {
@@ -38,9 +39,10 @@ const SKY_FRAGMENT_SHADER = `
     vec3 col = mix(uHorizonColor, uMidColor, smoothstep(0.0, 0.28, h));
     col = mix(col, uTopColor, smoothstep(0.24, 0.85, h));
     float sunDot = max(dot(dir, normalize(uSunDir)), 0.0);
-    float halo = pow(sunDot, 18.0) * 0.35 * uSunStrength;
-    float disc = smoothstep(0.9965, 0.999, sunDot) * 1.45 * uSunStrength;
-    col += uSunColor * (halo + disc);
+    float broadGlow = pow(sunDot, 10.0) * 0.09 * uSunStrength;
+    float halo = pow(sunDot, 56.0) * 0.28 * uSunStrength;
+    float disc = smoothstep(0.99935, 0.99972, sunDot) * 1.45 * uSunStrength;
+    col += uSunColor * (broadGlow + halo + disc);
     gl_FragColor = vec4(col, 1.0);
   }
 `;
@@ -113,18 +115,19 @@ export function buildSurfaceDepot(
       if (lastTod !== timeOfDayId) {
         lastTod = timeOfDayId;
         if (timeOfDayId === 'evening') {
-          skyUniforms.uTopColor.value.setHex(0x030714);
-          skyUniforms.uMidColor.value.setHex(0x0a1530);
-          skyUniforms.uHorizonColor.value.setHex(0x16264a);
-          skyUniforms.uSunDir.value.set(-0.34, 0.42, -0.84).normalize();
-          skyUniforms.uSunColor.value.setHex(0xdbeafe);
-          skyUniforms.uSunStrength.value = 0.52;
+          skyUniforms.uTopColor.value.setHex(0x020612);
+          skyUniforms.uMidColor.value.setHex(0x071228);
+          skyUniforms.uHorizonColor.value.setHex(0x112040);
+          skyUniforms.uSunDir.value.set(-0.26, 0.34, -0.9).normalize();
+          skyUniforms.uSunColor.value.setHex(0xe2ecff);
+          skyUniforms.uSunStrength.value = 0.85;
           stars.visible = true;
-          sharedMats.mastLamp.emissiveIntensity = 4.6;
-          sharedMats.hangarWindow.emissiveIntensity = 2.4;
+          sharedMats.mastLamp.emissiveIntensity = 5.2;
+          sharedMats.hangarWindow.emissiveIntensity = 2.6;
+          sharedMats.hangarSign.emissiveIntensity = 0.95;
         } else {
-          skyUniforms.uTopColor.value.setHex(0x2867b8);
-          skyUniforms.uMidColor.value.setHex(0x70b4ec);
+          skyUniforms.uTopColor.value.setHex(0x2563b5);
+          skyUniforms.uMidColor.value.setHex(0x6db0ea);
           skyUniforms.uHorizonColor.value.setHex(0xd4e6f8);
           skyUniforms.uSunDir.value.set(0.32, 0.34, -0.88).normalize();
           skyUniforms.uSunColor.value.setHex(0xfff1cc);
@@ -132,6 +135,7 @@ export function buildSurfaceDepot(
           stars.visible = false;
           sharedMats.mastLamp.emissiveIntensity = 0.9;
           sharedMats.hangarWindow.emissiveIntensity = 0.4;
+          sharedMats.hangarSign.emissiveIntensity = 0.35;
         }
       }
     },
@@ -150,6 +154,7 @@ interface IDepotMaterials {
   readonly portalArch: THREE.MeshStandardMaterial;
   readonly portalSign: THREE.MeshStandardMaterial;
   readonly hangarWall: THREE.MeshStandardMaterial;
+  readonly hangarSign: THREE.MeshStandardMaterial;
   readonly hangarRoof: THREE.MeshStandardMaterial;
   readonly hangarWindow: THREE.MeshStandardMaterial;
   readonly steel: THREE.MeshStandardMaterial;
@@ -171,6 +176,7 @@ function createDepotMaterials(
 ): IDepotMaterials {
   const portalSignTex = createDepotPortalSignTexture(maxAnisotropy);
   const hangarTex = createDepotBuildingTexture(maxAnisotropy);
+  const hangarSignTex = createDepotSignboardTexture(maxAnisotropy);
 
   const mats: IDepotMaterials = {
     gravel: new THREE.MeshStandardMaterial({ color: 0x52565c, roughness: 0.94, metalness: 0.04 }),
@@ -182,10 +188,17 @@ function createDepotMaterials(
       map: portalSignTex,
       emissiveMap: portalSignTex,
       emissive: 0xffffff,
-      emissiveIntensity: 0.55,
+      emissiveIntensity: 0.65,
       roughness: 0.35,
     }),
     hangarWall: new THREE.MeshStandardMaterial({ map: hangarTex, roughness: 0.65, metalness: 0.25 }),
+    hangarSign: new THREE.MeshStandardMaterial({
+      map: hangarSignTex,
+      emissiveMap: hangarSignTex,
+      emissive: 0xffffff,
+      emissiveIntensity: 0.35,
+      roughness: 0.35,
+    }),
     hangarRoof: new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.58, metalness: 0.42 }),
     hangarWindow: new THREE.MeshStandardMaterial({
       color: 0xfef3c7,
@@ -208,21 +221,21 @@ function createDepotMaterials(
     trainYellow: new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.36, metalness: 0.18 }),
     trunk: new THREE.MeshStandardMaterial({ color: 0x4b3621, roughness: 0.92, metalness: 0.02 }),
     foliage: new THREE.MeshStandardMaterial({ color: 0x2f5a32, roughness: 0.88, metalness: 0.02 }),
-    cityBlock: new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.85, metalness: 0.08 }),
+    cityBlock: new THREE.MeshStandardMaterial({ color: 0x5c6b7e, roughness: 0.85, metalness: 0.08 }),
   };
 
-  disposables.push(portalSignTex, hangarTex, ...Object.values(mats));
+  disposables.push(portalSignTex, hangarTex, hangarSignTex, ...Object.values(mats));
   return mats;
 }
 
 function buildStarfield(disposables: Array<{ dispose(): void }>): THREE.Points {
-  const starCount = 460;
+  const starCount = 560;
   const positions = new Float32Array(starCount * 3);
   for (let i = 0; i < starCount; i += 1) {
     const u = ((i * 73 + 19) % 997) / 997;
     const v = ((i * 151 + 43) % 991) / 991;
     const theta = u * Math.PI * 2;
-    const phi = Math.acos(0.08 + v * 0.9); // upper sky hemisphere
+    const phi = Math.acos(0.06 + v * 0.92); // upper sky hemisphere
     const r = 245;
     positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
     positions[i * 3 + 1] = r * Math.cos(phi);
@@ -232,10 +245,10 @@ function buildStarfield(disposables: Array<{ dispose(): void }>): THREE.Points {
   geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
   const mat = new THREE.PointsMaterial({
     color: 0xf8fafc,
-    size: 1.9,
-    sizeAttenuation: true,
+    size: 2.3,
+    sizeAttenuation: false,
     transparent: true,
-    opacity: 0.92,
+    opacity: 0.94,
     depthWrite: false,
     fog: false,
   });
@@ -411,17 +424,21 @@ function addDepotHangarAndGantry(
   hangarGroup.position.set(-29, ySurf, -88);
   const mainGeo = new THREE.BoxGeometry(16, 10.5, 118);
   const roofGeo = new THREE.BoxGeometry(16.8, 0.8, 120);
-  const windowStripGeo = new THREE.BoxGeometry(0.18, 1.45, 106);
+  const windowStripGeo = new THREE.BoxGeometry(0.18, 1.35, 106);
+  const signBoardGeo = new THREE.PlaneGeometry(36, 4.2);
   const ventGeo = new THREE.BoxGeometry(5.2, 1.35, 16);
-  disposables.push(mainGeo, roofGeo, windowStripGeo, ventGeo);
+  disposables.push(mainGeo, roofGeo, windowStripGeo, signBoardGeo, ventGeo);
 
   const main = new THREE.Mesh(mainGeo, mats.hangarWall);
   main.position.set(0, 5.25, 0);
   const roof = new THREE.Mesh(roofGeo, mats.hangarRoof);
   roof.position.set(0, 10.8, 0);
   const winStrip = new THREE.Mesh(windowStripGeo, mats.hangarWindow);
-  winStrip.position.set(8.08, 7.6, 0);
-  hangarGroup.add(main, roof, winStrip);
+  winStrip.position.set(8.08, 8.65, 0);
+  const signBoard = new THREE.Mesh(signBoardGeo, mats.hangarSign);
+  signBoard.rotation.y = Math.PI / 2;
+  signBoard.position.set(8.12, 6.0, 26);
+  hangarGroup.add(main, roof, winStrip, signBoard);
   [-38, -12, 14, 40].forEach((vz) => {
     const vent = new THREE.Mesh(ventGeo, mats.steel);
     vent.position.set(0, 11.7, vz);
@@ -541,9 +558,10 @@ function addTreesAndHorizonBlocks(
     root.add(inst);
   });
 
-  // Distant Kabaty apartment skyline blocks behind the tunnel embankment
+  // Distant Kabaty apartment skyline blocks with lit window bands behind the tunnel embankment
   const blockGeo = new THREE.BoxGeometry(22, 24, 14);
-  disposables.push(blockGeo);
+  const winBandGeo = new THREE.BoxGeometry(22.2, 1.1, 14.2);
+  disposables.push(blockGeo, winBandGeo);
   const blockSpecs: ReadonlyArray<[number, number, number]> = [
     [-58, -375, 1.15],
     [-22, -395, 0.95],
@@ -553,10 +571,18 @@ function addTreesAndHorizonBlocks(
     [54, -120, 0.92],
   ];
   blockSpecs.forEach(([bx, bz, sc]) => {
+    const bGroup = new THREE.Group();
+    bGroup.position.set(bx, ySurf, bz);
     const b = new THREE.Mesh(blockGeo, mats.cityBlock);
     b.scale.set(1, sc, 1);
-    b.position.set(bx, ySurf + 12 * sc, bz);
-    root.add(b);
+    b.position.y = 12 * sc;
+    bGroup.add(b);
+    [5, 10, 15, 20].forEach((wy) => {
+      const w = new THREE.Mesh(winBandGeo, mats.hangarWindow);
+      w.position.y = wy * sc;
+      bGroup.add(w);
+    });
+    root.add(bGroup);
   });
 }
 

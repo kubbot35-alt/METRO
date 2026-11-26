@@ -10,6 +10,7 @@ export class KeyboardInputController implements IInputController {
   private emergencyBrakeQueued = false;
   private headlightsToggleQueued = false;
   private czuwakAckQueued = false;
+  private radioAckQueued = false;
   private cameraCycleQueued = false;
   private virtualHornActive = false;
   private virtualLeverAxis: number | null = null;
@@ -43,6 +44,7 @@ export class KeyboardInputController implements IInputController {
       toggleDoorsRightPressed: this.doorRightQueued,
       toggleHeadlightsPressed: this.headlightsToggleQueued,
       acknowledgeCzuwakPressed: this.czuwakAckQueued,
+      acknowledgeRadioPressed: this.radioAckQueued,
       cycleCameraPressed: this.cameraCycleQueued,
       manualLeverAxis: this.virtualLeverAxis,
       hornActive: this.heldKeys.has('KeyH') || this.virtualHornActive,
@@ -53,6 +55,7 @@ export class KeyboardInputController implements IInputController {
     this.emergencyBrakeQueued = false;
     this.headlightsToggleQueued = false;
     this.czuwakAckQueued = false;
+    this.radioAckQueued = false;
     this.cameraCycleQueued = false;
     return input;
   }
@@ -87,6 +90,11 @@ export class KeyboardInputController implements IInputController {
     this.czuwakAckQueued = true;
   }
 
+  public triggerRadioAck(): void {
+    this.callbacks?.onFirstInteraction();
+    this.radioAckQueued = true;
+  }
+
   public triggerCameraCycle(): void {
     this.callbacks?.onFirstInteraction();
     this.cameraCycleQueued = true;
@@ -114,6 +122,7 @@ export class KeyboardInputController implements IInputController {
     this.emergencyBrakeQueued = false;
     this.headlightsToggleQueued = false;
     this.czuwakAckQueued = false;
+    this.radioAckQueued = false;
     this.cameraCycleQueued = false;
   }
 
@@ -137,7 +146,7 @@ export class KeyboardInputController implements IInputController {
       return;
     }
     if (!event.repeat) {
-      this.handleOneShotKey(event.code, event.key);
+      this.handleOneShotKey(event.code, event.key, event.shiftKey);
     }
     this.heldKeys.add(event.code);
   };
@@ -160,7 +169,7 @@ export class KeyboardInputController implements IInputController {
     }
   };
 
-  private handleOneShotKey(code: string, key: string): void {
+  private handleOneShotKey(code: string, key: string, shiftKey: boolean): void {
     if (code === 'KeyQ') {
       this.doorLeftQueued = true;
     } else if (code === 'KeyE') {
@@ -173,6 +182,12 @@ export class KeyboardInputController implements IInputController {
       this.headlightsToggleQueued = true;
     } else if (code === 'KeyC') {
       this.czuwakAckQueued = true;
+    } else if (code === 'KeyR') {
+      if (shiftKey) {
+        this.callbacks?.onRestartRequested();
+      } else {
+        this.radioAckQueued = true;
+      }
     } else if (code === 'KeyV') {
       this.cameraCycleQueued = true;
     } else if (code === 'F1' || key === '?') {
@@ -181,8 +196,6 @@ export class KeyboardInputController implements IInputController {
       this.callbacks?.onPauseToggle();
     } else if (code === 'KeyM') {
       this.callbacks?.onMuteToggle();
-    } else if (code === 'KeyR') {
-      this.callbacks?.onRestartRequested();
     }
   }
 }

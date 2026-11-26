@@ -13,6 +13,7 @@ interface ITopHudBarProps {
   readonly onRestart: () => void;
   readonly onSandboxSpawnTrain: () => void;
   readonly onSandboxCycleSignal: () => void;
+  readonly onAcknowledgeRadio: () => void;
 }
 
 function getFeedbackColor(tone: FeedbackTone): string {
@@ -38,8 +39,9 @@ export function TopHudBar({
   onRestart,
   onSandboxSpawnTrain,
   onSandboxCycleSignal,
+  onAcknowledgeRadio,
 }: ITopHudBarProps) {
-  const { feedback, announcement, cameraNotice } = snapshot;
+  const { feedback, announcement, cameraNotice, radio, challenge } = snapshot;
   const isRetro = snapshot.trainModel.visual.theme === 'retro';
   const barClasses = isRetro
     ? 'bg-[#15201c]/92 border-[#4c6b5f]'
@@ -93,11 +95,63 @@ export function TopHudBar({
           onCycleSignal={onSandboxCycleSignal}
         />
       )}
+      {challenge && (
+        <div
+          data-testid="challenge-objective-bar"
+          className="mt-1.5 px-3 py-1.5 rounded-md border border-fuchsia-400/70 bg-[#1d1026]/92 text-fuchsia-100 text-[11px] font-mono-tabular shadow-lg max-w-[360px]"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-bold uppercase tracking-wider text-fuchsia-300">
+              WYZWANIE · {challenge.title}
+            </span>
+            <span className="px-1.5 py-0.5 rounded bg-fuchsia-500/20 border border-fuchsia-400/50 text-[9px] font-bold text-amber-200 whitespace-nowrap">
+              {challenge.badge}
+            </span>
+          </div>
+          <p className="text-[10px] text-slate-200 mt-0.5 leading-snug">
+            {challenge.objectiveSummary}
+          </p>
+        </div>
+      )}
       </div>
 
       <div className="flex-1 min-w-0 flex flex-col items-center gap-1.5 max-w-[44vw]">
         <RouteLineStrip snapshot={snapshot} />
         <MetroLedDisplay announcement={announcement} lineId={snapshot.line.id} />
+        {radio.active && (
+          <div
+            role="alert"
+            data-testid="radio-dispatch-banner"
+            className="pointer-events-auto w-full max-w-[560px] px-3.5 py-2 rounded-md border-2 border-cyan-400/85 bg-[#071824]/95 text-cyan-50 shadow-2xl flex flex-col gap-1.5"
+          >
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-cyan-300 animate-pulse shrink-0" />
+                <span className="text-[10px] font-mono-tabular font-bold uppercase tracking-[0.16em] text-cyan-300">
+                  Radio Dyspozytora · Kanał Ruchowy
+                </span>
+              </div>
+              <button
+                type="button"
+                data-testid="radio-banner-ack-btn"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onAcknowledgeRadio();
+                }}
+                className="px-2.5 py-1 rounded bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-mono-tabular font-bold text-[11px] whitespace-nowrap cursor-pointer"
+              >
+                Potwierdź [R]{snapshot.gameMode === 'sandbox' ? '' : ' +40 pkt'} ({radio.remainingSec.toFixed(1)}s)
+              </button>
+            </div>
+            <p className="text-xs font-medium text-slate-100 leading-snug">{radio.text}</p>
+            <div className="w-full h-1 bg-slate-800 rounded overflow-hidden">
+              <div
+                className="h-full bg-cyan-400 transition-transform origin-left"
+                style={{ transform: `scaleX(${Math.max(0, Math.min(1, radio.remainingSec / 6))})` }}
+              />
+            </div>
+          </div>
+        )}
         {cameraNotice && (
           <div
             data-testid="camera-notice"
@@ -197,8 +251,8 @@ export function TopHudBar({
         <button
           type="button"
           tabIndex={-1}
-          aria-label="Restartuj kurs [R]"
-          title="Restartuj kurs [R]"
+          aria-label="Restartuj kurs [Shift+R]"
+          title="Restartuj kurs [Shift+R]"
           onClick={(e) => {
             e.currentTarget.blur();
             onRestart();

@@ -75,6 +75,24 @@ export const ACHIEVEMENT_CATALOG: readonly IAchievementSpec[] = [
     description: 'Zalicz 3 razy czuwak i opanuj awarię drzwi w jednym kursie.',
     category: 'skill',
   },
+  {
+    id: 'challenge_inverter_fault',
+    title: 'Mistrz Falownika',
+    description: 'Ukończ wyzwanie „Awaria falownika” z mocą 60% i opóźnieniem poniżej 20 s.',
+    category: 'challenge',
+  },
+  {
+    id: 'challenge_technical_run',
+    title: 'Przejazd Techniczny',
+    description: 'Ukończ wyzwanie „Przejazd techniczny” bez postojów i bez naruszeń ATP/czuwaka.',
+    category: 'challenge',
+  },
+  {
+    id: 'challenge_black_series',
+    title: 'Przetrwać Czarną Serię',
+    description: 'Ukończ wyzwanie „Czarna seria” z czuwakiem co 30 s i awariami drzwi.',
+    category: 'challenge',
+  },
 ];
 
 export function evaluateUnlockedAchievementIds(
@@ -90,6 +108,11 @@ export function evaluateUnlockedAchievementIds(
 
   const isDuty = snapshot.gameMode === 'duty';
   const isFinished = snapshot.phase === 'gameover';
+  const isChallengePassed =
+    isFinished &&
+    snapshot.gameMode === 'challenge' &&
+    snapshot.challenge !== null &&
+    snapshot.challengeOutcome?.passed === true;
   const totalViolations =
     snapshot.overspeedViolations + snapshot.redSignalViolations + snapshot.czuwakViolations;
 
@@ -98,7 +121,9 @@ export function evaluateUnlockedAchievementIds(
   check('passenger_carrier', snapshot.passengersCarried >= 100);
   check(
     'nerves_of_steel',
-    isDuty && snapshot.czuwakAcksCount >= 3 && snapshot.doorFaultsResolvedCount >= 1,
+    (isDuty || snapshot.gameMode === 'challenge') &&
+      snapshot.czuwakAcksCount >= 3 &&
+      snapshot.doorFaultsResolvedCount >= 1,
   );
   check(
     'punctual_clockwork',
@@ -114,6 +139,9 @@ export function evaluateUnlockedAchievementIds(
   check('classic_driver', isFinished && snapshot.trainModel.id === 'seria81');
   check('m2_master', isFinished && snapshot.line.id === 'M2');
   check('night_owl', isFinished && snapshot.timeOfDay.id === 'evening');
+  check('challenge_inverter_fault', isChallengePassed && snapshot.challenge?.id === 'inverter_fault');
+  check('challenge_technical_run', isChallengePassed && snapshot.challenge?.id === 'technical_run');
+  check('challenge_black_series', isChallengePassed && snapshot.challenge?.id === 'black_series');
 
   return newlyUnlocked;
 }

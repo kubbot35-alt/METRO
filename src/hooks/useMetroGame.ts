@@ -8,6 +8,7 @@ import { MetroSimulationEngine } from '../domain/metroSimulation';
 import { MetroScoringRules } from '../domain/scoringRules';
 import { MetroTrainPhysics } from '../domain/trainPhysics';
 import type {
+  ChallengeId,
   GameModeId,
   IAchievementRecord,
   IAchievementSpec,
@@ -36,6 +37,7 @@ export interface IMetroGameController {
   readonly isNewRecord: boolean;
   selectMetroLine: (lineId: MetroLineId) => void;
   selectGameMode: (mode: GameModeId) => void;
+  selectChallenge: (challengeId: ChallengeId) => void;
   selectTrainModel: (modelId: TrainModelId) => void;
   selectTimeOfDay: (timeOfDayId: TimeOfDayId) => void;
   triggerSandboxOncomingTrain: () => void;
@@ -55,6 +57,7 @@ export interface IMetroGameController {
   toggleDoorsRight: () => void;
   toggleHeadlights: () => void;
   acknowledgeCzuwak: () => void;
+  acknowledgeRadio: () => void;
   cycleCamera: () => void;
   triggerEmergencyBrake: () => void;
   setHornActive: (active: boolean) => void;
@@ -117,6 +120,10 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     const next = sim.getSnapshot();
     document.body.dataset.state = next.phase;
     setSnapshot(next);
+    if (rendererRef.current) {
+      rendererRef.current.update(next, 0);
+      rendererRef.current.render();
+    }
   }, []);
 
   const selectMetroLine = useCallback(
@@ -130,6 +137,14 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
   const selectGameMode = useCallback(
     (mode: GameModeId): void => {
       simRef.current?.setGameMode(mode);
+      syncNow();
+    },
+    [syncNow],
+  );
+
+  const selectChallenge = useCallback(
+    (challengeId: ChallengeId): void => {
+      simRef.current?.setChallenge?.(challengeId);
       syncNow();
     },
     [syncNow],
@@ -215,6 +230,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     const currentSnap = simRef.current?.getSnapshot();
     const currentLineId = currentSnap?.line.id ?? 'M1';
     const currentMode = currentSnap?.gameMode ?? 'duty';
+    const currentChallengeId = currentSnap?.challenge?.id ?? 'inverter_fault';
     const currentModelId = currentSnap?.trainModel.id ?? 'inspiro';
     const currentTimeOfDayId = currentSnap?.timeOfDay.id ?? 'rush';
     simRef.current?.reset();
@@ -227,6 +243,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     setHelpOpen(false);
     const freshSim = new MetroSimulationEngine(new MetroTrainPhysics(), new MetroScoringRules());
     freshSim.setMetroLine(currentLineId);
+    freshSim.setChallenge?.(currentChallengeId);
     freshSim.setGameMode(currentMode);
     freshSim.setTrainModel(currentModelId);
     freshSim.setTimeOfDay(currentTimeOfDayId);
@@ -293,6 +310,10 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
 
   const acknowledgeCzuwak = useCallback((): void => {
     inputRef.current?.triggerCzuwakAck();
+  }, []);
+
+  const acknowledgeRadio = useCallback((): void => {
+    inputRef.current?.triggerRadioAck();
   }, []);
 
   const cycleCamera = useCallback((): void => {
@@ -363,6 +384,8 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     let lastPassengers = 0;
     let lastAnnId = -1;
     let lastCzuwak = false;
+    let lastRadioActive = false;
+    let lastRadioId = -1;
     let lastDoorFault = 'none';
     let lastCameraMode = simRef.current!.getSnapshot().cameraMode;
     let lastCameraNoticeId = -1;
@@ -391,6 +414,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         toggleDoorsRightPressed: false,
         toggleHeadlightsPressed: false,
         acknowledgeCzuwakPressed: false,
+        acknowledgeRadioPressed: false,
         cycleCameraPressed: false,
       };
       while (remaining > 0.001) {
@@ -410,6 +434,9 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
           czuwakAckChime: latestAudio.czuwakAckChime || nextAudio.czuwakAckChime,
           doorFaultBeep: latestAudio.doorFaultBeep || nextAudio.doorFaultBeep,
           passingTrainWhoosh: latestAudio.passingTrainWhoosh || nextAudio.passingTrainWhoosh,
+          radioDispatchTriggered:
+            Boolean(latestAudio.radioDispatchTriggered) || Boolean(nextAudio.radioDispatchTriggered),
+          radioAckChime: Boolean(latestAudio.radioAckChime) || Boolean(nextAudio.radioAckChime),
         };
         remaining -= subDt;
       }
@@ -457,12 +484,16 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
       }
 
       audio.update(snap, latestAudio);
-      if (snap.announcement && snap.phase === 'playing') {
-        speech.announce(
-          snap.announcement.id,
-          snap.announcement.spokenText ?? snap.announcement.text,
-          audio.isMuted(),
-        );
+      if (snap.phase === 'playing') {
+        if (latestAudio.radioDispatchTriggered && snap.radio.active) {
+          speech.announce(10000 + snap.radio.messageId, snap.radio.spokenText, audio.isMuted());
+        } else if (snap.announcement) {
+          speech.announce(
+            snap.announcement.id,
+            snap.announcement.spokenText ?? snap.announcement.text,
+            audio.isMuted(),
+          );
+        }
       }
       sceneRenderer.update(snap, rawDt);
       sceneRenderer.render();
@@ -478,6 +509,8 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         snap.passengersCarried !== lastPassengers ||
         annId !== lastAnnId ||
         snap.czuwak.active !== lastCzuwak ||
+        snap.radio.active !== lastRadioActive ||
+        snap.radio.messageId !== lastRadioId ||
         snap.doorFault.phase !== lastDoorFault ||
         snap.cameraMode !== lastCameraMode ||
         camNoticeId !== lastCameraNoticeId ||
@@ -494,6 +527,8 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         lastPassengers = snap.passengersCarried;
         lastAnnId = annId;
         lastCzuwak = snap.czuwak.active;
+        lastRadioActive = snap.radio.active;
+        lastRadioId = snap.radio.messageId;
         lastDoorFault = snap.doorFault.phase;
         lastCameraMode = snap.cameraMode;
         lastCameraNoticeId = camNoticeId;
@@ -531,6 +566,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     isNewRecord,
     selectMetroLine,
     selectGameMode,
+    selectChallenge,
     selectTrainModel,
     selectTimeOfDay,
     triggerSandboxOncomingTrain,
@@ -550,6 +586,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     toggleDoorsRight,
     toggleHeadlights,
     acknowledgeCzuwak,
+    acknowledgeRadio,
     cycleCamera,
     triggerEmergencyBrake,
     setHornActive,

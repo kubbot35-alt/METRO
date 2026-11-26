@@ -19,6 +19,7 @@ export interface IInputController {
   triggerEmergencyBrake(): void;
   triggerHeadlightsToggle(): void;
   triggerCzuwakAck(): void;
+  triggerRadioAck(): void;
   triggerCameraCycle(): void;
   setVirtualHorn(active: boolean): void;
   setVirtualLeverAxis(axis: number | null): void;

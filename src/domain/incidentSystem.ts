@@ -20,9 +20,16 @@ export interface IDoorCloseAttemptResult {
   readonly retryStarted: boolean;
 }
 
+export interface IIncidentOverrides {
+  readonly doorFaultProbability?: number | null;
+  readonly czuwakMinSec?: number | null;
+  readonly czuwakMaxSec?: number | null;
+}
+
 export interface IIncidentController {
   setStations?(stations: readonly IStationSpec[]): void;
   setEnabled?(enabled: boolean): void;
+  configureOverrides?(overrides: IIncidentOverrides): void;
   reset(): void;
   step(
     positionM: number,
@@ -62,6 +69,10 @@ export class MetroIncidentSystem implements IIncidentController {
   private czuwakActive = false;
   private czuwakRemainingSec = 0;
 
+  private doorFaultProb = DOOR_FAULT_PROBABILITY;
+  private czuwakMinSec = CZUWAK_MIN_INTERVAL_SEC;
+  private czuwakMaxSec = CZUWAK_MAX_INTERVAL_SEC;
+
   public constructor(
     stations: readonly IStationSpec[] = LINE_M1_STATIONS,
     rng: () => number = Math.random,
@@ -79,6 +90,13 @@ export class MetroIncidentSystem implements IIncidentController {
   public setEnabled(enabled: boolean): void {
     this.enabled = enabled;
     this.reset();
+  }
+
+  public configureOverrides(overrides: IIncidentOverrides): void {
+    this.doorFaultProb = overrides.doorFaultProbability ?? DOOR_FAULT_PROBABILITY;
+    this.czuwakMinSec = overrides.czuwakMinSec ?? CZUWAK_MIN_INTERVAL_SEC;
+    this.czuwakMaxSec = overrides.czuwakMaxSec ?? CZUWAK_MAX_INTERVAL_SEC;
+    this.czuwakCountdownSec = this.rollNextCzuwakInterval();
   }
 
   public reset(): void {
@@ -132,7 +150,7 @@ export class MetroIncidentSystem implements IIncidentController {
     if (this.doorFaultPhase === 'resetting') {
       return { allowedToCloseNow: false, faultTriggered: false, retryStarted: false };
     }
-    if (!this.faultedStationIndices.has(stationIndex) && this.rng() < DOOR_FAULT_PROBABILITY) {
+    if (!this.faultedStationIndices.has(stationIndex) && this.rng() < this.doorFaultProb) {
       this.faultedStationIndices.add(stationIndex);
       this.doorFaultPhase = 'awaiting-retry';
       this.doorFaultRemainingSec = DOOR_FAULT_RESET_SEC;
@@ -265,9 +283,6 @@ export class MetroIncidentSystem implements IIncidentController {
   }
 
   private rollNextCzuwakInterval(): number {
-    return (
-      CZUWAK_MIN_INTERVAL_SEC +
-      this.rng() * (CZUWAK_MAX_INTERVAL_SEC - CZUWAK_MIN_INTERVAL_SEC)
-    );
+    return this.czuwakMinSec + this.rng() * (this.czuwakMaxSec - this.czuwakMinSec);
   }
 }

@@ -318,7 +318,7 @@ export function createDepotPortalSignTexture(maxAnisotropy: number): THREE.Canva
   ctx.fillText('TUNEL M1 · KABATY', 256, 48);
   ctx.fillStyle = '#94a3b8';
   ctx.font = '600 17px "JetBrains Mono", monospace';
-  ctx.fillText('STP KABATY → STACJA A-1 · LIMIT 45 KM/H', 256, 82);
+  ctx.fillText('STP KABATY → STACJA A-1 KABATY', 256, 82);
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = maxAnisotropy;
@@ -329,10 +329,14 @@ export function createDepotBuildingTexture(maxAnisotropy: number): THREE.CanvasT
   const [canvas, ctx] = createCanvas(512, 256);
   ctx.fillStyle = '#334e68';
   ctx.fillRect(0, 0, 512, 256);
-  // Corrugated steel vertical ribs
-  ctx.fillStyle = 'rgba(15, 23, 42, 0.22)';
-  for (let x = 0; x < 512; x += 12) {
-    ctx.fillRect(x, 0, 4, 256);
+  // Corrugated steel vertical ribs (tiles cleanly with no clipped text)
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.24)';
+  for (let x = 0; x < 512; x += 16) {
+    ctx.fillRect(x, 0, 5, 256);
+  }
+  ctx.fillStyle = 'rgba(226, 232, 240, 0.08)';
+  for (let x = 5; x < 512; x += 16) {
+    ctx.fillRect(x, 0, 2, 256);
   }
   // Yellow & red Warsaw Metro depot stripe
   ctx.fillStyle = '#facc15';
@@ -342,19 +346,34 @@ export function createDepotBuildingTexture(maxAnisotropy: number): THREE.CanvasT
   // Dark concrete plinth at bottom
   ctx.fillStyle = '#475569';
   ctx.fillRect(0, 210, 512, 46);
-  // Depot signage band
-  ctx.fillStyle = '#f8fafc';
-  ctx.font = 'bold 34px "Chakra Petch", sans-serif';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText('METRO WARSZAWSKIE · STP KABATY', 256, 118);
 
   const tex = new THREE.CanvasTexture(canvas);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.ClampToEdgeWrapping;
-  tex.repeat.set(2, 1);
+  tex.repeat.set(6, 1);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = maxAnisotropy;
   return tex;
 }
+
+export function createDepotSignboardTexture(maxAnisotropy: number): THREE.CanvasTexture {
+  const [canvas, ctx] = createCanvas(1024, 144);
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, 1024, 144);
+  ctx.fillStyle = '#2563eb';
+  ctx.fillRect(0, 0, 1024, 14);
+  ctx.fillStyle = '#facc15';
+  ctx.fillRect(0, 132, 1024, 12);
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = 'bold 48px "Chakra Petch", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('METRO WARSZAWSKIE · STP KABATY', 512, 74);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = maxAnisotropy;
+  return tex;
+}
+
 

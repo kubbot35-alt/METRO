@@ -146,6 +146,12 @@ export class MetroAudioEngine implements IAudioEngine {
     if (events.passingTrainWhoosh && this.ctx && this.masterGain) {
       playPassingTrainWhoosh(this.ctx, this.masterGain);
     }
+    if (events.radioDispatchTriggered) {
+      this.playRadioSquelch();
+    }
+    if (events.radioAckChime) {
+      this.playRadioRogerBeep();
+    }
   }
 
   private playDoorClosingBeeps(): void {
@@ -160,6 +166,20 @@ export class MetroAudioEngine implements IAudioEngine {
     this.playTone(840, 0.12, 0.18, 'sawtooth', 0.14);
     this.playTone(1120, 0.18, 0.18, 'sawtooth', 0.28);
     this.playNoiseBurst(0.45, 1400, 0.11, 0.05);
+  }
+
+  private playRadioSquelch(): void {
+    // Authentic short VHF dispatch squelch burst + carrier chirp
+    this.playNoiseBurst(0.14, 2400, 0.14, 0.0);
+    this.playTone(1750, 0.055, 0.09, 'sine', 0.06);
+    this.playNoiseBurst(0.11, 1900, 0.11, 0.15);
+  }
+
+  private playRadioRogerBeep(): void {
+    // Crisp two-tone dispatcher roger confirmation pip
+    this.playTone(1180, 0.065, 0.12, 'triangle', 0.0);
+    this.playTone(1580, 0.095, 0.13, 'triangle', 0.075);
+    this.playNoiseBurst(0.05, 2200, 0.06, 0.16);
   }
 
   private playTone(

@@ -8,13 +8,15 @@ export type FeedbackTone = 'neutral' | 'success' | 'warning' | 'danger';
 
 export type TrainModelId = 'seria81' | 'inspiro';
 
-export type CameraMode = 'cab' | 'mirror' | 'exterior';
+export type CameraMode = 'cab' | 'mirror' | 'exterior' | 'interior';
 
 export type TimeOfDayId = 'rush' | 'evening';
 
 export type MetroLineId = 'M1' | 'M2';
 
-export type GameModeId = 'duty' | 'sandbox';
+export type GameModeId = 'duty' | 'sandbox' | 'challenge';
+
+export type ChallengeId = 'inverter_fault' | 'technical_run' | 'black_series';
 
 export type PlatformLayout = 'island' | 'side';
 
@@ -35,13 +37,54 @@ export type AchievementId =
   | 'nerves_of_steel'
   | 'first_station_stop'
   | 'precision_stop'
-  | 'passenger_carrier';
+  | 'passenger_carrier'
+  | 'challenge_inverter_fault'
+  | 'challenge_technical_run'
+  | 'challenge_black_series';
 
 export interface IAchievementSpec {
   readonly id: AchievementId;
   readonly title: string;
   readonly description: string;
-  readonly category: 'course' | 'skill' | 'milestone';
+  readonly category: 'course' | 'skill' | 'milestone' | 'challenge';
+}
+
+export interface IChallengeSpec {
+  readonly id: ChallengeId;
+  readonly title: string;
+  readonly shortLabel: string;
+  readonly badge: string;
+  readonly description: string;
+  readonly objectiveSummary: string;
+  readonly tractionMultiplier: number;
+  readonly skipStations: boolean;
+  readonly stationPassLimitKmh: number | null;
+  readonly maxAllowedDelaySec: number | null;
+  readonly forceTimeOfDay: TimeOfDayId | null;
+  readonly redSignalProbability: number | null;
+  readonly doorFaultProbability: number | null;
+  readonly czuwakMinSec: number | null;
+  readonly czuwakMaxSec: number | null;
+  readonly rewardAchievementId: AchievementId;
+}
+
+export interface IChallengeOutcome {
+  readonly passed: boolean;
+  readonly reason: string;
+}
+
+export type RadioDispatchCategory = 'traffic' | 'platform' | 'slippery';
+
+export interface IRadioDispatchState {
+  readonly active: boolean;
+  readonly messageId: number;
+  readonly text: string;
+  readonly spokenText: string;
+  readonly category: RadioDispatchCategory;
+  readonly remainingSec: number;
+  readonly maxWindowSec: number;
+  readonly acknowledgedCount: number;
+  readonly slipperyRailsActive: boolean;
 }
 
 export interface IAchievementRecord {
@@ -275,6 +318,7 @@ export interface IControlInput {
   readonly toggleDoorsRightPressed?: boolean;
   readonly toggleHeadlightsPressed?: boolean;
   readonly acknowledgeCzuwakPressed?: boolean;
+  readonly acknowledgeRadioPressed?: boolean;
   readonly cycleCameraPressed?: boolean;
   readonly manualLeverAxis?: number | null;
   readonly hornActive: boolean;
@@ -310,6 +354,8 @@ export interface ITrainPhysicsModel {
     doorsOpen: boolean,
     dtSec: number,
     gradeFraction?: number,
+    tractionMultiplier?: number,
+    brakeGripMultiplier?: number,
   ): ITrainKinematics;
 }
 
@@ -363,11 +409,15 @@ export interface IAudioEvents {
   readonly czuwakAckChime: boolean;
   readonly doorFaultBeep: boolean;
   readonly passingTrainWhoosh: boolean;
+  readonly radioDispatchTriggered?: boolean;
+  readonly radioAckChime?: boolean;
 }
 
 export interface ISimulationSnapshot {
   readonly phase: GamePhase;
   readonly gameMode: GameModeId;
+  readonly challenge: IChallengeSpec | null;
+  readonly challengeOutcome: IChallengeOutcome | null;
   readonly line: IMetroLineSpec;
   readonly stations: readonly IStationSpec[];
   readonly trainModel: ITrainModelSpec;
@@ -402,6 +452,7 @@ export interface ISimulationSnapshot {
   readonly upcomingTrackworkDistanceM: number | null;
   readonly doorFault: IDoorFaultState;
   readonly czuwak: ICzuwakState;
+  readonly radio: IRadioDispatchState;
   readonly totalStations: number;
   readonly stationsServed: number;
   readonly stationsMissed: number;
@@ -424,6 +475,7 @@ export interface IMetroSimulation {
   getSnapshot(): ISimulationSnapshot;
   setMetroLine(lineId: MetroLineId): void;
   setGameMode(mode: GameModeId): void;
+  setChallenge?(challengeId: ChallengeId): void;
   setTrainModel(modelId: TrainModelId): void;
   setTimeOfDay(timeOfDayId: TimeOfDayId): void;
   triggerSandboxOncomingTrain(): void;

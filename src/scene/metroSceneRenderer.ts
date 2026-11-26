@@ -20,6 +20,10 @@ import type {
 } from '../domain/types';
 import { buildMetroCabRig, type ICabRig } from './cabBuilder';
 import { MetroCabMotionController, type ICabMotionController } from './cabMotionController';
+import {
+  buildPassengerInteriorRig,
+  type IPassengerInteriorRig,
+} from './passengerInteriorBuilder';
 import { buildStationPassengers, type IPassengerRig } from './passengerManager';
 import { buildTunnelSemaphores, type ISemaphoreRig } from './semaphoreBuilder';
 import { buildMetroStations } from './stationBuilder';
@@ -80,9 +84,11 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
   private cabFillLight: THREE.PointLight | null = null;
   private cabRig: ICabRig | null = null;
   private playerTrainRig: ITrainConsistRig | null = null;
+  private passengerInteriorRig: IPassengerInteriorRig | null = null;
   private oncomingTrainRig: ITrainConsistRig | null = null;
   private semaphoreRig: ISemaphoreRig | null = null;
   private passengerRig: IPassengerRig | null = null;
+  private interiorSideBlend = 1;
   private trackworkRig: ITrackworkRig | null = null;
   private surfaceDepotRig: ISurfaceDepotRig | null = null;
   private alignment: TrackAlignment = getLineTrackAlignment(METRO_LINE_M1.id, LINE_M1_STATIONS);
@@ -163,6 +169,13 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
       this.playerTrainRig.setHeadlights(snapshot.headlightsOn);
       this.playerTrainRig.updateMotion?.(snapshot.kinematics.speedMs, dtSec);
     }
+    if (this.passengerInteriorRig) {
+      this.passengerInteriorRig.group.position.set(frame.x, frame.y, frame.z);
+      this.passengerInteriorRig.group.rotation.set(frame.pitch, frame.yaw, state.rollRad * 0.85);
+      if (snapshot.cameraMode === 'interior') {
+        this.passengerInteriorRig.update(snapshot, dtSec);
+      }
+    }
     this.updateOncomingTrain(snapshot, dtSec);
 
     if (this.cabRig.setLeverAngle) {
@@ -221,6 +234,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.worldResources.forEach((res) => res.dispose());
     this.surfaceDepotRig?.dispose();
     this.playerTrainRig?.dispose();
+    this.passengerInteriorRig?.dispose();
     this.oncomingTrainRig?.dispose();
     this.passengerRig?.dispose();
     this.trackworkRig?.dispose();
@@ -316,6 +330,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.semaphoreRig = buildTunnelSemaphores(scene, this.alignment, initialSignals);
     this.playerTrainRig = buildMetroConsist(scene, SIEMENS_INSPIRO_SPEC.visual, maxAniso);
     this.playerTrainRig.group.visible = false;
+    this.passengerInteriorRig = buildPassengerInteriorRig(scene, maxAniso);
     this.oncomingTrainRig = buildMetroConsist(scene, SERIA_81_SPEC.visual, maxAniso);
     this.oncomingTrainRig.setLine?.(METRO_LINE_M1.id, METRO_LINE_M1.oppositeDestinationLed);
     this.oncomingTrainRig.group.rotation.order = 'YXZ';
@@ -440,6 +455,9 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     if (snapshot.cameraMode === 'cab') {
       this.cabRig.group.visible = true;
       this.playerTrainRig.group.visible = false;
+      if (this.passengerInteriorRig) {
+        this.passengerInteriorRig.group.visible = false;
+      }
       if (this.cabFillLight) {
         this.cabFillLight.intensity = 0.55;
         this.cabFillLight.distance = 2.0;
@@ -457,6 +475,39 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
       return;
     }
     this.cabRig.group.visible = false;
+    if (snapshot.cameraMode === 'interior') {
+      this.playerTrainRig.group.visible = false;
+      if (this.passengerInteriorRig) {
+        this.passengerInteriorRig.group.visible = true;
+      }
+      if (this.cabFillLight) {
+        this.cabFillLight.intensity = 0;
+      }
+      const targetSide = getStationPlatformSide(snapshot.currentStation.station) === 'right' ? -1 : 1;
+      const sideStep = Math.min(1, dtSec * 2.4);
+      this.interiorSideBlend += (targetSide - this.interiorSideBlend) * sideStep;
+      // Camera inside Car 1 behind cab, looking diagonally forward across aisle, handrails, LED sign & out side windows/doors
+      const eyePt = this.alignment.toWorldPoint(
+        posM - 15.2,
+        this.interiorSideBlend * 0.64 + state.offsetX * 0.45,
+        2.28 + state.offsetY * 0.5,
+        true,
+      );
+      const lookPt = this.alignment.toWorldPoint(
+        posM - 3.6,
+        -this.interiorSideBlend * 0.52,
+        2.06,
+        true,
+      );
+      this.camera.position.set(eyePt.x, eyePt.y, eyePt.z);
+      this.camera.lookAt(lookPt.x, lookPt.y, lookPt.z);
+      this.updateCameraFov(68, dtSec);
+      return;
+    }
+
+    if (this.passengerInteriorRig) {
+      this.passengerInteriorRig.group.visible = false;
+    }
     this.playerTrainRig.group.visible = true;
     if (this.cabFillLight) {
       this.cabFillLight.intensity = 28;

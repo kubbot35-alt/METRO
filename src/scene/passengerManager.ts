@@ -206,6 +206,17 @@ function syncCrowds(
   walkClock: number,
   dtSec: number,
 ): void {
+  if (snapshot.challenge?.skipStations) {
+    for (let i = 0; i < crowds.length; i += 1) {
+      crowds[i].playerUnits.forEach((u) => {
+        u.group.visible = false;
+      });
+      crowds[i].oppositeUnits.forEach((u) => {
+        u.group.visible = false;
+      });
+    }
+    return;
+  }
   const mult = snapshot.timeOfDay.passengerMultiplier;
   const isFreshRun =
     snapshot.stationsServed === 0 &&

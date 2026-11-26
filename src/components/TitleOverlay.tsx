@@ -1,8 +1,11 @@
+import { CHALLENGE_CATALOG, getChallengeSpec } from '../domain/challengeCatalog';
 import { getMetroLineSpec, METRO_LINE_CATALOG } from '../domain/routeData';
 import { TIME_OF_DAY_CATALOG } from '../domain/timeOfDayCatalog';
 import { TRAIN_CATALOG } from '../domain/trainCatalog';
 import type {
+  ChallengeId,
   GameModeId,
+  IChallengeSpec,
   ILeaderboardEntry,
   IMetroLineSpec,
   ITimeOfDaySpec,
@@ -18,6 +21,7 @@ interface ITitleOverlayProps {
   readonly selectedModelId: TrainModelId;
   readonly selectedTimeOfDayId: TimeOfDayId;
   readonly selectedGameMode: GameModeId;
+  readonly selectedChallengeId: ChallengeId;
   readonly leaderboard: readonly ILeaderboardEntry[];
   readonly achievementsUnlocked: number;
   readonly achievementsTotal: number;
@@ -25,6 +29,7 @@ interface ITitleOverlayProps {
   readonly onSelectModel: (modelId: TrainModelId) => void;
   readonly onSelectTimeOfDay: (timeOfDayId: TimeOfDayId) => void;
   readonly onSelectGameMode: (mode: GameModeId) => void;
+  readonly onSelectChallenge: (challengeId: ChallengeId) => void;
   readonly onOpenAchievements: () => void;
   readonly onToggleHelp: () => void;
   readonly onStart: () => void;
@@ -40,13 +45,19 @@ const MODE_OPTIONS: ReadonlyArray<{
     id: 'duty',
     title: 'Tryb Służbowy',
     badge: 'REKORDY',
-    description: 'Rozkład jazdy, punktacja, czuwak, losowe awarie i zapis wyniku w TOP 5.',
+    description: 'Rozkład jazdy, punktacja, czuwak, losowe awarie i zapis w TOP 5.',
   },
   {
     id: 'sandbox',
-    title: 'Wolna Jazda (Sandbox)',
+    title: 'Wolna Jazda',
     badge: 'BEZ KAR',
-    description: 'Brak kar, czuwaka i awarii. Ręczne wywoływanie mijanek oraz zmiana semaforów.',
+    description: 'Swobodna jazda bez kar, czuwaka i awarii. Sterowanie semaforami.',
+  },
+  {
+    id: 'challenge',
+    title: 'Wyzwania',
+    badge: '3 SCENARIUSZE',
+    description: 'Scenariusze specjalne z osobnymi odznakami w Osiągnięciach.',
   },
 ];
 
@@ -55,6 +66,7 @@ export function TitleOverlay({
   selectedModelId,
   selectedTimeOfDayId,
   selectedGameMode,
+  selectedChallengeId,
   leaderboard,
   achievementsUnlocked,
   achievementsTotal,
@@ -62,11 +74,13 @@ export function TitleOverlay({
   onSelectModel,
   onSelectTimeOfDay,
   onSelectGameMode,
+  onSelectChallenge,
   onOpenAchievements,
   onToggleHelp,
   onStart,
 }: ITitleOverlayProps) {
   const activeLine = getMetroLineSpec(selectedLineId);
+  const activeChallenge = getChallengeSpec(selectedChallengeId);
   const isM2 = activeLine.id === 'M2';
 
   return (
@@ -172,18 +186,21 @@ export function TitleOverlay({
             </div>
           </div>
 
-          <div className="mb-3">
+          <div className="mb-2.5">
             <p className="text-[10px] font-mono-tabular uppercase tracking-[0.18em] text-slate-400 mb-1">
               4. Tryb gry
             </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
               {MODE_OPTIONS.map((opt) => {
                 const selected = opt.id === selectedGameMode;
                 const isSandbox = opt.id === 'sandbox';
+                const isChallenge = opt.id === 'challenge';
                 const cardClass = selected
-                  ? isSandbox
-                    ? 'border-cyan-400 bg-[#0d1c26]/95 shadow-lg'
-                    : 'border-emerald-400 bg-[#0e1f1a]/95 shadow-lg'
+                  ? isChallenge
+                    ? 'border-fuchsia-400 bg-[#22122b]/95 shadow-lg'
+                    : isSandbox
+                      ? 'border-cyan-400 bg-[#0d1c26]/95 shadow-lg'
+                      : 'border-emerald-400 bg-[#0e1f1a]/95 shadow-lg'
                   : 'border-slate-700/80 bg-[#0d1118]/90 hover:border-slate-500';
                 return (
                   <button
@@ -195,18 +212,20 @@ export function TitleOverlay({
                       e.currentTarget.blur();
                       onSelectGameMode(opt.id);
                     }}
-                    className={`text-left rounded-lg border-2 p-2.5 transition-colors cursor-pointer flex flex-col gap-0.5 ${cardClass}`}
+                    className={`text-left rounded-lg border-2 p-2 transition-colors cursor-pointer flex flex-col gap-0.5 ${cardClass}`}
                   >
-                    <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center justify-between gap-1.5">
                       <span className="font-display text-sm font-bold text-slate-50">
                         {opt.title}
                       </span>
                       <span
-                        className={`text-[10px] font-mono-tabular font-bold px-1.5 py-0.5 rounded ${
+                        className={`text-[9px] font-mono-tabular font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${
                           selected
-                            ? isSandbox
-                              ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/50'
-                              : 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/50'
+                            ? isChallenge
+                              ? 'bg-fuchsia-500/20 text-fuchsia-200 border border-fuchsia-400/50'
+                              : isSandbox
+                                ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/50'
+                                : 'bg-emerald-500/20 text-emerald-200 border border-emerald-400/50'
                             : 'bg-slate-800 text-slate-300'
                         }`}
                       >
@@ -218,6 +237,22 @@ export function TitleOverlay({
                 );
               })}
             </div>
+
+            {selectedGameMode === 'challenge' && (
+              <div
+                data-testid="challenge-selector"
+                className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2"
+              >
+                {CHALLENGE_CATALOG.map((challenge) => (
+                  <ChallengeScenarioCard
+                    key={challenge.id}
+                    spec={challenge}
+                    selected={challenge.id === selectedChallengeId}
+                    onSelect={() => onSelectChallenge(challenge.id)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
           <button
@@ -231,7 +266,9 @@ export function TitleOverlay({
           >
             {selectedGameMode === 'sandbox'
               ? `Uruchom Wolną Jazdę (${activeLine.id})`
-              : `Rozpocznij kurs (${activeLine.id})`}
+              : selectedGameMode === 'challenge'
+                ? `Start wyzwania: ${activeChallenge.title} (${activeLine.id})`
+                : `Rozpocznij kurs (${activeLine.id})`}
           </button>
         </div>
 
@@ -240,12 +277,56 @@ export function TitleOverlay({
         </div>
       </div>
 
-      <div className="w-full flex justify-center mt-2">
+      <div className="w-full flex justify-center mt-1.5">
         <p className="text-xs font-mono-tabular text-slate-300 tracking-wide text-center bg-[#090b0f]/85 px-4 py-1.5 rounded border border-slate-800/80">
-          W / S Moc · Spacja Hamulec · B Awaryjny · Q / E Drzwi L/P · V Kamera · C Czuwak · L Światła · H Klakson · ? Pomoc
+          W / S Moc · Spacja Hamulec · B Awaryjny · Q / E Drzwi L/P · V Kamera (4) · R Radio · C Czuwak · L Światła · H Klakson
         </p>
       </div>
     </div>
+  );
+}
+
+function ChallengeScenarioCard({
+  spec,
+  selected,
+  onSelect,
+}: {
+  readonly spec: IChallengeSpec;
+  readonly selected: boolean;
+  readonly onSelect: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-testid={`select-challenge-${spec.id}`}
+      aria-pressed={selected}
+      onClick={(e) => {
+        e.currentTarget.blur();
+        onSelect();
+      }}
+      className={`text-left rounded-lg border-2 p-2 transition-colors cursor-pointer flex flex-col gap-0.5 ${
+        selected
+          ? 'border-amber-400 bg-[#251a0f]/95 shadow-lg'
+          : 'border-slate-700/80 bg-[#0d1118]/92 hover:border-fuchsia-400/60'
+      }`}
+    >
+      <div className="flex items-center justify-between gap-1.5">
+        <span className="font-display text-xs font-bold text-slate-50 leading-tight">
+          {spec.title}
+        </span>
+        <span
+          className={`text-[9px] font-mono-tabular font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${
+            selected
+              ? 'bg-amber-500/25 text-amber-200 border border-amber-400/60'
+              : 'bg-slate-800 text-slate-300'
+          }`}
+        >
+          {spec.badge}
+        </span>
+      </div>
+      <p className="text-[10px] font-mono-tabular text-fuchsia-300">{spec.shortLabel}</p>
+      <p className="text-[10px] text-slate-300 leading-snug line-clamp-2">{spec.description}</p>
+    </button>
   );
 }
 

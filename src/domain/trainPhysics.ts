@@ -41,6 +41,8 @@ export class MetroTrainPhysics implements ITrainPhysicsModel {
     doorsOpen: boolean,
     dtSec: number,
     gradeFraction = 0,
+    tractionMultiplier = 1,
+    brakeGripMultiplier = 1,
   ): ITrainKinematics {
     const dt = clamp(dtSec, 0, 0.05);
     const emergencyBrake = this.resolveEmergencyBrake(current, input);
@@ -60,6 +62,8 @@ export class MetroTrainPhysics implements ITrainPhysicsModel {
       emergencyBrake,
       doorsOpen,
       gradeFraction,
+      tractionMultiplier,
+      brakeGripMultiplier,
     );
     return this.integrateMotion(current, throttle, serviceBrake, emergencyBrake, netAccel, dt);
   }
@@ -129,13 +133,17 @@ export class MetroTrainPhysics implements ITrainPhysicsModel {
     emergencyBrake: boolean,
     doorsOpen: boolean,
     gradeFraction: number,
+    tractionMultiplier: number,
+    brakeGripMultiplier: number,
   ): number {
     const speedRatio = clamp(speedMs / (this.config.maxSpeedKmh / MS_TO_KMH), 0, 1);
     const tractionCurve = 1 - 0.35 * speedRatio;
-    const tractionN = throttle * this.config.maxTractionForceN * tractionCurve;
+    const tractionScale = clamp(tractionMultiplier, 0.1, 1.5);
+    const brakeScale = clamp(brakeGripMultiplier, 0.5, 1.2);
+    const tractionN = throttle * this.config.maxTractionForceN * tractionCurve * tractionScale;
     const brakeN = emergencyBrake
-      ? this.config.emergencyBrakeForceN
-      : serviceBrake * this.config.maxServiceBrakeForceN;
+      ? this.config.emergencyBrakeForceN * brakeScale
+      : serviceBrake * this.config.maxServiceBrakeForceN * brakeScale;
     const resistanceN = this.computePassiveResistance(speedMs);
 
     // Gravity component along track slope: positive grade (uphill) opposes motion,

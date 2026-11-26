@@ -473,10 +473,10 @@ function addCurveWarningSigns(
   maxAnisotropy: number,
   disposables: Array<{ dispose(): void }>,
 ): void {
-  const postGeo = new THREE.CylinderGeometry(0.045, 0.05, 2.35, 8);
+  const postGeo = new THREE.CylinderGeometry(0.048, 0.055, 2.35, 8);
   const postMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5, metalness: 0.7 });
-  const signGeo = new THREE.PlaneGeometry(0.86, 0.86);
-  const backGeo = new THREE.BoxGeometry(0.9, 0.9, 0.06);
+  const signGeo = new THREE.PlaneGeometry(1.12, 1.12);
+  const backGeo = new THREE.BoxGeometry(1.18, 1.18, 0.07);
   disposables.push(postGeo, postMat, signGeo, backGeo);
 
   alignment.curveZones.forEach((curve) => {
@@ -485,14 +485,14 @@ function addCurveWarningSigns(
     }
     const distM = curve.signDistanceM;
     const s = alignment.sample(distM);
-    const pt = alignment.toWorldPoint(distM, 2.02, 0, false);
+    const pt = alignment.toWorldPoint(distM, 2.18, 0, false);
     const tex = createCurveLimitSignTexture(curve.speedLimitKmh, curve.direction, maxAnisotropy);
     const mat = new THREE.MeshStandardMaterial({
       map: tex,
       emissiveMap: tex,
       emissive: 0xffffff,
-      emissiveIntensity: 0.65,
-      roughness: 0.3,
+      emissiveIntensity: 0.85,
+      roughness: 0.28,
     });
     const signGroup = new THREE.Group();
     signGroup.position.set(pt.x, pt.y, pt.z);
@@ -500,9 +500,9 @@ function addCurveWarningSigns(
     const post = new THREE.Mesh(postGeo, postMat);
     post.position.set(0, 1.18, 0);
     const back = new THREE.Mesh(backGeo, postMat);
-    back.position.set(0, 2.22, 0);
+    back.position.set(0, 2.18, 0);
     const face = new THREE.Mesh(signGeo, mat);
-    face.position.set(0, 2.22, 0.04);
+    face.position.set(0, 2.18, 0.045);
     signGroup.add(post, back, face);
     root.add(signGroup);
     disposables.push(tex, mat);

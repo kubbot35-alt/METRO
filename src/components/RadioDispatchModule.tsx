@@ -1,0 +1,34 @@
+import type { IRadioDispatchState } from '../domain/types';
+
+interface IRadioDispatchModuleProps {
+  readonly radio: IRadioDispatchState;
+  readonly onAcknowledge: () => void;
+}
+
+export function RadioDispatchModule({ radio, onAcknowledge }: IRadioDispatchModuleProps) {
+  const isIncoming = radio.active;
+  return (
+    <button
+      type="button"
+      data-testid="radio-ack-btn"
+      data-active={isIncoming ? '1' : '0'}
+      onClick={(e) => {
+        e.currentTarget.blur();
+        onAcknowledge();
+      }}
+      className={`px-1.5 py-1 rounded text-[11px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer flex items-center justify-center gap-1 border transition-colors ${
+        isIncoming
+          ? 'bg-cyan-500 hover:bg-cyan-400 border-cyan-200 text-slate-950 font-bold shadow-[0_0_12px_rgba(34,211,238,0.65)]'
+          : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
+      }`}
+    >
+      <span
+        className={`w-2 h-2 rounded-full shrink-0 ${
+          isIncoming ? 'bg-slate-950' : radio.slipperyRailsActive ? 'bg-amber-400' : 'bg-emerald-500/75'
+        }`}
+        aria-hidden="true"
+      />
+      <span>{isIncoming ? `RADIO [R] ${radio.remainingSec.toFixed(1)}s` : 'RADIO [R]'}</span>
+    </button>
+  );
+}

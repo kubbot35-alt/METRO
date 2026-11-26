@@ -89,6 +89,7 @@ export const CAMERA_MODE_LABELS: Record<CameraMode, string> = {
   cab: 'Widok 1: Kabina maszynisty',
   mirror: 'Widok 2: Lusterko / Podgląd peronu',
   exterior: 'Widok 3: Kamera zewnętrzna',
+  interior: 'Widok 4: Wnętrze wagonu (Pasażer)',
 };
 
 export function getNextCameraMode(current: CameraMode): CameraMode {
@@ -97,6 +98,9 @@ export function getNextCameraMode(current: CameraMode): CameraMode {
   }
   if (current === 'mirror') {
     return 'exterior';
+  }
+  if (current === 'exterior') {
+    return 'interior';
   }
   return 'cab';
 }
