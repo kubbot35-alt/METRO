@@ -1,3 +1,4 @@
+import { getStationPlatformSide } from '../domain/trackGeometry';
 import type { ISimulationSnapshot } from '../domain/types';
 import { CzuwakIndicator } from './CzuwakIndicator';
 import { MasterControllerSlider } from './MasterControllerSlider';
@@ -7,7 +8,8 @@ import { SpeedometerGauge } from './SpeedometerGauge';
 
 interface ICabDashboardHudProps {
   readonly snapshot: ISimulationSnapshot;
-  readonly onToggleDoors: () => void;
+  readonly onToggleDoorsLeft: () => void;
+  readonly onToggleDoorsRight: () => void;
   readonly onToggleHeadlights: () => void;
   readonly onAcknowledgeCzuwak: () => void;
   readonly onCycleCamera: () => void;
@@ -18,7 +20,8 @@ interface ICabDashboardHudProps {
 
 export function CabDashboardHud({
   snapshot,
-  onToggleDoors,
+  onToggleDoorsLeft,
+  onToggleDoorsRight,
   onToggleHeadlights,
   onAcknowledgeCzuwak,
   onCycleCamera,
@@ -26,8 +29,12 @@ export function CabDashboardHud({
   onHornChange,
   onLeverChange,
 }: ICabDashboardHudProps) {
-  const { kinematics, currentStation, doorState, canToggleDoors, doorFault } = snapshot;
+  const { kinematics, currentStation, doorState, openDoorSide, canToggleDoors, doorFault } = snapshot;
   const distM = Math.round(currentStation.distanceToTargetM);
+  const platformSide = getStationPlatformSide(currentStation.station);
+  const isLeftPlatform = platformSide === 'left';
+  const expectedKey = isLeftPlatform ? 'Q' : 'E';
+  const approachingStation = currentStation.distanceToTargetM <= 220;
   const boardingPct = Math.min(100, (snapshot.boardingTimerSec / snapshot.boardingDurationSec) * 100);
   const remainingBoarding = Math.max(0, snapshot.boardingDurationSec - snapshot.boardingTimerSec);
   const throttlePct = Math.round(kinematics.throttle * 100);
@@ -39,6 +46,11 @@ export function CabDashboardHud({
     ? 'bg-[#15201c]/95 border-[#4c6b5f]'
     : 'bg-[#0d121b]/95 border-slate-700/80';
   const dividerClass = isRetro ? 'border-[#2f453d]' : 'border-slate-800';
+
+  const leftActive = doorState === 'open' && openDoorSide === 'left';
+  const rightActive = doorState === 'open' && openDoorSide === 'right';
+  const leftRecommended = canToggleDoors && doorState === 'closed' && isLeftPlatform;
+  const rightRecommended = canToggleDoors && doorState === 'closed' && !isLeftPlatform;
 
   return (
     <div className="fixed bottom-0 inset-x-0 z-10 pointer-events-none flex justify-center px-3 pb-2">
@@ -58,13 +70,22 @@ export function CabDashboardHud({
 
         <ScheduleIndicator schedule={snapshot.schedule} />
 
-        <div className={`min-w-0 border-l ${dividerClass} pl-3.5 flex flex-col gap-1`}>
-          <div className="flex items-baseline justify-between gap-2">
-            <span className="text-[11px] font-mono-tabular uppercase tracking-wider text-slate-400 truncate">
-              Stacja · {currentStation.station.code}
+        <div className={`min-w-[215px] border-l ${dividerClass} pl-3.5 flex flex-col gap-1`}>
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-[11px] font-mono-tabular uppercase tracking-wider text-slate-400 whitespace-nowrap shrink-0">
+              {currentStation.station.code}
             </span>
-            <span className="font-mono-tabular text-base font-bold text-slate-50 whitespace-nowrap">
-              {distM >= 0 ? `${distM} m` : `+${Math.abs(distM)} m`}
+            <span
+              data-testid="platform-side-hint"
+              className={`px-1.5 py-0.5 rounded text-[10px] font-mono-tabular font-bold uppercase tracking-wide whitespace-nowrap border ${
+                currentStation.inStopZone
+                  ? 'bg-emerald-500/25 border-emerald-400 text-emerald-200'
+                  : approachingStation
+                    ? 'bg-amber-500/20 border-amber-400/80 text-amber-200'
+                    : 'bg-slate-800/90 border-slate-700 text-slate-300'
+              }`}
+            >
+              {isLeftPlatform ? '◀ Peron LEWY [Q]' : 'Peron PRAWY [E] ▶'}
             </span>
           </div>
 
@@ -72,17 +93,24 @@ export function CabDashboardHud({
             <span className="font-display text-base font-semibold text-amber-300 truncate">
               {currentStation.station.name}
             </span>
-            <span
-              className={`text-[11px] font-mono-tabular whitespace-nowrap ${
-                trackworkAlert ? 'text-amber-400 font-bold' : 'text-emerald-400'
-              }`}
-            >
-              {trackworkAlert
-                ? 'ROBOTY 25 km/h'
-                : currentStation.inStopZone
-                  ? 'W STREFIE STOP'
-                  : 'CO 600 m'}
-            </span>
+            <div className="flex items-baseline gap-2 shrink-0">
+              <span
+                className={`text-[10px] font-mono-tabular whitespace-nowrap ${
+                  trackworkAlert ? 'text-amber-400 font-bold' : 'text-emerald-400'
+                }`}
+              >
+                {trackworkAlert
+                  ? 'ROBOTY 25'
+                  : currentStation.inStopZone
+                    ? 'STREFA STOP'
+                    : isLeftPlatform
+                      ? 'WYSPOWY'
+                      : 'BOCZNY'}
+              </span>
+              <span className="font-mono-tabular text-base font-bold text-slate-50 whitespace-nowrap">
+                {distM >= 0 ? `${distM} m` : `+${Math.abs(distM)} m`}
+              </span>
+            </div>
           </div>
 
           {doorState === 'open' ? (
@@ -90,11 +118,11 @@ export function CabDashboardHud({
               <div className="flex justify-between text-[11px] font-mono-tabular text-emerald-300">
                 <span className="truncate">
                   {doorFault.phase === 'awaiting-retry'
-                    ? 'AWARIA DRZWI — powtórz [O]'
+                    ? `AWARIA DRZWI — powtórz [${expectedKey}]`
                     : doorFault.phase === 'resetting'
                       ? 'Reset drzwi...'
                       : snapshot.boardingCompletedForCurrent
-                        ? 'Wymiana zakończona — zamknij [O]'
+                        ? `Wymiana zakończona — zamknij [${expectedKey}]`
                         : 'Wymiana pasażerów'}
                 </span>
                 <span className="whitespace-nowrap">
@@ -117,9 +145,9 @@ export function CabDashboardHud({
           )}
         </div>
 
-        <div className={`border-l ${dividerClass} pl-3.5 flex flex-col gap-1.5 min-w-[152px]`}>
+        <div className={`border-l ${dividerClass} pl-3.5 flex flex-col gap-1.5 min-w-[194px]`}>
           <div className="flex items-center justify-between text-xs font-mono-tabular">
-            <span className="text-slate-400 uppercase">Drzwi</span>
+            <span className="text-slate-400 uppercase">Drzwi L / P</span>
             <span
               className={
                 doorFault.phase !== 'none'
@@ -132,35 +160,66 @@ export function CabDashboardHud({
               {doorFault.phase !== 'none'
                 ? 'AWARIA'
                 : doorState === 'open'
-                  ? 'OTWARTE'
+                  ? openDoorSide === 'left'
+                    ? 'OTWARTE L'
+                    : 'OTWARTE P'
                   : 'ZAMKNIĘTE'}
             </span>
           </div>
-          <button
-            type="button"
-            disabled={!canToggleDoors}
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onToggleDoors();
-            }}
-            className={`px-2.5 py-1.5 rounded text-xs font-mono-tabular font-semibold whitespace-nowrap transition-colors ${
-              doorFault.phase === 'awaiting-retry'
-                ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer'
-                : canToggleDoors
-                  ? 'bg-emerald-600 hover:bg-emerald-500 text-slate-950 cursor-pointer'
-                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'
-            }`}
-          >
-            {doorFault.phase === 'awaiting-retry'
-              ? 'Powtórz [O]'
-              : doorFault.phase === 'resetting'
-                ? `Reset ${doorFault.remainingSec.toFixed(1)}s`
-                : doorState === 'open'
-                  ? 'Zamknij drzwi [O]'
-                  : 'Otwórz drzwi [O]'}
-          </button>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              data-testid="doors-left-btn"
+              aria-label="Drzwi lewe [Q]"
+              disabled={!canToggleDoors}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onToggleDoorsLeft();
+              }}
+              className={`px-2 py-1.5 rounded text-[11px] font-mono-tabular font-bold whitespace-nowrap transition-colors border ${
+                leftActive && doorFault.phase === 'awaiting-retry'
+                  ? 'bg-amber-500 border-amber-300 text-slate-950 cursor-pointer'
+                  : leftActive
+                    ? 'bg-emerald-500 border-emerald-300 text-slate-950 cursor-pointer'
+                    : leftRecommended
+                      ? 'bg-emerald-600 hover:bg-emerald-500 border-emerald-400 text-slate-950 cursor-pointer'
+                      : canToggleDoors
+                        ? 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-200 cursor-pointer'
+                        : 'bg-slate-900 border-slate-800 text-slate-500 cursor-not-allowed'
+              }`}
+            >
+              ◀ DRZWI L [Q]
+            </button>
+            <button
+              type="button"
+              data-testid="doors-right-btn"
+              aria-label="Drzwi prawe [E]"
+              disabled={!canToggleDoors}
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onToggleDoorsRight();
+              }}
+              className={`px-2 py-1.5 rounded text-[11px] font-mono-tabular font-bold whitespace-nowrap transition-colors border ${
+                rightActive && doorFault.phase === 'awaiting-retry'
+                  ? 'bg-amber-500 border-amber-300 text-slate-950 cursor-pointer'
+                  : rightActive
+                    ? 'bg-emerald-500 border-emerald-300 text-slate-950 cursor-pointer'
+                    : rightRecommended
+                      ? 'bg-emerald-600 hover:bg-emerald-500 border-emerald-400 text-slate-950 cursor-pointer'
+                      : canToggleDoors
+                        ? 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-200 cursor-pointer'
+                        : 'bg-slate-900 border-slate-800 text-slate-500 cursor-not-allowed'
+              }`}
+            >
+              DRZWI P [E] ▶
+            </button>
+          </div>
           <span className="text-[10px] text-slate-400 font-mono-tabular">
-            0 km/h w strefie STOP
+            {doorFault.phase === 'resetting'
+              ? `Reset drzwi: ${doorFault.remainingSec.toFixed(1)} s`
+              : snapshot.gameMode === 'sandbox'
+                ? 'Q Lewe · E Prawe · O Auto'
+                : '0 km/h · Otwórz po stronie peronu'}
           </span>
         </div>
 
@@ -289,8 +348,8 @@ function StopApproachBar({ distanceToTargetM }: { readonly distanceToTargetM: nu
           style={{ left: `${Math.max(0, Math.min(98, progressRatio * 100))}%` }}
         />
       </div>
-      <span className="text-[10px] font-mono-tabular text-slate-400 truncate">
-        W/S Moc · Spacja Hamulec · ? Skróty · Cel: STOP
+      <span className="text-[10px] font-mono-tabular text-slate-400 whitespace-nowrap">
+        W/S Moc · Spacja Hamulec · Cel: STOP
       </span>
     </div>
   );

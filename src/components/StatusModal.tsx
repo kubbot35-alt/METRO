@@ -29,7 +29,7 @@ export function StatusModal({ snapshot, onResume, onRestart, onTitle }: IStatusM
         className="w-full max-w-md bg-[#121721] border border-slate-700 rounded-lg p-6 shadow-2xl"
       >
         <p className="text-xs font-mono-tabular uppercase tracking-widest text-amber-400">
-          {isPause ? 'Symulacja wstrzymana' : 'Kurs zakończony · Linia M1'}
+          {isPause ? 'Symulacja wstrzymana' : `Kurs zakończony · ${snapshot.line.name}`}
         </p>
         <h2
           id="status-modal-title"

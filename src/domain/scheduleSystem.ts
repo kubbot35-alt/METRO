@@ -3,6 +3,7 @@ import type { IScheduleSnapshot, IStationSpec, PunctualityStatus } from './types
 
 export interface IScheduleController {
   configure?(startClockSec: number, boardingDurationSec: number): void;
+  setStations?(stations: readonly IStationSpec[]): void;
   reset(): void;
   recordStationArrival(stationIndex: number, elapsedSec: number): number;
   getSnapshot(stationIndex: number, positionM: number, elapsedSec: number): IScheduleSnapshot;
@@ -41,19 +42,27 @@ export function formatDeviationTime(deviationSec: number): string {
 }
 
 export class MetroScheduleController implements IScheduleController {
-  private readonly stations: readonly IStationSpec[];
+  private stations: readonly IStationSpec[];
   private startClockSec = BASE_START_CLOCK_SEC;
+  private boardingDurationSec = BOARDING_DURATION_SEC;
   private dwellAllowanceSec = DWELL_ALLOWANCE_SEC;
   private arrivalTargetsSec: readonly number[] = [];
   private arrivalDeviations: number[] = [];
 
   public constructor(stations: readonly IStationSpec[] = LINE_M1_STATIONS) {
     this.stations = stations;
-    this.rebuildTargets(BOARDING_DURATION_SEC);
+    this.rebuildTargets(this.boardingDurationSec);
+  }
+
+  public setStations(stations: readonly IStationSpec[]): void {
+    this.stations = stations;
+    this.rebuildTargets(this.boardingDurationSec);
+    this.reset();
   }
 
   public configure(startClockSec: number, boardingDurationSec: number): void {
     this.startClockSec = startClockSec;
+    this.boardingDurationSec = boardingDurationSec;
     this.dwellAllowanceSec = boardingDurationSec + 3;
     this.rebuildTargets(boardingDurationSec);
   }

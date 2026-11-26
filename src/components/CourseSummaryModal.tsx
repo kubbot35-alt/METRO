@@ -9,7 +9,7 @@ interface ICourseSummaryModalProps {
 }
 
 const GRADE_STYLES: Record<DriverGrade, { readonly badge: string; readonly title: string }> = {
-  S: { badge: 'bg-amber-400 text-slate-950 border-amber-200', title: 'Mistrz Linii M1' },
+  S: { badge: 'bg-amber-400 text-slate-950 border-amber-200', title: 'Mistrz Metra' },
   A: { badge: 'bg-emerald-500 text-slate-950 border-emerald-300', title: 'Wzorowy Maszynista' },
   B: { badge: 'bg-sky-500 text-slate-950 border-sky-300', title: 'Solidny Kurs' },
   C: { badge: 'bg-amber-600 text-slate-50 border-amber-400', title: 'Wymaga Poprawy' },
@@ -54,7 +54,7 @@ export function CourseSummaryModal({
         <div className="flex items-center justify-between gap-4 mb-5">
           <div>
             <p className="text-xs font-mono-tabular uppercase tracking-widest text-amber-400">
-              Stacja końcowa · Centrum · {snapshot.trainModel.name} · {snapshot.timeOfDay.name}
+              {snapshot.line.name} · {snapshot.stations[snapshot.stations.length - 1]?.name ?? 'Koniec'} · {snapshot.trainModel.name} · {snapshot.timeOfDay.name}
             </p>
             <h2
               id="course-summary-title"

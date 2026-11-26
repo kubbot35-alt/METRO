@@ -34,7 +34,7 @@ export function LeaderboardPanel({ entries }: ILeaderboardPanelProps) {
 
       {entries.length === 0 ? (
         <p className="text-xs text-slate-400 leading-relaxed py-4 text-center">
-          Brak zapisanych kursów. Ukończ przejazd od Kabat do Centrum, aby zapisać pierwszy rekord.
+          Brak zapisanych kursów. Ukończ przejazd linią M1 lub M2, aby zapisać pierwszy rekord.
         </p>
       ) : (
         <ol className="flex flex-col gap-2">

@@ -63,16 +63,16 @@ test('door fault requires second O press and 3s reset before doors close', () =>
     faultyIncidents,
   );
   sim.start();
-  sim.step(makeInput({ toggleDoorsPressed: true }), 0.05);
+  sim.step(makeInput({ toggleDoorsLeftPressed: true }), 0.05);
   for (let i = 0; i < Math.ceil(BOARDING_DURATION_SEC / 0.05) + 1; i += 1) {
     sim.step(makeInput(), 0.05);
   }
-  const firstClose = sim.step(makeInput({ toggleDoorsPressed: true }), 0.05);
+  const firstClose = sim.step(makeInput({ toggleDoorsLeftPressed: true }), 0.05);
   assert.equal(firstClose.doorFaultBeep, true);
   assert.equal(firstClose.doorToggledTo, null);
   assert.equal(sim.getSnapshot().doorFault.phase, 'awaiting-retry');
 
-  const retryClose = sim.step(makeInput({ toggleDoorsPressed: true }), 0.05);
+  const retryClose = sim.step(makeInput({ toggleDoorsLeftPressed: true }), 0.05);
   assert.equal(retryClose.doorToggledTo, null);
   assert.equal(sim.getSnapshot().doorFault.phase, 'resetting');
 

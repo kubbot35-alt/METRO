@@ -5,6 +5,8 @@ export class KeyboardInputController implements IInputController {
   private readonly heldKeys = new Set<string>();
   private callbacks: IInputActionCallbacks | null = null;
   private doorToggleQueued = false;
+  private doorLeftQueued = false;
+  private doorRightQueued = false;
   private emergencyBrakeQueued = false;
   private headlightsToggleQueued = false;
   private czuwakAckQueued = false;
@@ -37,6 +39,8 @@ export class KeyboardInputController implements IInputController {
       serviceBrake: this.heldKeys.has('Space'),
       emergencyBrakePressed: this.emergencyBrakeQueued,
       toggleDoorsPressed: this.doorToggleQueued,
+      toggleDoorsLeftPressed: this.doorLeftQueued,
+      toggleDoorsRightPressed: this.doorRightQueued,
       toggleHeadlightsPressed: this.headlightsToggleQueued,
       acknowledgeCzuwakPressed: this.czuwakAckQueued,
       cycleCameraPressed: this.cameraCycleQueued,
@@ -44,6 +48,8 @@ export class KeyboardInputController implements IInputController {
       hornActive: this.heldKeys.has('KeyH') || this.virtualHornActive,
     };
     this.doorToggleQueued = false;
+    this.doorLeftQueued = false;
+    this.doorRightQueued = false;
     this.emergencyBrakeQueued = false;
     this.headlightsToggleQueued = false;
     this.czuwakAckQueued = false;
@@ -54,6 +60,16 @@ export class KeyboardInputController implements IInputController {
   public triggerDoorToggle(): void {
     this.callbacks?.onFirstInteraction();
     this.doorToggleQueued = true;
+  }
+
+  public triggerDoorLeftToggle(): void {
+    this.callbacks?.onFirstInteraction();
+    this.doorLeftQueued = true;
+  }
+
+  public triggerDoorRightToggle(): void {
+    this.callbacks?.onFirstInteraction();
+    this.doorRightQueued = true;
   }
 
   public triggerEmergencyBrake(): void {
@@ -93,6 +109,8 @@ export class KeyboardInputController implements IInputController {
     this.virtualHornActive = false;
     this.virtualLeverAxis = null;
     this.doorToggleQueued = false;
+    this.doorLeftQueued = false;
+    this.doorRightQueued = false;
     this.emergencyBrakeQueued = false;
     this.headlightsToggleQueued = false;
     this.czuwakAckQueued = false;
@@ -143,7 +161,11 @@ export class KeyboardInputController implements IInputController {
   };
 
   private handleOneShotKey(code: string, key: string): void {
-    if (code === 'KeyO') {
+    if (code === 'KeyQ') {
+      this.doorLeftQueued = true;
+    } else if (code === 'KeyE') {
+      this.doorRightQueued = true;
+    } else if (code === 'KeyO') {
       this.doorToggleQueued = true;
     } else if (code === 'KeyB') {
       this.emergencyBrakeQueued = true;

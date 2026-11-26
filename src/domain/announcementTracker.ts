@@ -1,4 +1,4 @@
-import type { IAnnouncementState } from './types';
+import type { DoorSide, IAnnouncementState } from './types';
 
 export interface IAnnouncementTracker {
   reset(): void;
@@ -8,6 +8,7 @@ export interface IAnnouncementTracker {
     distanceToTargetM: number,
     speedKmh: number,
     dtSec: number,
+    platformSide?: DoorSide,
   ): void;
   getCurrent(): IAnnouncementState | null;
 }
@@ -34,6 +35,7 @@ export class StationAnnouncementTracker implements IAnnouncementTracker {
     distanceToTargetM: number,
     speedKmh: number,
     dtSec: number,
+    platformSide?: DoorSide,
   ): void {
     this.tickActive(dtSec);
     if (
@@ -43,7 +45,11 @@ export class StationAnnouncementTracker implements IAnnouncementTracker {
     ) {
       this.announcedArrivalIndex = stationIndex;
       this.announcedNextIndex = stationIndex;
-      this.push(`Stacja: ${stationName}`, 'arrival');
+      const sideLabel = platformSide === 'right' ? 'Peron po PRAWEJ [E]' : 'Peron po LEWEJ [Q]';
+      const sideSpoken = platformSide === 'right' ? 'Peron po prawej stronie.' : 'Peron po lewej stronie.';
+      const displayText = platformSide ? `Stacja: ${stationName} · ${sideLabel}` : `Stacja: ${stationName}`;
+      const spokenText = platformSide ? `Stacja: ${stationName}. ${sideSpoken}` : `Stacja: ${stationName}`;
+      this.push(displayText, 'arrival', spokenText);
       return;
     }
     if (
@@ -52,7 +58,8 @@ export class StationAnnouncementTracker implements IAnnouncementTracker {
       distanceToTargetM > ARRIVAL_TRIGGER_DIST_M
     ) {
       this.announcedNextIndex = stationIndex;
-      this.push(`Następna stacja: ${stationName}`, 'next');
+      const text = `Następna stacja: ${stationName}`;
+      this.push(text, 'next', text);
     }
   }
 
@@ -68,10 +75,11 @@ export class StationAnnouncementTracker implements IAnnouncementTracker {
     this.current = remainingSec <= 0 ? null : { ...this.current, remainingSec };
   }
 
-  private push(text: string, kind: 'next' | 'arrival'): void {
+  private push(text: string, kind: 'next' | 'arrival', spokenText: string): void {
     this.current = {
       id: this.nextId,
       text,
+      spokenText,
       kind,
       remainingSec: ANNOUNCEMENT_DURATION_SEC,
     };

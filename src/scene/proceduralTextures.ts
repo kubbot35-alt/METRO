@@ -61,6 +61,11 @@ export function createPlatformTileTexture(maxAnisotropy: number): THREE.CanvasTe
   const [canvas, ctx] = createCanvas(256, 256);
   ctx.fillStyle = '#8b939e';
   ctx.fillRect(0, 0, 256, 256);
+  for (let i = 0; i < 650; i += 1) {
+    const shade = 126 + ((i * 19) % 24);
+    ctx.fillStyle = `rgb(${shade}, ${shade + 4}, ${shade + 10})`;
+    ctx.fillRect((i * 47) % 256, (i * 83) % 256, 5, 5);
+  }
   ctx.strokeStyle = '#5c6470';
   ctx.lineWidth = 2;
   for (let step = 0; step <= 256; step += 64) {
@@ -73,24 +78,29 @@ export function createPlatformTileTexture(maxAnisotropy: number): THREE.CanvasTe
     ctx.lineTo(256, step);
     ctx.stroke();
   }
-  ctx.fillStyle = '#eab308';
-  ctx.fillRect(0, 0, 22, 256);
-  ctx.fillStyle = '#1f2937';
-  ctx.fillRect(22, 0, 6, 256);
-  return finalizeTexture(canvas, 1, 24, maxAnisotropy, true);
+  return finalizeTexture(canvas, 2, 24, maxAnisotropy, true);
 }
 
-export function createStationWallTexture(accentHex: number, maxAnisotropy: number): THREE.CanvasTexture {
+export function createStationWallTexture(
+  accentHex: number,
+  maxAnisotropy: number,
+  wallBaseHex?: number,
+): THREE.CanvasTexture {
   const [canvas, ctx] = createCanvas(256, 256);
   const accent = `#${accentHex.toString(16).padStart(6, '0')}`;
-  ctx.fillStyle = '#cfd6de';
+  const baseColor = wallBaseHex !== undefined ? `#${wallBaseHex.toString(16).padStart(6, '0')}` : '#cfd6de';
+  ctx.fillStyle = baseColor;
   ctx.fillRect(0, 0, 256, 256);
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.22)';
+  ctx.fillRect(0, 0, 256, 36);
   ctx.fillStyle = accent;
-  ctx.fillRect(0, 108, 256, 36);
-  ctx.fillStyle = '#334155';
+  ctx.fillRect(0, 102, 256, 44);
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.16)';
+  ctx.fillRect(0, 102, 256, 4);
+  ctx.fillStyle = '#1e293b';
   ctx.fillRect(0, 224, 256, 32);
-  ctx.strokeStyle = 'rgba(15, 23, 42, 0.14)';
-  ctx.lineWidth = 2;
+  ctx.strokeStyle = 'rgba(15, 23, 42, 0.2)';
+  ctx.lineWidth = 3;
   for (let x = 0; x <= 256; x += 64) {
     ctx.beginPath();
     ctx.moveTo(x, 0);
@@ -105,22 +115,89 @@ export function createStationSignTexture(
   code: string,
   accentHex: number,
   maxAnisotropy: number,
+  lineId: 'M1' | 'M2' = 'M1',
 ): THREE.CanvasTexture {
   const [canvas, ctx] = createCanvas(512, 128);
   const accent = `#${accentHex.toString(16).padStart(6, '0')}`;
-  ctx.fillStyle = '#0f172a';
+  ctx.fillStyle = '#0b1220';
   ctx.fillRect(0, 0, 512, 128);
   ctx.fillStyle = accent;
   ctx.fillRect(0, 0, 512, 18);
   ctx.fillRect(0, 110, 512, 18);
   ctx.fillStyle = '#f8fafc';
-  ctx.font = 'bold 42px "Chakra Petch", sans-serif';
+  const fontSize = stationName.length > 18 ? 30 : 38;
+  ctx.font = `bold ${fontSize}px "Chakra Petch", sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(stationName.toUpperCase(), 256, 58);
-  ctx.fillStyle = '#94a3b8';
-  ctx.font = '600 20px "JetBrains Mono", monospace';
-  ctx.fillText(`LINIA M1 · ${code}`, 256, 94);
+  ctx.fillText(stationName.toUpperCase(), 256, 56);
+  ctx.fillStyle = '#cbd5e1';
+  ctx.font = '600 18px "JetBrains Mono", monospace';
+  ctx.fillText(`LINIA ${lineId} · ${code}`, 256, 93);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = maxAnisotropy;
+  return tex;
+}
+
+export function createPlatformClockTexture(
+  lineId: 'M1' | 'M2',
+  destinationLed: string,
+  lineCssColor: string,
+  maxAnisotropy: number,
+): THREE.CanvasTexture {
+  const [canvas, ctx] = createCanvas(512, 144);
+  ctx.fillStyle = '#070a10';
+  ctx.fillRect(0, 0, 512, 144);
+  ctx.strokeStyle = '#334155';
+  ctx.lineWidth = 6;
+  ctx.strokeRect(3, 3, 506, 138);
+
+  ctx.fillStyle = lineCssColor;
+  ctx.fillRect(18, 18, 72, 48);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 30px "Chakra Petch", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(lineId, 54, 44);
+
+  ctx.fillStyle = '#fbbf24';
+  ctx.font = 'bold 28px "JetBrains Mono", monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(destinationLed, 108, 44);
+
+  ctx.fillStyle = '#34d399';
+  ctx.textAlign = 'right';
+  ctx.font = 'bold 28px "JetBrains Mono", monospace';
+  ctx.fillText('TERAZ', 490, 44);
+
+  ctx.fillStyle = '#1e293b';
+  ctx.fillRect(18, 80, 476, 46);
+  ctx.fillStyle = '#f59e0b';
+  ctx.textAlign = 'left';
+  ctx.font = '600 22px "JetBrains Mono", monospace';
+  ctx.fillText(`NAST. POCIĄG: ${destinationLed}`, 30, 104);
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#fef3c7';
+  ctx.fillText('2 min', 480, 104);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = maxAnisotropy;
+  return tex;
+}
+
+export function createMeterMarkerTexture(meters: number, maxAnisotropy: number): THREE.CanvasTexture {
+  const [canvas, ctx] = createCanvas(160, 80);
+  ctx.fillStyle = '#f8fafc';
+  ctx.fillRect(0, 0, 160, 80);
+  ctx.strokeStyle = '#0f172a';
+  ctx.lineWidth = 8;
+  ctx.strokeRect(4, 4, 152, 72);
+  ctx.fillStyle = '#0f172a';
+  ctx.font = 'bold 34px "JetBrains Mono", monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(`${meters}m`, 80, 42);
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   tex.anisotropy = maxAnisotropy;

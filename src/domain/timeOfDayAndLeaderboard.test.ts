@@ -58,7 +58,7 @@ test('rush hour sets 08:00 clock, 7s boarding, crowded passengers, frequent traf
   assert.ok(initial.effectiveWaitingPassengers >= 20);
   assert.ok(initial.signals.some((s) => s.aspect === 'red'));
 
-  sim.step(makeInput({ toggleDoorsPressed: true }), 0.05);
+  sim.step(makeInput({ toggleDoorsLeftPressed: true }), 0.05);
   for (let i = 0; i < 105; i += 1) {
     sim.step(makeInput(), 0.05);
   }

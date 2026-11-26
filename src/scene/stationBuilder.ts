@@ -1,30 +1,58 @@
 import * as THREE from 'three';
-import type { IStationSpec } from '../domain/types';
+import { getStationPlatformLayout } from '../domain/trackGeometry';
+import type { IMetroLineSpec, IStationSpec } from '../domain/types';
 import {
+  createPlatformClockTexture,
   createPlatformTileTexture,
   createStationSignTexture,
   createStationWallTexture,
   createStopMarkerTexture,
 } from './proceduralTextures';
+import {
+  addPlatformFurniture,
+  type IStationFurnitureMaterials,
+} from './stationFurnitureBuilder';
+import { buildStationHallShell, type IHallMaterials } from './stationHallBuilder';
 import type { ISceneResources } from './types';
+
+interface ISharedStationMats extends IHallMaterials, IStationFurnitureMaterials {}
 
 export function buildMetroStations(
   scene: THREE.Scene,
   stations: readonly IStationSpec[],
   maxAnisotropy: number,
+  lineSpec?: Pick<IMetroLineSpec, 'id' | 'destinationLed' | 'oppositeDestinationLed' | 'cssColor'>,
 ): ISceneResources {
   const disposables: Array<{ dispose(): void }> = [];
   const root = new THREE.Group();
   root.name = 'MetroStationsGroup';
   scene.add(root);
 
+  const lineId = lineSpec?.id ?? 'M1';
+  const destLed = lineSpec?.destinationLed ?? 'MŁOCINY';
+  const oppDestLed = lineSpec?.oppositeDestinationLed ?? (lineId === 'M2' ? 'BEMOWO' : 'KABATY');
+  const lineCss = lineSpec?.cssColor ?? '#2563eb';
+
   const platformTex = createPlatformTileTexture(maxAnisotropy);
   const stopTex = createStopMarkerTexture(maxAnisotropy);
-  const sharedMats = createSharedStationMaterials(platformTex, stopTex);
-  disposables.push(platformTex, stopTex, ...Object.values(sharedMats));
+  const clockTexPlayer = createPlatformClockTexture(lineId, destLed, lineCss, maxAnisotropy);
+  const clockTexOpp = createPlatformClockTexture(lineId, oppDestLed, lineCss, maxAnisotropy);
+  const sharedMats = createSharedStationMaterials(
+    platformTex,
+    stopTex,
+    clockTexPlayer,
+    clockTexOpp,
+  );
+  disposables.push(
+    platformTex,
+    stopTex,
+    clockTexPlayer,
+    clockTexOpp,
+    ...Object.values(sharedMats),
+  );
 
   stations.forEach((station) => {
-    const stationGroup = createSingleStation(station, sharedMats, maxAnisotropy, disposables);
+    const stationGroup = createSingleStation(station, lineId, sharedMats, maxAnisotropy, disposables);
     root.add(stationGroup);
   });
 
@@ -36,25 +64,17 @@ export function buildMetroStations(
   };
 }
 
-interface ISharedStationMats {
-  platform: THREE.MeshStandardMaterial;
-  ceiling: THREE.MeshStandardMaterial;
-  column: THREE.MeshStandardMaterial;
-  lightStrip: THREE.MeshStandardMaterial;
-  stopStrip: THREE.MeshStandardMaterial;
-  stopBoard: THREE.MeshStandardMaterial;
-  benchWood: THREE.MeshStandardMaterial;
-  benchMetal: THREE.MeshStandardMaterial;
-}
-
 function createSharedStationMaterials(
   platformTex: THREE.CanvasTexture,
   stopTex: THREE.CanvasTexture,
+  clockTexPlayer: THREE.CanvasTexture,
+  clockTexOpp: THREE.CanvasTexture,
 ): ISharedStationMats {
   return {
     platform: new THREE.MeshStandardMaterial({ map: platformTex, roughness: 0.72, metalness: 0.08 }),
-    ceiling: new THREE.MeshStandardMaterial({ color: 0x262d38, roughness: 0.8, metalness: 0.15 }),
+    ceiling: new THREE.MeshStandardMaterial({ color: 0x242b36, roughness: 0.8, metalness: 0.15 }),
     column: new THREE.MeshStandardMaterial({ color: 0x94a3b8, roughness: 0.35, metalness: 0.65 }),
+    portalConcrete: new THREE.MeshStandardMaterial({ color: 0x1a202a, roughness: 0.9, metalness: 0.08 }),
     lightStrip: new THREE.MeshStandardMaterial({
       color: 0xffffff,
       emissive: 0xe0f2fe,
@@ -74,13 +94,53 @@ function createSharedStationMaterials(
       emissiveIntensity: 0.9,
       roughness: 0.25,
     }),
-    benchWood: new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.78, metalness: 0.05 }),
+    benchWood: new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.76, metalness: 0.05 }),
     benchMetal: new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.35, metalness: 0.75 }),
+    safetyYellow: new THREE.MeshStandardMaterial({
+      color: 0xfacc15,
+      emissive: 0xca8a04,
+      emissiveIntensity: 0.35,
+      roughness: 0.55,
+    }),
+    binBody: new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.48, metalness: 0.65 }),
+    binRim: new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.28, metalness: 0.85 }),
+    clockFrame: new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.4, metalness: 0.6 }),
+    clockScreenPlayer: new THREE.MeshStandardMaterial({
+      map: clockTexPlayer,
+      emissiveMap: clockTexPlayer,
+      emissive: 0xffffff,
+      emissiveIntensity: 1.05,
+      roughness: 0.4,
+    }),
+    clockScreenOpposite: new THREE.MeshStandardMaterial({
+      map: clockTexOpp,
+      emissiveMap: clockTexOpp,
+      emissive: 0xffffff,
+      emissiveIntensity: 1.05,
+      roughness: 0.4,
+    }),
+    escalatorMetal: new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.36, metalness: 0.78 }),
+    escalatorStep: new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.55, metalness: 0.58 }),
+    escalatorGlass: new THREE.MeshStandardMaterial({
+      color: 0x93c5fd,
+      roughness: 0.14,
+      metalness: 0.2,
+      transparent: true,
+      opacity: 0.45,
+    }),
+    handrailBlack: new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5, metalness: 0.15 }),
+    exitGlow: new THREE.MeshStandardMaterial({
+      color: 0x34d399,
+      emissive: 0x10b981,
+      emissiveIntensity: 1.8,
+      roughness: 0.25,
+    }),
   };
 }
 
 function createSingleStation(
   station: IStationSpec,
+  lineId: 'M1' | 'M2',
   mats: ISharedStationMats,
   maxAnisotropy: number,
   disposables: Array<{ dispose(): void }>,
@@ -88,141 +148,38 @@ function createSingleStation(
   const group = new THREE.Group();
   const hallLength = station.platformLengthM + 18;
   const centerZ = -(station.distanceM - 36);
+  const layout = getStationPlatformLayout(station);
 
-  const wallTex = createStationWallTexture(station.accentHex, maxAnisotropy);
-  const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.62, metalness: 0.1 });
-  const signTex = createStationSignTexture(station.name, station.code, station.accentHex, maxAnisotropy);
+  const wallTex = createStationWallTexture(station.accentHex, maxAnisotropy, station.wallBaseHex);
+  const wallMat = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 0.58, metalness: 0.14 });
+  const signTex = createStationSignTexture(station.name, station.code, station.accentHex, maxAnisotropy, lineId);
   const signMat = new THREE.MeshStandardMaterial({
     map: signTex,
     emissiveMap: signTex,
     emissive: 0xffffff,
-    emissiveIntensity: 0.55,
-    roughness: 0.3,
+    emissiveIntensity: 0.82,
+    roughness: 0.35,
   });
-  disposables.push(wallTex, wallMat, signTex, signMat);
+  const accentGlowMat = new THREE.MeshStandardMaterial({
+    color: station.accentHex,
+    emissive: station.accentHex,
+    emissiveIntensity: 1.15,
+    roughness: 0.28,
+  });
+  disposables.push(wallTex, wallMat, signTex, signMat, accentGlowMat);
 
-  addHallShell(group, centerZ, hallLength, wallMat, mats, disposables);
-  addPlatformAndStopZone(group, station, centerZ, mats, disposables);
-  addStationSignsAndColumns(group, station, centerZ, signMat, mats, disposables);
-  addPlatformBenches(group, centerZ, mats, disposables);
+  buildStationHallShell(
+    group,
+    station,
+    layout,
+    centerZ,
+    hallLength,
+    wallMat,
+    accentGlowMat,
+    signMat,
+    mats,
+    disposables,
+  );
+  addPlatformFurniture(group, station, layout, centerZ, mats, disposables);
   return group;
-}
-
-function addHallShell(
-  group: THREE.Group,
-  centerZ: number,
-  hallLength: number,
-  wallMat: THREE.MeshStandardMaterial,
-  mats: ISharedStationMats,
-  disposables: Array<{ dispose(): void }>,
-): void {
-  const leftWallGeo = new THREE.BoxGeometry(0.4, 5.4, hallLength);
-  const rightWallGeo = new THREE.BoxGeometry(0.4, 5.4, hallLength);
-  const ceilGeo = new THREE.BoxGeometry(15.2, 0.4, hallLength);
-  const stripGeo = new THREE.BoxGeometry(0.45, 0.1, hallLength - 8);
-
-  const leftWall = new THREE.Mesh(leftWallGeo, wallMat);
-  leftWall.position.set(-7.6, 2.7, centerZ);
-  const rightWall = new THREE.Mesh(rightWallGeo, wallMat);
-  rightWall.position.set(7.1, 2.7, centerZ);
-  const ceiling = new THREE.Mesh(ceilGeo, mats.ceiling);
-  ceiling.position.set(-0.25, 5.35, centerZ);
-
-  const stripA = new THREE.Mesh(stripGeo, mats.lightStrip);
-  stripA.position.set(0.3, 5.1, centerZ);
-  const stripB = new THREE.Mesh(stripGeo, mats.lightStrip);
-  stripB.position.set(4.1, 5.1, centerZ);
-  const stripC = new THREE.Mesh(stripGeo, mats.lightStrip);
-  stripC.position.set(-4.6, 5.1, centerZ);
-
-  group.add(leftWall, rightWall, ceiling, stripA, stripB, stripC);
-  disposables.push(leftWallGeo, rightWallGeo, ceilGeo, stripGeo);
-}
-
-function addPlatformAndStopZone(
-  group: THREE.Group,
-  station: IStationSpec,
-  centerZ: number,
-  mats: ISharedStationMats,
-  disposables: Array<{ dispose(): void }>,
-): void {
-  const platGeo = new THREE.BoxGeometry(5.3, 1.08, station.platformLengthM);
-  const platform = new THREE.Mesh(platGeo, mats.platform);
-  platform.position.set(4.3, 0.54, centerZ);
-  group.add(platform);
-
-  const zoneLen = station.stopZoneHalfWidthM * 2;
-  const stopStripGeo = new THREE.BoxGeometry(0.42, 0.04, zoneLen);
-  const stopStrip = new THREE.Mesh(stopStripGeo, mats.stopStrip);
-  stopStrip.position.set(1.88, 1.1, -station.distanceM);
-
-  const trackBeaconGeo = new THREE.BoxGeometry(1.7, 0.04, 1.6);
-  const trackBeacon = new THREE.Mesh(trackBeaconGeo, mats.stopStrip);
-  trackBeacon.position.set(0, 0.09, -station.distanceM);
-
-  const postGeo = new THREE.CylinderGeometry(0.05, 0.05, 2.7, 8);
-  const post = new THREE.Mesh(postGeo, mats.column);
-  post.position.set(2.15, 2.4, -station.distanceM);
-
-  const boardGeo = new THREE.BoxGeometry(1.5, 0.78, 0.08);
-  const board = new THREE.Mesh(boardGeo, mats.stopBoard);
-  board.position.set(2.15, 3.45, -station.distanceM);
-
-  group.add(stopStrip, trackBeacon, post, board);
-  disposables.push(platGeo, stopStripGeo, trackBeaconGeo, postGeo, boardGeo);
-}
-
-function addStationSignsAndColumns(
-  group: THREE.Group,
-  station: IStationSpec,
-  centerZ: number,
-  signMat: THREE.MeshStandardMaterial,
-  mats: ISharedStationMats,
-  disposables: Array<{ dispose(): void }>,
-): void {
-  const colGeo = new THREE.CylinderGeometry(0.24, 0.28, 4.3, 10);
-  const signGeo = new THREE.BoxGeometry(3.8, 0.95, 0.12);
-  disposables.push(colGeo, signGeo);
-
-  for (let offset = -40; offset <= 40; offset += 20) {
-    const col = new THREE.Mesh(colGeo, mats.column);
-    col.position.set(4.4, 3.22, centerZ + offset);
-    const dividerCol = new THREE.Mesh(colGeo, mats.column);
-    dividerCol.position.set(-2.35, 2.65, centerZ + offset);
-    group.add(col, dividerCol);
-  }
-
-  [-36, 0, 28].forEach((offset) => {
-    const sign = new THREE.Mesh(signGeo, signMat);
-    sign.position.set(6.8, 3.35, -station.distanceM + offset);
-    sign.rotation.y = -Math.PI / 2;
-    group.add(sign);
-  });
-
-  const overheadSign = new THREE.Mesh(signGeo, signMat);
-  overheadSign.position.set(3.2, 4.15, -(station.distanceM - 45));
-  group.add(overheadSign);
-}
-
-function addPlatformBenches(
-  group: THREE.Group,
-  centerZ: number,
-  mats: ISharedStationMats,
-  disposables: Array<{ dispose(): void }>,
-): void {
-  const seatGeo = new THREE.BoxGeometry(0.65, 0.08, 2.4);
-  const legGeo = new THREE.BoxGeometry(0.55, 0.44, 0.14);
-  disposables.push(seatGeo, legGeo);
-
-  [-28, 4, 32].forEach((offset) => {
-    const bench = new THREE.Group();
-    const seat = new THREE.Mesh(seatGeo, mats.benchWood);
-    seat.position.set(5.4, 1.52, centerZ + offset);
-    const legA = new THREE.Mesh(legGeo, mats.benchMetal);
-    legA.position.set(5.4, 1.3, centerZ + offset - 0.9);
-    const legB = new THREE.Mesh(legGeo, mats.benchMetal);
-    legB.position.set(5.4, 1.3, centerZ + offset + 0.9);
-    bench.add(seat, legA, legB);
-    group.add(bench);
-  });
 }

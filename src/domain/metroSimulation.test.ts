@@ -52,7 +52,7 @@ test('precision stop, 5s boarding, and door close advances station and awards po
   );
   sim.start();
 
-  const openEvt = sim.step(makeInput({ toggleDoorsPressed: true }), 0.05);
+  const openEvt = sim.step(makeInput({ toggleDoorsLeftPressed: true }), 0.05);
   assert.equal(openEvt.doorToggledTo, 'open');
   assert.equal(sim.getSnapshot().score, 300);
 
@@ -67,7 +67,7 @@ test('precision stop, 5s boarding, and door close advances station and awards po
   assert.equal(sim.getSnapshot().boardingCompletedForCurrent, true);
   assert.equal(sim.getSnapshot().passengersCarried, 14);
 
-  const closeEvt = sim.step(makeInput({ toggleDoorsPressed: true }), 0.05);
+  const closeEvt = sim.step(makeInput({ toggleDoorsLeftPressed: true }), 0.05);
   assert.equal(closeEvt.doorToggledTo, 'closed');
   assert.equal(sim.getSnapshot().stationsServed, 1);
   assert.equal(sim.getSnapshot().currentStation.station.id, 2);

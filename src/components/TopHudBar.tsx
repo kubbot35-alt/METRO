@@ -1,5 +1,7 @@
 import type { FeedbackTone, ISimulationSnapshot } from '../domain/types';
 import { MetroLedDisplay } from './MetroLedDisplay';
+import { RouteLineStrip } from './RouteLineStrip';
+import { SandboxControlsBar } from './SandboxControlsBar';
 
 interface ITopHudBarProps {
   readonly snapshot: ISimulationSnapshot;
@@ -9,6 +11,8 @@ interface ITopHudBarProps {
   readonly onToggleHelp: () => void;
   readonly onPause: () => void;
   readonly onRestart: () => void;
+  readonly onSandboxSpawnTrain: () => void;
+  readonly onSandboxCycleSignal: () => void;
 }
 
 function getFeedbackColor(tone: FeedbackTone): string {
@@ -32,6 +36,8 @@ export function TopHudBar({
   onToggleHelp,
   onPause,
   onRestart,
+  onSandboxSpawnTrain,
+  onSandboxCycleSignal,
 }: ITopHudBarProps) {
   const { feedback, announcement, cameraNotice } = snapshot;
   const isRetro = snapshot.trainModel.visual.theme === 'retro';
@@ -40,8 +46,9 @@ export function TopHudBar({
     : 'bg-[#10141c]/90 border-slate-700/75';
 
   return (
-    <div className="fixed top-0 inset-x-0 z-10 pointer-events-none px-4 pt-3 flex items-start justify-between gap-4">
-      <div className={`${barClasses} border rounded-md px-3.5 py-2 flex items-center gap-3.5`}>
+    <div className="fixed top-0 inset-x-0 z-10 pointer-events-none px-4 pt-3 flex items-start justify-between gap-3">
+      <div className="flex flex-col items-start shrink-0">
+      <div className={`${barClasses} border rounded-md px-3 py-2 flex items-center gap-3`}>
         <div className="flex flex-col leading-tight">
           <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
             Punkty
@@ -78,9 +85,19 @@ export function TopHudBar({
           </span>
         </div>
       </div>
+      {snapshot.gameMode === 'sandbox' && (
+        <SandboxControlsBar
+          nextSignalAspect={snapshot.nextSignal?.signal.aspect}
+          oncomingActive={snapshot.oncomingTrain.active}
+          onSpawnOncoming={onSandboxSpawnTrain}
+          onCycleSignal={onSandboxCycleSignal}
+        />
+      )}
+      </div>
 
-      <div className="flex flex-col items-center gap-1.5 max-w-[46vw]">
-        <MetroLedDisplay announcement={announcement} />
+      <div className="flex-1 min-w-0 flex flex-col items-center gap-1.5 max-w-[44vw]">
+        <RouteLineStrip snapshot={snapshot} />
+        <MetroLedDisplay announcement={announcement} lineId={snapshot.line.id} />
         {cameraNotice && (
           <div
             data-testid="camera-notice"
@@ -104,7 +121,7 @@ export function TopHudBar({
         )}
       </div>
 
-      <div className="pointer-events-auto flex items-center gap-1.5">
+      <div className="pointer-events-auto flex items-center gap-1.5 shrink-0">
         <button
           type="button"
           tabIndex={-1}

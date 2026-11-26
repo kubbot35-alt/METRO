@@ -5,6 +5,7 @@ export interface IAudioEngine {
   setMuted(muted: boolean): void;
   isMuted(): boolean;
   update(snapshot: ISimulationSnapshot, events: IAudioEvents): void;
+  playAchievementChime(): void;
   silence(): void;
   dispose(): void;
 }

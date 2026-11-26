@@ -14,6 +14,8 @@ export interface IInputController {
   detach(): void;
   sampleControlInput(): IControlInput;
   triggerDoorToggle(): void;
+  triggerDoorLeftToggle(): void;
+  triggerDoorRightToggle(): void;
   triggerEmergencyBrake(): void;
   triggerHeadlightsToggle(): void;
   triggerCzuwakAck(): void;

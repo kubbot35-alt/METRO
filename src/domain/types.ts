@@ -12,6 +12,60 @@ export type CameraMode = 'cab' | 'mirror' | 'exterior';
 
 export type TimeOfDayId = 'rush' | 'evening';
 
+export type MetroLineId = 'M1' | 'M2';
+
+export type GameModeId = 'duty' | 'sandbox';
+
+export type PlatformLayout = 'island' | 'side';
+
+export type DoorSide = 'left' | 'right';
+
+export type OncomingTrainMode =
+  | 'cruise'
+  | 'station-arriving'
+  | 'station-dwelling'
+  | 'station-departing';
+
+export type AchievementId =
+  | 'punctual_clockwork'
+  | 'flawless_duty'
+  | 'classic_driver'
+  | 'm2_master'
+  | 'night_owl'
+  | 'nerves_of_steel'
+  | 'first_station_stop'
+  | 'precision_stop'
+  | 'passenger_carrier';
+
+export interface IAchievementSpec {
+  readonly id: AchievementId;
+  readonly title: string;
+  readonly description: string;
+  readonly category: 'course' | 'skill' | 'milestone';
+}
+
+export interface IAchievementRecord {
+  readonly id: AchievementId;
+  readonly unlockedAtIso: string;
+}
+
+export interface IAchievementToast {
+  readonly spec: IAchievementSpec;
+  readonly remainingSec: number;
+}
+
+export interface IMetroLineSpec {
+  readonly id: MetroLineId;
+  readonly name: string;
+  readonly routeLabel: string;
+  readonly destinationLed: string;
+  readonly oppositeDestinationLed: string;
+  readonly colorHex: number;
+  readonly cssColor: string;
+  readonly stations: readonly IStationSpec[];
+  readonly speedZones: readonly ISpeedLimitZone[];
+}
+
 export interface ITimeOfDaySpec {
   readonly id: TimeOfDayId;
   readonly name: string;
@@ -80,9 +134,14 @@ export interface ICameraNotice {
 
 export interface IOncomingTrainState {
   readonly active: boolean;
+  readonly mode: OncomingTrainMode;
+  readonly stationIndex: number | null;
   readonly positionM: number;
   readonly speedMs: number;
   readonly modelId: TrainModelId;
+  readonly doorsOpen: boolean;
+  readonly doorSide: DoorSide | null;
+  readonly headlightsOn: boolean;
 }
 
 export interface ISemaphoreState {
@@ -113,13 +172,17 @@ export interface IStationSpec {
   readonly distanceM: number;
   readonly stopZoneHalfWidthM: number;
   readonly platformLengthM: number;
+  readonly platformLayout?: PlatformLayout;
+  readonly platformSide?: DoorSide;
   readonly accentHex: number;
+  readonly wallBaseHex?: number;
   readonly waitingPassengers: number;
 }
 
 export interface IAnnouncementState {
   readonly id: number;
   readonly text: string;
+  readonly spokenText?: string;
   readonly kind: 'next' | 'arrival';
   readonly remainingSec: number;
 }
@@ -170,6 +233,8 @@ export interface IControlInput {
   readonly emergencyBrakePressed: boolean;
   readonly forceEmergencyBrake?: boolean;
   readonly toggleDoorsPressed: boolean;
+  readonly toggleDoorsLeftPressed?: boolean;
+  readonly toggleDoorsRightPressed?: boolean;
   readonly toggleHeadlightsPressed?: boolean;
   readonly acknowledgeCzuwakPressed?: boolean;
   readonly cycleCameraPressed?: boolean;
@@ -234,6 +299,7 @@ export interface IScoringEvaluator {
   getEmergencyBrakePenalty(): number;
   getRedSignalPenalty(): number;
   getCzuwakPenalty(): number;
+  getWrongDoorSidePenalty?(): number;
 }
 
 export interface IStationProgress {
@@ -262,6 +328,9 @@ export interface IAudioEvents {
 
 export interface ISimulationSnapshot {
   readonly phase: GamePhase;
+  readonly gameMode: GameModeId;
+  readonly line: IMetroLineSpec;
+  readonly stations: readonly IStationSpec[];
   readonly trainModel: ITrainModelSpec;
   readonly timeOfDay: ITimeOfDaySpec;
   readonly cameraMode: CameraMode;
@@ -271,6 +340,7 @@ export interface ISimulationSnapshot {
   readonly speedLimitKmh: number;
   readonly isOverspeeding: boolean;
   readonly doorState: DoorState;
+  readonly openDoorSide: DoorSide | null;
   readonly canToggleDoors: boolean;
   readonly boardingTimerSec: number;
   readonly boardingDurationSec: number;
@@ -300,6 +370,9 @@ export interface ISimulationSnapshot {
   readonly overspeedViolations: number;
   readonly redSignalViolations: number;
   readonly czuwakViolations: number;
+  readonly czuwakAcksCount: number;
+  readonly doorFaultsResolvedCount: number;
+  readonly bestStopErrorM: number | null;
   readonly driverGrade: DriverGrade;
   readonly totalStopErrorM: number;
   readonly elapsedTimeSec: number;
@@ -309,8 +382,12 @@ export interface ISimulationSnapshot {
 
 export interface IMetroSimulation {
   getSnapshot(): ISimulationSnapshot;
+  setMetroLine(lineId: MetroLineId): void;
+  setGameMode(mode: GameModeId): void;
   setTrainModel(modelId: TrainModelId): void;
   setTimeOfDay(timeOfDayId: TimeOfDayId): void;
+  triggerSandboxOncomingTrain(): void;
+  cycleSandboxNextSignal(): void;
   start(): void;
   pause(): void;
   resume(): void;

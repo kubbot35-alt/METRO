@@ -21,6 +21,8 @@ export interface IDoorCloseAttemptResult {
 }
 
 export interface IIncidentController {
+  setStations?(stations: readonly IStationSpec[]): void;
+  setEnabled?(enabled: boolean): void;
   reset(): void;
   step(
     positionM: number,
@@ -48,8 +50,9 @@ const CZUWAK_RESPONSE_WINDOW_SEC = 4.0;
 const CZUWAK_ACTIVE_SPEED_KMH = 5.0;
 
 export class MetroIncidentSystem implements IIncidentController {
-  private readonly stations: readonly IStationSpec[];
+  private stations: readonly IStationSpec[];
   private readonly rng: () => number;
+  private enabled = true;
   private trackworkZones: ITrackworkZone[] = [];
   private warnedZoneIds = new Set<number>();
   private faultedStationIndices = new Set<number>();
@@ -68,6 +71,16 @@ export class MetroIncidentSystem implements IIncidentController {
     this.reset();
   }
 
+  public setStations(stations: readonly IStationSpec[]): void {
+    this.stations = stations;
+    this.reset();
+  }
+
+  public setEnabled(enabled: boolean): void {
+    this.enabled = enabled;
+    this.reset();
+  }
+
   public reset(): void {
     this.warnedZoneIds.clear();
     this.faultedStationIndices.clear();
@@ -76,7 +89,7 @@ export class MetroIncidentSystem implements IIncidentController {
     this.czuwakActive = false;
     this.czuwakRemainingSec = 0;
     this.czuwakCountdownSec = this.rollNextCzuwakInterval();
-    this.trackworkZones = this.generateTrackworkZones();
+    this.trackworkZones = this.enabled ? this.generateTrackworkZones() : [];
   }
 
   public step(
@@ -86,6 +99,15 @@ export class MetroIncidentSystem implements IIncidentController {
     ackCzuwakPressed: boolean,
     dtSec: number,
   ): IIncidentStepResult {
+    if (!this.enabled) {
+      return {
+        czuwakAlertTriggered: false,
+        czuwakAckChime: false,
+        czuwakTimedOut: false,
+        doorFaultResolvedClose: false,
+        enteredTrackworkWarning: null,
+      };
+    }
     const doorFaultResolvedClose = this.stepDoorFault(doorsOpen, dtSec);
     const czuwakRes = this.stepCzuwak(speedKmh, doorsOpen, ackCzuwakPressed, dtSec);
     const enteredTrackworkWarning = this.checkTrackworkApproach(positionM);
@@ -99,6 +121,9 @@ export class MetroIncidentSystem implements IIncidentController {
   }
 
   public attemptDoorClose(stationIndex: number): IDoorCloseAttemptResult {
+    if (!this.enabled) {
+      return { allowedToCloseNow: true, faultTriggered: false, retryStarted: false };
+    }
     if (this.doorFaultPhase === 'awaiting-retry') {
       this.doorFaultPhase = 'resetting';
       this.doorFaultRemainingSec = DOOR_FAULT_RESET_SEC;

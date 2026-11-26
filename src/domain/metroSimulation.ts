@@ -8,16 +8,23 @@ import {
   BOARDING_DURATION_SEC,
   LINE_M1_SPEED_ZONES,
   LINE_M1_STATIONS,
+  METRO_LINE_M1,
+  getMetroLineSpec,
   getSpeedLimitAt,
 } from './routeData';
 import { MetroScheduleController, type IScheduleController } from './scheduleSystem';
-import { TunnelSignalSystem, type ISignalController } from './signalSystem';
+import {
+  TunnelSignalSystem,
+  buildSemaphoreDistances,
+  type ISignalController,
+} from './signalSystem';
 import { OppositeTrackTrafficSystem, type ITrafficController } from './trafficSystem';
 import {
   computeEffectivePassengers,
   getTimeOfDaySpec,
   RUSH_HOUR_SPEC,
 } from './timeOfDayCatalog';
+import { getStationPlatformSide } from './trackGeometry';
 import {
   CAMERA_MODE_LABELS,
   getNextCameraMode,
@@ -26,12 +33,15 @@ import {
 import { createInitialKinematics } from './trainPhysics';
 import type {
   CameraMode,
+  DoorSide,
   DoorState,
   FeedbackTone,
+  GameModeId,
   GamePhase,
   IAudioEvents,
   ICameraNotice,
   IControlInput,
+  IMetroLineSpec,
   IMetroSimulation,
   IScoringEvaluator,
   ISemaphoreProgress,
@@ -43,6 +53,7 @@ import type {
   ITrainKinematics,
   ITrainModelSpec,
   ITrainPhysicsModel,
+  MetroLineId,
   TimeOfDayId,
   TrainModelId,
 } from './types';
@@ -61,10 +72,12 @@ export class MetroSimulationEngine implements IMetroSimulation {
   private readonly schedule: IScheduleController;
   private readonly incidents: IIncidentController;
   private readonly traffic: ITrafficController;
-  private readonly stations: readonly IStationSpec[];
-  private readonly speedZones: readonly ISpeedLimitZone[];
+  private line: IMetroLineSpec = METRO_LINE_M1;
+  private stations: readonly IStationSpec[];
+  private speedZones: readonly ISpeedLimitZone[];
 
   private phase: GamePhase = 'title';
+  private gameMode: GameModeId = 'duty';
   private trainModel: ITrainModelSpec = getTrainModelSpec('inspiro');
   private timeOfDay: ITimeOfDaySpec = RUSH_HOUR_SPEC;
   private timeOfDayConfigured = false;
@@ -73,6 +86,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
   private cameraNoticeId = 1;
   private kinematics: ITrainKinematics = createInitialKinematics();
   private doorState: DoorState = 'closed';
+  private openDoorSide: DoorSide | null = null;
   private stationIndex = 0;
   private boardingTimerSec = 0;
   private boardingCompleted = false;
@@ -84,6 +98,9 @@ export class MetroSimulationEngine implements IMetroSimulation {
   private overspeedViolations = 0;
   private redSignalViolations = 0;
   private czuwakViolations = 0;
+  private czuwakAcksCount = 0;
+  private doorFaultsResolvedCount = 0;
+  private bestStopErrorM: number | null = null;
   private totalStopErrorM = 0;
   private elapsedTimeSec = 0;
   private overspeedCooldownSec = 0;
@@ -118,7 +135,56 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.schedule = schedule;
     this.incidents = incidents;
     this.traffic = traffic;
+    this.traffic.setStations?.(stations);
     this.physics.setConfig?.(this.trainModel.physics);
+  }
+
+  public setMetroLine(lineId: MetroLineId): void {
+    const nextLine = getMetroLineSpec(lineId);
+    this.line = nextLine;
+    this.stations = nextLine.stations;
+    this.speedZones = nextLine.speedZones;
+    this.stationIndex = 0;
+    this.signals.setDistances?.(buildSemaphoreDistances(nextLine.stations));
+    this.schedule.setStations?.(nextLine.stations);
+    this.incidents.setStations?.(nextLine.stations);
+    this.traffic.setStations?.(nextLine.stations);
+    this.announcements.reset();
+  }
+
+  public setGameMode(mode: GameModeId): void {
+    this.gameMode = mode;
+    this.incidents.setEnabled?.(mode === 'duty');
+  }
+
+  public triggerSandboxOncomingTrain(): void {
+    if (this.gameMode !== 'sandbox') {
+      return;
+    }
+    const progress = this.buildStationProgress();
+    if (progress.distanceToTargetM <= 240 && progress.distanceToTargetM >= -25) {
+      this.traffic.forceSpawnAtStation?.(progress.station, progress.stationIndex, false);
+      this.feedback.push(
+        `Sandbox: podstawiono skład AI przy stacji ${progress.station.name}`,
+        0,
+        'neutral',
+      );
+      return;
+    }
+    this.traffic.forceSpawnAhead?.(this.kinematics.positionM);
+    this.feedback.push('Sandbox: wywołano mijankę na sąsiednim torze', 0, 'neutral');
+  }
+
+  public cycleSandboxNextSignal(): void {
+    if (this.gameMode !== 'sandbox') {
+      return;
+    }
+    const aspect = this.signals.cycleNextSignalAspect?.(this.kinematics.positionM);
+    if (!aspect) {
+      return;
+    }
+    const label = aspect === 'green' ? 'ZIELONY' : aspect === 'yellow' ? 'ŻÓŁTY' : 'CZERWONY';
+    this.feedback.push(`Sandbox: najbliższy semafor → ${label}`, 0, 'neutral');
   }
 
   public setTrainModel(modelId: TrainModelId): void {
@@ -160,6 +226,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.phase = 'playing';
     this.kinematics = createInitialKinematics();
     this.doorState = 'closed';
+    this.openDoorSide = null;
     this.stationIndex = 0;
     this.boardingTimerSec = 0;
     this.boardingCompleted = false;
@@ -171,6 +238,9 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.overspeedViolations = 0;
     this.redSignalViolations = 0;
     this.czuwakViolations = 0;
+    this.czuwakAcksCount = 0;
+    this.doorFaultsResolvedCount = 0;
+    this.bestStopErrorM = null;
     this.totalStopErrorM = 0;
     this.elapsedTimeSec = 0;
     this.overspeedCooldownSec = 0;
@@ -213,7 +283,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     const trafficRes = this.traffic.step(this.kinematics.positionM, dt);
     const brakeStopHiss = this.checkBrakeStopHiss(prevSpeedKmh);
     const overspeedWarning = this.evaluateOverspeed(dt);
-    const doorRes = this.handleDoorToggle(input.toggleDoorsPressed, incRes.doorFaultResolvedClose);
+    const doorRes = this.handleDoorToggle(input, incRes.doorFaultResolvedClose);
     const boardingCompleteChime = this.updateBoarding(dt);
     this.checkStationOvershoot();
     const progress = this.buildStationProgress();
@@ -223,6 +293,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
       progress.distanceToTargetM,
       this.kinematics.speedKmh,
       dt,
+      getStationPlatformSide(progress.station),
     );
     return {
       hornActive: input.hornActive,
@@ -257,6 +328,9 @@ export class MetroSimulationEngine implements IMetroSimulation {
     const effectiveWaitingPassengers = this.getEffectiveWaitingPassengers(currentStation.station);
     return {
       phase: this.phase,
+      gameMode: this.gameMode,
+      line: this.line,
+      stations: this.stations,
       trainModel: this.trainModel,
       timeOfDay: this.timeOfDay,
       cameraMode: this.cameraMode,
@@ -266,6 +340,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
       speedLimitKmh,
       isOverspeeding: this.kinematics.speedKmh > speedLimitKmh + OVERSPEED_TOLERANCE_KMH,
       doorState: this.doorState,
+      openDoorSide: this.openDoorSide,
       canToggleDoors: this.canToggleDoorsNow(currentStation),
       boardingTimerSec: this.boardingTimerSec,
       boardingDurationSec,
@@ -295,6 +370,9 @@ export class MetroSimulationEngine implements IMetroSimulation {
       overspeedViolations: this.overspeedViolations,
       redSignalViolations: this.redSignalViolations,
       czuwakViolations: this.czuwakViolations,
+      czuwakAcksCount: this.czuwakAcksCount,
+      doorFaultsResolvedCount: this.doorFaultsResolvedCount,
+      bestStopErrorM: this.bestStopErrorM,
       driverGrade,
       totalStopErrorM: this.totalStopErrorM,
       elapsedTimeSec: this.elapsedTimeSec,
@@ -323,19 +401,26 @@ export class MetroSimulationEngine implements IMetroSimulation {
     const res = this.signals.step(prevPosM, this.kinematics.positionM, this.kinematics.speedKmh, dt);
     this.activeCautionLimitKmh = res.activeCautionLimitKmh;
     if (res.redSignalViolated) {
-      this.atpActive = true;
-      this.redSignalViolations += 1;
-      this.kinematics = { ...this.kinematics, emergencyBrake: true, throttle: 0 };
-      this.applyPenalty(
-        this.scoring.getRedSignalPenalty(),
-        'ATP: Przejechano czerwone światło! Hamulec bezpieczeństwa',
-        'danger',
-      );
+      if (this.gameMode === 'sandbox') {
+        this.feedback.push('Sandbox: minięto czerwony semafor (bez kary)', 0, 'neutral');
+      } else {
+        this.atpActive = true;
+        this.redSignalViolations += 1;
+        this.kinematics = { ...this.kinematics, emergencyBrake: true, throttle: 0 };
+        this.applyPenalty(
+          this.scoring.getRedSignalPenalty(),
+          'ATP: Przejechano czerwone światło! Hamulec bezpieczeństwa',
+          'danger',
+        );
+      }
     }
     if (res.clearedToGreen) {
       this.feedback.push('Semafor zielony — droga wolna', 0, 'success');
     }
-    return { violated: res.redSignalViolated, cleared: res.clearedToGreen };
+    return {
+      violated: this.gameMode === 'duty' && res.redSignalViolated,
+      cleared: res.clearedToGreen,
+    };
   }
 
   private evaluateIncidents(ackCzuwakPressed: boolean, dt: number) {
@@ -354,7 +439,11 @@ export class MetroSimulationEngine implements IMetroSimulation {
       );
     }
     if (res.czuwakAckChime) {
+      this.czuwakAcksCount += 1;
       this.feedback.push('Czuwak potwierdzony', 0, 'success');
+    }
+    if (res.doorFaultResolvedClose) {
+      this.doorFaultsResolvedCount += 1;
     }
     if (res.czuwakTimedOut) {
       this.czuwakViolations += 1;
@@ -386,28 +475,79 @@ export class MetroSimulationEngine implements IMetroSimulation {
   }
 
   private handleDoorToggle(
-    pressed: boolean,
+    input: IControlInput,
     faultResetFinished: boolean,
   ): { toggledTo: DoorState | null; faultBeep: boolean } {
     if (faultResetFinished && this.doorState === 'open') {
       return { toggledTo: this.completeDoorClose(), faultBeep: false };
     }
-    if (!pressed) {
+    const leftPressed = Boolean(input.toggleDoorsLeftPressed);
+    const rightPressed = Boolean(input.toggleDoorsRightPressed);
+    const autoPressed = Boolean(input.toggleDoorsPressed);
+    if (!leftPressed && !rightPressed && !autoPressed) {
       return { toggledTo: null, faultBeep: false };
     }
+
     const progress = this.buildStationProgress();
+    const expectedSide = getStationPlatformSide(progress.station);
+    if (autoPressed && !leftPressed && !rightPressed && this.gameMode === 'duty') {
+      const expectedKey = expectedSide === 'left' ? 'Q' : 'E';
+      const expectedLabel = expectedSide === 'left' ? 'LEWEJ' : 'PRAWEJ';
+      this.feedback.push(
+        `Użyj [Q] (Lewe) lub [E] (Prawe) — peron po ${expectedLabel} [${expectedKey}]`,
+        0,
+        'warning',
+      );
+      return { toggledTo: null, faultBeep: false };
+    }
+
+    const requestedSide: DoorSide = leftPressed
+      ? 'left'
+      : rightPressed
+        ? 'right'
+        : this.openDoorSide ?? expectedSide;
+
     if (!this.canToggleDoorsNow(progress)) {
       return { toggledTo: null, faultBeep: false };
     }
+
     if (this.doorState === 'closed') {
+      if (requestedSide !== expectedSide) {
+        const sideLabel = expectedSide === 'left' ? 'LEWEJ [Q]' : 'PRAWEJ [E]';
+        const penalty = this.scoring.getWrongDoorSidePenalty?.() ?? -25;
+        if (this.gameMode === 'sandbox') {
+          this.feedback.push(
+            `Blokada bezpieczeństwa: tor po tej stronie! Peron po ${sideLabel}`,
+            0,
+            'warning',
+          );
+        } else {
+          this.applyPenalty(
+            penalty,
+            `Blokada drzwi! Peron po ${sideLabel} — strona torów zablokowana`,
+            'danger',
+          );
+        }
+        return { toggledTo: null, faultBeep: true };
+      }
       this.doorState = 'open';
+      this.openDoorSide = requestedSide;
       this.awardStationStop(progress);
       return { toggledTo: 'open', faultBeep: false };
     }
+
+    if (this.openDoorSide && requestedSide !== this.openDoorSide) {
+      const openKey = this.openDoorSide === 'left' ? 'Q' : 'E';
+      const openLabel = this.openDoorSide === 'left' ? 'LEWEJ' : 'PRAWEJ';
+      this.feedback.push(`Drzwi otwarte po ${openLabel} — zamknij [${openKey}]`, 0, 'warning');
+      return { toggledTo: null, faultBeep: false };
+    }
+
     if (this.boardingCompleted) {
       const attempt = this.incidents.attemptDoorClose(this.stationIndex);
+      const closeKey = this.openDoorSide === 'right' ? 'E' : 'Q';
       if (attempt.faultTriggered) {
-        this.feedback.push('Awaria drzwi – powtórz zamykanie [O]', 0, 'warning');
+        this.feedback.push(`Awaria drzwi – powtórz zamykanie [${closeKey}]`, 0, 'warning');
         return { toggledTo: null, faultBeep: true };
       }
       if (attempt.retryStarted) {
@@ -423,6 +563,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
 
   private completeDoorClose(): DoorState {
     this.doorState = 'closed';
+    this.openDoorSide = null;
     if (this.boardingCompleted) {
       this.stationsServed += 1;
       this.advanceToNextStation();
@@ -436,6 +577,14 @@ export class MetroSimulationEngine implements IMetroSimulation {
     }
     this.stopAwarded = true;
     const evaluation = this.scoring.evaluateStop(progress.distanceToTargetM);
+    const absOffset = Math.abs(evaluation.offsetM);
+    this.bestStopErrorM =
+      this.bestStopErrorM === null ? absOffset : Math.min(this.bestStopErrorM, absOffset);
+    this.totalStopErrorM += absOffset;
+    if (this.gameMode === 'sandbox') {
+      this.feedback.push(`${evaluation.label} · Wolna jazda`, 0, evaluation.tone);
+      return;
+    }
     const deviationSec = this.schedule.recordStationArrival(
       progress.stationIndex,
       this.elapsedTimeSec,
@@ -443,7 +592,6 @@ export class MetroSimulationEngine implements IMetroSimulation {
     const punctuality = this.scoring.evaluatePunctuality(deviationSec);
     const combinedPoints = evaluation.points + punctuality.points;
     this.score += combinedPoints;
-    this.totalStopErrorM += Math.abs(evaluation.offsetM);
     const summaryLabel =
       punctuality.points !== 0
         ? `${evaluation.label} · ${punctuality.label}`
@@ -471,7 +619,8 @@ export class MetroSimulationEngine implements IMetroSimulation {
         this.currentStationBoardedCount = waiting;
       }
       this.boardingCompleted = true;
-      this.feedback.push('Wymiana pasażerów zakończona — zamknij drzwi [O]', 0, 'success');
+      const closeKey = this.openDoorSide === 'right' ? 'E' : 'Q';
+      this.feedback.push(`Wymiana pasażerów zakończona — zamknij drzwi [${closeKey}]`, 0, 'success');
       return true;
     }
     return false;
@@ -526,6 +675,9 @@ export class MetroSimulationEngine implements IMetroSimulation {
   }
 
   private evaluateOverspeed(dt: number): boolean {
+    if (this.gameMode === 'sandbox') {
+      return false;
+    }
     const limit = this.computeEffectiveSpeedLimit();
     if (this.kinematics.speedKmh <= limit + OVERSPEED_TOLERANCE_KMH) {
       this.overspeedCooldownSec = Math.max(0, this.overspeedCooldownSec - dt);
@@ -542,6 +694,9 @@ export class MetroSimulationEngine implements IMetroSimulation {
   }
 
   private applyPenalty(points: number, text: string, tone: FeedbackTone): void {
+    if (this.gameMode === 'sandbox') {
+      return;
+    }
     this.score += points;
     this.penaltiesCount += 1;
     this.feedback.push(text, points, tone);

@@ -10,6 +10,8 @@ export interface ISignalStepResult {
 
 export interface ISignalController {
   setRedProbability?(probability: number): void;
+  setDistances?(distances: readonly number[]): void;
+  cycleNextSignalAspect?(positionM: number): SignalAspect | null;
   reset(): void;
   step(prevPosM: number, nextPosM: number, speedKmh: number, dtSec: number): ISignalStepResult;
   getSignals(): readonly ISemaphoreState[];
@@ -45,7 +47,7 @@ interface IMutableSemaphore {
 }
 
 export class TunnelSignalSystem implements ISignalController {
-  private readonly distances: readonly number[];
+  private distances: readonly number[];
   private readonly rng: () => number;
   private redProbability = RED_PROBABILITY;
   private signals: IMutableSemaphore[] = [];
@@ -60,9 +62,30 @@ export class TunnelSignalSystem implements ISignalController {
     this.reset();
   }
 
+  public setDistances(distances: readonly number[]): void {
+    this.distances = distances;
+    this.reset();
+  }
+
   public setRedProbability(probability: number): void {
     this.redProbability = Math.max(0, Math.min(0.6, probability));
     this.reset();
+  }
+
+  public cycleNextSignalAspect(positionM: number): SignalAspect | null {
+    const next = this.findNextMutable(positionM);
+    if (!next) {
+      return null;
+    }
+    const nextAspect: SignalAspect =
+      next.aspect === 'green' ? 'yellow' : next.aspect === 'yellow' ? 'red' : 'green';
+    next.aspect = nextAspect;
+    next.waitElapsedSec = 0;
+    next.violated = false;
+    if (nextAspect === 'green') {
+      this.cautionActive = false;
+    }
+    return nextAspect;
   }
 
   public reset(): void {

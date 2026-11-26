@@ -1,10 +1,18 @@
 import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
-import { LINE_M1_SPEED_ZONES, LINE_M1_STATIONS } from '../domain/routeData';
+import { LINE_M1_SPEED_ZONES, LINE_M1_STATIONS, METRO_LINE_M1 } from '../domain/routeData';
 import { SEMAPHORE_DISTANCES_M } from '../domain/signalSystem';
+import {
+  getOppositeTrackX,
+  getOppositeTrackYaw,
+  getStationPlatformLayout,
+  getStationPlatformSide,
+} from '../domain/trackGeometry';
 import { SERIA_81_SPEC, SIEMENS_INSPIRO_SPEC } from '../domain/trainCatalog';
 import type {
   ISimulationSnapshot,
+  IStationSpec,
+  MetroLineId,
   SignalAspect,
   TimeOfDayId,
   TrainModelId,
@@ -55,6 +63,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
   private stationLightB: THREE.PointLight | null = null;
   private signalLight: THREE.PointLight | null = null;
   private oncomingLight: THREE.PointLight | null = null;
+  private cabFillLight: THREE.PointLight | null = null;
   private cabRig: ICabRig | null = null;
   private playerTrainRig: ITrainConsistRig | null = null;
   private oncomingTrainRig: ITrainConsistRig | null = null;
@@ -65,6 +74,8 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
   private envTexture: THREE.Texture | null = null;
   private container: HTMLElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  private maxAniso = 4;
+  private appliedLineId: MetroLineId | null = null;
   private appliedModelId: TrainModelId | null = null;
   private appliedTimeOfDayId: TimeOfDayId | null = null;
 
@@ -99,6 +110,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     }
     const z = -snapshot.kinematics.positionM;
     const state = this.motion.step(snapshot, dtSec);
+    this.syncMetroLine(snapshot);
     this.syncTrainThemes(snapshot);
     this.syncTimeOfDayLighting(snapshot);
     this.updateCameraView(snapshot, z, state, dtSec);
@@ -109,14 +121,20 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.headlightTarget.updateMatrixWorld();
 
     this.playerTrainRig?.group.position.set(0, 0, z);
-    this.playerTrainRig?.setDoorsOpen(snapshot.doorState === 'open', dtSec);
+    this.playerTrainRig?.setDoorsOpen(snapshot.openDoorSide, dtSec);
     this.playerTrainRig?.setHeadlights(snapshot.headlightsOn);
-    this.updateOncomingTrain(snapshot);
+    this.playerTrainRig?.updateMotion?.(snapshot.kinematics.speedMs, dtSec);
+    this.updateOncomingTrain(snapshot, dtSec);
 
-    this.cabRig.leverPivot.rotation.x = state.leverAngleRad;
+    if (this.cabRig.setLeverAngle) {
+      this.cabRig.setLeverAngle(state.leverAngleRad);
+    } else {
+      this.cabRig.leverPivot.rotation.x = state.leverAngleRad;
+    }
+    this.cabRig.update?.(snapshot, dtSec);
     this.passengerRig?.sync(snapshot, dtSec);
     this.trackworkRig?.sync(snapshot.trackworkZones, dtSec);
-    this.updateStationLights(snapshot.currentStation.station.distanceM);
+    this.updateStationLights(snapshot.currentStation.station);
     this.updateSemaphoreVisuals(snapshot);
     this.updateCabIndicators(snapshot);
   }
@@ -223,7 +241,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.signalLight = new THREE.PointLight(0x10b981, 14, 24, 1.6);
     this.signalLight.position.set(2.1, 2.8, -(SEMAPHORE_DISTANCES_M[0] ?? 250) + 0.6);
     this.oncomingLight = new THREE.PointLight(0xfff1d6, 0, 68, 1.35);
-    this.updateStationLights(LINE_M1_STATIONS[0].distanceM);
+    this.updateStationLights(LINE_M1_STATIONS[0]);
     scene.add(this.stationLightA, this.stationLightB, this.signalLight, this.oncomingLight);
   }
 
@@ -233,8 +251,10 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     camera: THREE.PerspectiveCamera,
   ): void {
     const maxAniso = renderer.capabilities.getMaxAnisotropy();
+    this.maxAniso = maxAniso;
+    this.appliedLineId = METRO_LINE_M1.id;
     this.worldResources.push(buildMetroTunnel(scene, LINE_M1_STATIONS, LINE_M1_SPEED_ZONES, maxAniso));
-    this.worldResources.push(buildMetroStations(scene, LINE_M1_STATIONS, maxAniso));
+    this.worldResources.push(buildMetroStations(scene, LINE_M1_STATIONS, maxAniso, METRO_LINE_M1));
     this.passengerRig = buildStationPassengers(scene, LINE_M1_STATIONS);
     this.trackworkRig = buildTrackworkRig(scene, maxAniso);
     const initialSignals = SEMAPHORE_DISTANCES_M.map((distanceM, idx) => ({
@@ -245,19 +265,43 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
       waitRemainingSec: null,
     }));
     this.semaphoreRig = buildTunnelSemaphores(scene, initialSignals);
-    this.playerTrainRig = buildMetroConsist(scene, SIEMENS_INSPIRO_SPEC.visual);
+    this.playerTrainRig = buildMetroConsist(scene, SIEMENS_INSPIRO_SPEC.visual, maxAniso);
     this.playerTrainRig.group.visible = false;
-    this.oncomingTrainRig = buildMetroConsist(scene, SERIA_81_SPEC.visual);
+    this.oncomingTrainRig = buildMetroConsist(scene, SERIA_81_SPEC.visual, maxAniso);
+    this.oncomingTrainRig.setLine?.(METRO_LINE_M1.id, METRO_LINE_M1.oppositeDestinationLed);
     this.oncomingTrainRig.group.rotation.y = Math.PI;
     this.oncomingTrainRig.group.visible = false;
-    this.cabRig = buildMetroCabRig();
-    const cabFillLight = new THREE.PointLight(0x94a3b8, 0.9, 2.2, 2);
-    cabFillLight.position.set(-0.32, -0.1, -0.58);
-    camera.add(this.cabRig.group, cabFillLight);
+    this.cabRig = buildMetroCabRig(maxAniso);
+    this.cabFillLight = new THREE.PointLight(0xcbd5e1, 0.65, 2.0, 2);
+    this.cabFillLight.position.set(-0.22, 0.12, -0.58);
+    camera.add(this.cabRig.group, this.cabFillLight);
     scene.add(camera);
     if (!this.isSoftwareGl) {
       renderer.compile(scene, camera);
     }
+  }
+
+  private syncMetroLine(snapshot: ISimulationSnapshot): void {
+    if (this.appliedLineId === snapshot.line.id || !this.scene) {
+      return;
+    }
+    this.appliedLineId = snapshot.line.id;
+    this.worldResources.forEach((res) => res.dispose());
+    this.worldResources = [];
+    this.passengerRig?.dispose();
+    this.semaphoreRig?.dispose();
+
+    this.worldResources.push(
+      buildMetroTunnel(this.scene, snapshot.stations, snapshot.line.speedZones, this.maxAniso),
+    );
+    this.worldResources.push(
+      buildMetroStations(this.scene, snapshot.stations, this.maxAniso, snapshot.line),
+    );
+    this.passengerRig = buildStationPassengers(this.scene, snapshot.stations);
+    this.semaphoreRig = buildTunnelSemaphores(this.scene, snapshot.signals);
+    this.playerTrainRig?.setLine?.(snapshot.line.id, snapshot.line.destinationLed);
+    this.oncomingTrainRig?.setLine?.(snapshot.line.id, snapshot.line.oppositeDestinationLed);
+    this.updateStationLights(snapshot.currentStation.station);
   }
 
   private syncTrainThemes(snapshot: ISimulationSnapshot): void {
@@ -267,6 +311,9 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.appliedModelId = snapshot.trainModel.id;
     this.playerTrainRig?.setTheme(snapshot.trainModel.visual);
     this.cabRig?.setTheme(snapshot.trainModel.visual.theme);
+    if (this.headlight) {
+      this.headlight.color.setHex(snapshot.trainModel.id === 'seria81' ? 0xffe29a : 0xf4f8ff);
+    }
     const oppositeVisual =
       snapshot.trainModel.id === 'seria81' ? SIEMENS_INSPIRO_SPEC.visual : SERIA_81_SPEC.visual;
     this.oncomingTrainRig?.setTheme(oppositeVisual);
@@ -309,6 +356,10 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     if (snapshot.cameraMode === 'cab') {
       this.cabRig.group.visible = true;
       this.playerTrainRig.group.visible = false;
+      if (this.cabFillLight) {
+        this.cabFillLight.intensity = 0.55;
+        this.cabFillLight.distance = 2.0;
+      }
       this.camera.position.set(state.offsetX, 2.15 + state.offsetY, z + state.offsetZ);
       this.camera.rotation.set(state.pitchRad, 0, state.rollRad);
       this.updateCameraFov(state.targetFov, dtSec);
@@ -316,14 +367,19 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     }
     this.cabRig.group.visible = false;
     this.playerTrainRig.group.visible = true;
+    if (this.cabFillLight) {
+      this.cabFillLight.intensity = 28;
+      this.cabFillLight.distance = 32;
+    }
     if (snapshot.cameraMode === 'mirror') {
-      this.camera.position.set(1.78, 2.48, z - 0.8);
-      this.camera.lookAt(1.95, 1.85, z + 26);
+      const sideSign = getStationPlatformSide(snapshot.currentStation.station) === 'left' ? -1 : 1;
+      this.camera.position.set(sideSign * 1.92, 2.48, z - 0.9);
+      this.camera.lookAt(sideSign * 1.82, 1.85, z + 26);
       this.updateCameraFov(64, dtSec);
       return;
     }
-    this.camera.position.set(-0.85, 4.38, z + 73.5);
-    this.camera.lookAt(-0.15, 2.15, z + 14);
+    this.camera.position.set(-1.58, 3.45, z + 78.0);
+    this.camera.lookAt(0, 1.75, z + 61);
     this.updateCameraFov(62, dtSec);
   }
 
@@ -337,7 +393,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     }
   }
 
-  private updateOncomingTrain(snapshot: ISimulationSnapshot): void {
+  private updateOncomingTrain(snapshot: ISimulationSnapshot, dtSec: number): void {
     if (!this.oncomingTrainRig || !this.oncomingLight) {
       return;
     }
@@ -347,10 +403,16 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
       this.oncomingLight.intensity = 0;
       return;
     }
+    const oncomingX = getOppositeTrackX(oncoming.positionM, snapshot.stations);
+    const oncomingYaw = getOppositeTrackYaw(oncoming.positionM, snapshot.stations);
     const oncomingZ = -oncoming.positionM;
-    this.oncomingTrainRig.group.position.set(-4.6, 0, oncomingZ);
-    this.oncomingLight.intensity = 52;
-    this.oncomingLight.position.set(-4.6, 1.65, oncomingZ + 1.8);
+    this.oncomingTrainRig.group.position.set(oncomingX, 0, oncomingZ);
+    this.oncomingTrainRig.group.rotation.y = Math.PI + oncomingYaw;
+    this.oncomingTrainRig.setDoorsOpen(oncoming.doorsOpen ? oncoming.doorSide : null, dtSec);
+    this.oncomingTrainRig.setHeadlights(oncoming.headlightsOn);
+    this.oncomingTrainRig.updateMotion?.(oncoming.speedMs, dtSec);
+    this.oncomingLight.intensity = oncoming.headlightsOn ? 56 : 10;
+    this.oncomingLight.position.set(oncomingX, 1.65, oncomingZ + 1.8);
   }
 
   private attachResizeObserver(container: HTMLElement): void {
@@ -367,12 +429,14 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.resizeObserver.observe(container);
   }
 
-  private updateStationLights(stationDistanceM: number): void {
+  private updateStationLights(station: IStationSpec): void {
     if (!this.stationLightA || !this.stationLightB) {
       return;
     }
-    this.stationLightA.position.set(2.8, 4.4, -(stationDistanceM - 42));
-    this.stationLightB.position.set(2.2, 4.0, -stationDistanceM);
+    const isIsland = getStationPlatformLayout(station) === 'island';
+    const centerX = isIsland ? -4.4 : -1.6;
+    this.stationLightA.position.set(centerX, 4.5, -(station.distanceM - 48));
+    this.stationLightB.position.set(centerX, 4.2, -(station.distanceM - 8));
   }
 
   private updateSemaphoreVisuals(snapshot: ISimulationSnapshot): void {

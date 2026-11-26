@@ -86,4 +86,8 @@ export class MetroScoringRules implements IScoringEvaluator {
   public getCzuwakPenalty(): number {
     return -100;
   }
+
+  public getWrongDoorSidePenalty(): number {
+    return -25;
+  }
 }

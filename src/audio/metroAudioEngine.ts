@@ -49,6 +49,16 @@ export class MetroAudioEngine implements IAudioEngine {
     this.triggerOneShots(events);
   }
 
+  public playAchievementChime(): void {
+    if (!this.ctx || this.ctx.state !== 'running' || this.muted) {
+      return;
+    }
+    this.playTone(523.25, 0.14, 0.14, 'triangle', 0.0);
+    this.playTone(659.25, 0.14, 0.14, 'triangle', 0.11);
+    this.playTone(783.99, 0.28, 0.16, 'sine', 0.22);
+    this.playTone(1046.5, 0.34, 0.11, 'sine', 0.24);
+  }
+
   public silence(): void {
     if (!this.ctx) {
       return;

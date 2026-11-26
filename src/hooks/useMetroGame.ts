@@ -2,14 +2,20 @@ import { useCallback, useEffect, useRef, useState, type RefObject } from 'react'
 import { MetroAudioEngine } from '../audio/metroAudioEngine';
 import { WebSpeechAnnouncer, type ISpeechAnnouncer } from '../audio/speechAnnouncer';
 import type { IAudioEngine } from '../audio/types';
+import { AchievementService, type IAchievementService } from '../domain/achievements';
 import { LeaderboardService, type ILeaderboardService } from '../domain/leaderboard';
 import { MetroSimulationEngine } from '../domain/metroSimulation';
 import { MetroScoringRules } from '../domain/scoringRules';
 import { MetroTrainPhysics } from '../domain/trainPhysics';
 import type {
+  GameModeId,
+  IAchievementRecord,
+  IAchievementSpec,
+  IAchievementToast,
   ILeaderboardEntry,
   IMetroSimulation,
   ISimulationSnapshot,
+  MetroLineId,
   TimeOfDayId,
   TrainModelId,
 } from '../domain/types';
@@ -22,10 +28,20 @@ export interface IMetroGameController {
   readonly snapshot: ISimulationSnapshot;
   readonly muted: boolean;
   readonly helpOpen: boolean;
+  readonly achievementsOpen: boolean;
+  readonly achievementCatalog: readonly IAchievementSpec[];
+  readonly unlockedAchievements: readonly IAchievementRecord[];
+  readonly achievementToast: IAchievementToast | null;
   readonly leaderboard: readonly ILeaderboardEntry[];
   readonly isNewRecord: boolean;
+  selectMetroLine: (lineId: MetroLineId) => void;
+  selectGameMode: (mode: GameModeId) => void;
   selectTrainModel: (modelId: TrainModelId) => void;
   selectTimeOfDay: (timeOfDayId: TimeOfDayId) => void;
+  triggerSandboxOncomingTrain: () => void;
+  cycleSandboxNextSignal: () => void;
+  openAchievements: () => void;
+  closeAchievements: () => void;
   startGame: () => void;
   pauseGame: () => void;
   resumeGame: () => void;
@@ -35,6 +51,8 @@ export interface IMetroGameController {
   toggleHelp: () => void;
   closeHelp: () => void;
   toggleDoors: () => void;
+  toggleDoorsLeft: () => void;
+  toggleDoorsRight: () => void;
   toggleHeadlights: () => void;
   acknowledgeCzuwak: () => void;
   cycleCamera: () => void;
@@ -52,6 +70,7 @@ function hasAutostartParam(): boolean {
 export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetroGameController {
   const simRef = useRef<IMetroSimulation | null>(null);
   const leaderboardServiceRef = useRef<ILeaderboardService | null>(null);
+  const achievementServiceRef = useRef<IAchievementService | null>(null);
   const rendererRef = useRef<IMetroSceneRenderer | null>(null);
   const audioRef = useRef<IAudioEngine | null>(null);
   const speechRef = useRef<ISpeechAnnouncer | null>(null);
@@ -59,9 +78,14 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
   const helpPausedGameRef = useRef<boolean>(false);
   const helpOpenRef = useRef<boolean>(false);
   const recordedGameOverRef = useRef<boolean>(false);
+  const toastQueueRef = useRef<IAchievementSpec[]>([]);
+  const activeToastRef = useRef<IAchievementToast | null>(null);
 
   if (!leaderboardServiceRef.current) {
     leaderboardServiceRef.current = new LeaderboardService();
+  }
+  if (!achievementServiceRef.current) {
+    achievementServiceRef.current = new AchievementService();
   }
   if (!simRef.current) {
     const initialSim = new MetroSimulationEngine(new MetroTrainPhysics(), new MetroScoringRules());
@@ -75,6 +99,11 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
   const [snapshot, setSnapshot] = useState<ISimulationSnapshot>(() => simRef.current!.getSnapshot());
   const [muted, setMuted] = useState<boolean>(false);
   const [helpOpen, setHelpOpen] = useState<boolean>(false);
+  const [achievementsOpen, setAchievementsOpen] = useState<boolean>(false);
+  const [unlockedAchievements, setUnlockedAchievements] = useState<readonly IAchievementRecord[]>(
+    () => achievementServiceRef.current!.getUnlockedRecords(),
+  );
+  const [achievementToast, setAchievementToast] = useState<IAchievementToast | null>(null);
   const [leaderboard, setLeaderboard] = useState<readonly ILeaderboardEntry[]>(() =>
     leaderboardServiceRef.current!.getTopEntries(),
   );
@@ -88,6 +117,41 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     const next = sim.getSnapshot();
     document.body.dataset.state = next.phase;
     setSnapshot(next);
+  }, []);
+
+  const selectMetroLine = useCallback(
+    (lineId: MetroLineId): void => {
+      simRef.current?.setMetroLine(lineId);
+      syncNow();
+    },
+    [syncNow],
+  );
+
+  const selectGameMode = useCallback(
+    (mode: GameModeId): void => {
+      simRef.current?.setGameMode(mode);
+      syncNow();
+    },
+    [syncNow],
+  );
+
+  const triggerSandboxOncomingTrain = useCallback((): void => {
+    simRef.current?.triggerSandboxOncomingTrain();
+    syncNow();
+  }, [syncNow]);
+
+  const cycleSandboxNextSignal = useCallback((): void => {
+    simRef.current?.cycleSandboxNextSignal();
+    syncNow();
+  }, [syncNow]);
+
+  const openAchievements = useCallback((): void => {
+    setUnlockedAchievements(achievementServiceRef.current!.getUnlockedRecords());
+    setAchievementsOpen(true);
+  }, []);
+
+  const closeAchievements = useCallback((): void => {
+    setAchievementsOpen(false);
   }, []);
 
   const selectTrainModel = useCallback(
@@ -149,6 +213,8 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
 
   const returnToTitle = useCallback((): void => {
     const currentSnap = simRef.current?.getSnapshot();
+    const currentLineId = currentSnap?.line.id ?? 'M1';
+    const currentMode = currentSnap?.gameMode ?? 'duty';
     const currentModelId = currentSnap?.trainModel.id ?? 'inspiro';
     const currentTimeOfDayId = currentSnap?.timeOfDay.id ?? 'rush';
     simRef.current?.reset();
@@ -160,6 +226,8 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     helpOpenRef.current = false;
     setHelpOpen(false);
     const freshSim = new MetroSimulationEngine(new MetroTrainPhysics(), new MetroScoringRules());
+    freshSim.setMetroLine(currentLineId);
+    freshSim.setGameMode(currentMode);
     freshSim.setTrainModel(currentModelId);
     freshSim.setTimeOfDay(currentTimeOfDayId);
     simRef.current = freshSim;
@@ -209,6 +277,14 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
 
   const toggleDoors = useCallback((): void => {
     inputRef.current?.triggerDoorToggle();
+  }, []);
+
+  const toggleDoorsLeft = useCallback((): void => {
+    inputRef.current?.triggerDoorLeftToggle();
+  }, []);
+
+  const toggleDoorsRight = useCallback((): void => {
+    inputRef.current?.triggerDoorRightToggle();
   }, []);
 
   const toggleHeadlights = useCallback((): void => {
@@ -282,6 +358,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     let lastPhase = simRef.current!.getSnapshot().phase;
     let lastScore = 0;
     let lastDoor = simRef.current!.getSnapshot().doorState;
+    let lastDoorSide = simRef.current!.getSnapshot().openDoorSide;
     let lastHeadlights = simRef.current!.getSnapshot().headlightsOn;
     let lastPassengers = 0;
     let lastAnnId = -1;
@@ -289,6 +366,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     let lastDoorFault = 'none';
     let lastCameraMode = simRef.current!.getSnapshot().cameraMode;
     let lastCameraNoticeId = -1;
+    let lastLineId = simRef.current!.getSnapshot().line.id;
     let lastTrainModelId = simRef.current!.getSnapshot().trainModel.id;
     let lastTimeOfDayId = simRef.current!.getSnapshot().timeOfDay.id;
 
@@ -309,6 +387,8 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         ...control,
         emergencyBrakePressed: false,
         toggleDoorsPressed: false,
+        toggleDoorsLeftPressed: false,
+        toggleDoorsRightPressed: false,
         toggleHeadlightsPressed: false,
         acknowledgeCzuwakPressed: false,
         cycleCameraPressed: false,
@@ -337,21 +417,52 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
 
       if (snap.phase === 'gameover' && !recordedGameOverRef.current) {
         recordedGameOverRef.current = true;
-        const saved = leaderboardServiceRef.current!.recordRun({
-          score: snap.score,
-          grade: snap.driverGrade,
-          trainModelId: snap.trainModel.id,
-          trainName: snap.trainModel.name,
-          timeOfDayId: snap.timeOfDay.id,
-          timeOfDayLabel: snap.timeOfDay.name,
-        });
-        setLeaderboard(saved.entries);
-        setIsNewRecord(saved.isNewRecord);
+        if (snap.gameMode === 'duty') {
+          const saved = leaderboardServiceRef.current!.recordRun({
+            score: snap.score,
+            grade: snap.driverGrade,
+            trainModelId: snap.trainModel.id,
+            trainName: snap.trainModel.name,
+            timeOfDayId: snap.timeOfDay.id,
+            timeOfDayLabel: snap.timeOfDay.name,
+          });
+          setLeaderboard(saved.entries);
+          setIsNewRecord(saved.isNewRecord);
+        }
+      }
+
+      if (snap.phase === 'playing' || snap.phase === 'gameover') {
+        const newlyUnlocked = achievementServiceRef.current!.evaluateAndUnlock(snap);
+        if (newlyUnlocked.length > 0) {
+          setUnlockedAchievements(achievementServiceRef.current!.getUnlockedRecords());
+          toastQueueRef.current.push(...newlyUnlocked);
+          audio.playAchievementChime();
+        }
+      }
+
+      const toastDt = rawDt > 0 ? rawDt : 0.016;
+      if (activeToastRef.current) {
+        const nextRem = activeToastRef.current.remainingSec - toastDt;
+        if (nextRem <= 0) {
+          activeToastRef.current = null;
+          setAchievementToast(null);
+        } else {
+          activeToastRef.current = { ...activeToastRef.current, remainingSec: nextRem };
+        }
+      }
+      if (!activeToastRef.current && toastQueueRef.current.length > 0) {
+        const nextSpec = toastQueueRef.current.shift()!;
+        activeToastRef.current = { spec: nextSpec, remainingSec: 4.0 };
+        setAchievementToast(activeToastRef.current);
       }
 
       audio.update(snap, latestAudio);
       if (snap.announcement && snap.phase === 'playing') {
-        speech.announce(snap.announcement.id, snap.announcement.text, audio.isMuted());
+        speech.announce(
+          snap.announcement.id,
+          snap.announcement.spokenText ?? snap.announcement.text,
+          audio.isMuted(),
+        );
       }
       sceneRenderer.update(snap, rawDt);
       sceneRenderer.render();
@@ -362,6 +473,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         snap.phase !== lastPhase ||
         snap.score !== lastScore ||
         snap.doorState !== lastDoor ||
+        snap.openDoorSide !== lastDoorSide ||
         snap.headlightsOn !== lastHeadlights ||
         snap.passengersCarried !== lastPassengers ||
         annId !== lastAnnId ||
@@ -369,6 +481,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         snap.doorFault.phase !== lastDoorFault ||
         snap.cameraMode !== lastCameraMode ||
         camNoticeId !== lastCameraNoticeId ||
+        snap.line.id !== lastLineId ||
         snap.trainModel.id !== lastTrainModelId ||
         snap.timeOfDay.id !== lastTimeOfDayId;
       if (discreteChanged || now - lastHudSync >= HUD_SYNC_INTERVAL_MS) {
@@ -376,6 +489,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         lastPhase = snap.phase;
         lastScore = snap.score;
         lastDoor = snap.doorState;
+        lastDoorSide = snap.openDoorSide;
         lastHeadlights = snap.headlightsOn;
         lastPassengers = snap.passengersCarried;
         lastAnnId = annId;
@@ -383,6 +497,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         lastDoorFault = snap.doorFault.phase;
         lastCameraMode = snap.cameraMode;
         lastCameraNoticeId = camNoticeId;
+        lastLineId = snap.line.id;
         lastTrainModelId = snap.trainModel.id;
         lastTimeOfDayId = snap.timeOfDay.id;
         document.body.dataset.state = snap.phase;
@@ -408,10 +523,20 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     snapshot,
     muted,
     helpOpen,
+    achievementsOpen,
+    achievementCatalog: achievementServiceRef.current!.getCatalog(),
+    unlockedAchievements,
+    achievementToast,
     leaderboard,
     isNewRecord,
+    selectMetroLine,
+    selectGameMode,
     selectTrainModel,
     selectTimeOfDay,
+    triggerSandboxOncomingTrain,
+    cycleSandboxNextSignal,
+    openAchievements,
+    closeAchievements,
     startGame,
     pauseGame,
     resumeGame,
@@ -421,6 +546,8 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     toggleHelp,
     closeHelp,
     toggleDoors,
+    toggleDoorsLeft,
+    toggleDoorsRight,
     toggleHeadlights,
     acknowledgeCzuwak,
     cycleCamera,
