@@ -4,6 +4,8 @@ interface IStatusModalProps {
   readonly snapshot: ISimulationSnapshot;
   readonly onResume: () => void;
   readonly onRestart: () => void;
+  readonly onOpenPhotoMode?: () => void;
+  readonly onOpenSettings?: () => void;
   readonly onTitle: () => void;
 }
 
@@ -13,7 +15,14 @@ function formatDuration(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-export function StatusModal({ snapshot, onResume, onRestart, onTitle }: IStatusModalProps) {
+export function StatusModal({
+  snapshot,
+  onResume,
+  onRestart,
+  onOpenPhotoMode,
+  onOpenSettings,
+  onTitle,
+}: IStatusModalProps) {
   const isPause = snapshot.phase === 'paused';
   const avgError =
     snapshot.stationsServed > 0
@@ -72,6 +81,28 @@ export function StatusModal({ snapshot, onResume, onRestart, onTitle }: IStatusM
               className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-display font-bold rounded-md cursor-pointer"
             >
               Nowy kurs
+            </button>
+          )}
+
+          {isPause && onOpenPhotoMode && (
+            <button
+              type="button"
+              data-testid="pause-photo-mode-btn"
+              onClick={onOpenPhotoMode}
+              className="w-full py-2.5 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/70 text-cyan-100 font-display font-bold rounded-md cursor-pointer"
+            >
+              Tryb Fotograficzny (wolna kamera) [F]
+            </button>
+          )}
+
+          {isPause && onOpenSettings && (
+            <button
+              type="button"
+              data-testid="pause-settings-btn"
+              onClick={onOpenSettings}
+              className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-100 font-medium rounded-md cursor-pointer"
+            >
+              ⚙ Ustawienia (dźwięk, grafika, FOV)
             </button>
           )}
 

@@ -76,13 +76,60 @@ export const SIEMENS_INSPIRO_SPEC: ITrainModelSpec = {
   },
 };
 
+export const SKODA_VARSOVIA_SPEC: ITrainModelSpec = {
+  id: 'varsovia',
+  name: 'Škoda Varsovia',
+  subtitle: 'Flagowy · 2022',
+  description:
+    'Najnowszy, jednoprzestrzenny skład dla Warszawy. Ultrapłynny rozruch, ciche hamowanie rekuperacyjne, futurystyczny falownik oraz kokpit z 3 ekranami dotykowymi.',
+  massLabel: '154 t',
+  accelLabel: 'Ultrapłynne',
+  brakeLabel: 'Rekuperacyjne',
+  physics: {
+    massKg: 154000,
+    maxTractionForceN: 266000,
+    maxServiceBrakeForceN: 342000,
+    emergencyBrakeForceN: 530000,
+    rollingResistanceCoeff: 0.0016,
+    aeroDragCoeff: 15.0,
+    maxSpeedKmh: 100,
+    throttleRatePerSec: 1.05,
+    brakeRampPerSec: 1.9,
+  },
+  audio: {
+    baseFreqHz: 152,
+    maxFreqSpanHz: 510,
+    harmonicRatio: 3.0,
+    gainScale: 0.72,
+    waveMain: 'sine',
+    waveHarm: 'sine',
+    regenerativeHum: true,
+    brakeSquealScale: 0.16,
+  },
+  visual: {
+    bodyHex: 0xeef2f6,
+    stripeHex: 0xdc2626,
+    roofHex: 0xfacc15,
+    noseHex: 0x0b0f17,
+    cabAccentHex: 0x06b6d4,
+    theme: 'varsovia',
+  },
+};
+
 export const TRAIN_CATALOG: readonly ITrainModelSpec[] = [
   SERIA_81_SPEC,
   SIEMENS_INSPIRO_SPEC,
+  SKODA_VARSOVIA_SPEC,
 ];
 
 export function getTrainModelSpec(id: TrainModelId): ITrainModelSpec {
-  return id === 'seria81' ? SERIA_81_SPEC : SIEMENS_INSPIRO_SPEC;
+  if (id === 'seria81') {
+    return SERIA_81_SPEC;
+  }
+  if (id === 'varsovia') {
+    return SKODA_VARSOVIA_SPEC;
+  }
+  return SIEMENS_INSPIRO_SPEC;
 }
 
 export const CAMERA_MODE_LABELS: Record<CameraMode, string> = {

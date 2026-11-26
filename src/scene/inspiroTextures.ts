@@ -47,17 +47,17 @@ function drawInspiroLedCanvas(
   ctx.lineWidth = 4;
   ctx.strokeRect(2, 2, 508, 92);
   drawLedMatrixGrid(ctx);
-  ctx.fillStyle = lineId === 'M2' ? '#dc2626' : '#f59e0b';
+  ctx.fillStyle = lineId === 'M2' ? '#dc2626' : lineId === 'M1' ? '#f59e0b' : '#10b981';
   ctx.fillRect(18, 16, 78, 64);
-  ctx.fillStyle = lineId === 'M2' ? '#ffffff' : '#090b10';
-  ctx.font = 'bold 42px "Chakra Petch", sans-serif';
+  ctx.fillStyle = lineId === 'M1' ? '#090b10' : '#ffffff';
+  ctx.font = `bold ${lineId.length > 2 ? 32 : 42}px "Chakra Petch", sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(lineId, 57, 50);
   ctx.fillStyle = '#fbbf24';
   ctx.shadowColor = '#f59e0b';
   ctx.shadowBlur = 10;
-  ctx.font = 'bold 46px "JetBrains Mono", monospace';
+  ctx.font = `bold ${destinationLed.length > 12 ? 34 : 46}px "JetBrains Mono", monospace`;
   ctx.fillText(destinationLed, 300, 52);
   ctx.shadowBlur = 0;
 }
@@ -219,10 +219,11 @@ function drawRightLcd(ctx: CanvasRenderingContext2D, snapshot: ISimulationSnapsh
   ctx.lineWidth = 4;
   ctx.strokeRect(4, 4, 504, 312);
 
-  ctx.fillStyle = snapshot.line.id === 'M2' ? '#f87171' : '#38bdf8';
+  const lineBadge = snapshot.line.badgeCode ?? snapshot.line.id;
+  ctx.fillStyle = snapshot.line.id === 'M1' ? '#38bdf8' : snapshot.line.cssColor;
   ctx.font = 'bold 20px "JetBrains Mono", monospace';
   ctx.textAlign = 'left';
-  ctx.fillText(`INSPIRO DIAG · ${snapshot.line.id}`, 22, 34);
+  ctx.fillText(`INSPIRO DIAG · ${lineBadge}`, 22, 34);
   ctx.fillStyle = '#cbd5e1';
   ctx.textAlign = 'right';
   ctx.fillText(formatClockTime(snapshot.schedule.currentClockSec), 488, 34);

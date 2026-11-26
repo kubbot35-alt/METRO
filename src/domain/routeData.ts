@@ -63,12 +63,14 @@ function buildStations(
   }));
 }
 
-function buildSpeedZones(stations: readonly IStationSpec[]): readonly ISpeedLimitZone[] {
+export function buildSpeedZonesForStations(
+  stations: readonly IStationSpec[],
+): readonly ISpeedLimitZone[] {
   const cruiseLimits = [75, 80, 70, 80, 75, 80, 70, 80, 75, 80, 75, 70];
   const zones: ISpeedLimitZone[] = [{ startM: 0, endM: 150, limitKmh: 60 }];
   stations.forEach((station, idx) => {
     const cruiseStart = idx === 0 ? 150 : stations[idx - 1].distanceM + 40;
-    const approachStart = station.distanceM - 170;
+    const approachStart = Math.max(cruiseStart + 40, station.distanceM - 170);
     const approachEnd = station.distanceM + 40;
     zones.push({ startM: cruiseStart, endM: approachStart, limitKmh: cruiseLimits[idx % cruiseLimits.length] });
     zones.push({ startM: approachStart, endM: approachEnd, limitKmh: 45 });
@@ -79,13 +81,14 @@ function buildSpeedZones(stations: readonly IStationSpec[]): readonly ISpeedLimi
 }
 
 export const LINE_M1_STATIONS: readonly IStationSpec[] = buildStations('M1', WARSAW_M1_SEEDS);
-export const LINE_M1_SPEED_ZONES: readonly ISpeedLimitZone[] = buildSpeedZones(LINE_M1_STATIONS);
+export const LINE_M1_SPEED_ZONES: readonly ISpeedLimitZone[] = buildSpeedZonesForStations(LINE_M1_STATIONS);
 
 export const LINE_M2_STATIONS: readonly IStationSpec[] = buildStations('M2', WARSAW_M2_SEEDS);
-export const LINE_M2_SPEED_ZONES: readonly ISpeedLimitZone[] = buildSpeedZones(LINE_M2_STATIONS);
+export const LINE_M2_SPEED_ZONES: readonly ISpeedLimitZone[] = buildSpeedZonesForStations(LINE_M2_STATIONS);
 
 export const METRO_LINE_M1: IMetroLineSpec = {
   id: 'M1',
+  badgeCode: 'M1',
   name: 'Linia M1',
   routeLabel: 'STP Kabaty — Centrum',
   destinationLed: 'MŁOCINY',
@@ -94,12 +97,14 @@ export const METRO_LINE_M1: IMetroLineSpec = {
   cssColor: '#2563eb',
   hasSurfaceStart: true,
   tunnelPortalDistanceM: 300,
+  alignmentIntensity: 'moderate',
   stations: LINE_M1_STATIONS,
   speedZones: LINE_M1_SPEED_ZONES,
 };
 
 export const METRO_LINE_M2: IMetroLineSpec = {
   id: 'M2',
+  badgeCode: 'M2',
   name: 'Linia M2',
   routeLabel: 'Rondo Daszyńskiego — Dworzec Wileński',
   destinationLed: 'BRÓDNO',
@@ -108,6 +113,7 @@ export const METRO_LINE_M2: IMetroLineSpec = {
   cssColor: '#dc2626',
   hasSurfaceStart: false,
   tunnelPortalDistanceM: null,
+  alignmentIntensity: 'moderate',
   stations: LINE_M2_STATIONS,
   speedZones: LINE_M2_SPEED_ZONES,
 };

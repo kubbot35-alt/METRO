@@ -13,23 +13,27 @@ export function createContinuousSoundLayers(
   const inverter = buildInverterLayer(ctx, destination);
   const railNoise = buildRollingNoiseLayer(ctx, destination);
   const brakeSqueal = buildBrakeSquealLayer(ctx, destination);
+  const rainNoise = buildRainNoiseLayer(ctx, destination);
 
   return {
     update: (snapshot: ISimulationSnapshot, now: number): void => {
       updateInverter(inverter, snapshot, now);
       updateRollingNoise(railNoise, snapshot, now);
       updateBrakeSqueal(brakeSqueal, snapshot, now);
+      updateRainNoise(rainNoise, snapshot, now);
     },
     silence: (now: number): void => {
       inverter.gain.gain.setTargetAtTime(0, now, 0.07);
       railNoise.gain.gain.setTargetAtTime(0, now, 0.07);
       brakeSqueal.gain.gain.setTargetAtTime(0, now, 0.05);
+      rainNoise.gain.gain.setTargetAtTime(0, now, 0.08);
     },
     stop: (): void => {
       inverter.oscMain.stop();
       inverter.oscHarm.stop();
       railNoise.source.stop();
       brakeSqueal.osc.stop();
+      rainNoise.source.stop();
     },
   };
 }
@@ -180,20 +184,36 @@ function updateInverter(nodes: IInverterNodes, snapshot: ISimulationSnapshot, no
     nodes.lastModelId = snapshot.trainModel.id;
   }
   const speedRatio = Math.min(1, snapshot.kinematics.speedKmh / 90);
-  const baseFreq =
-    profile.baseFreqHz + speedRatio * profile.maxFreqSpanHz + snapshot.kinematics.throttle * 38;
+  const regenActive =
+    Boolean(profile.regenerativeHum) &&
+    snapshot.kinematics.serviceBrake > 0.08 &&
+    snapshot.kinematics.speedKmh > 1.2;
+  const baseFreq = profile.regenerativeHum
+    ? profile.baseFreqHz +
+      speedRatio * profile.maxFreqSpanHz +
+      snapshot.kinematics.throttle * 26 -
+      (regenActive ? snapshot.kinematics.serviceBrake * 32 : 0)
+    : profile.baseFreqHz + speedRatio * profile.maxFreqSpanHz + snapshot.kinematics.throttle * 38;
+
   const rawVol =
-    speedRatio > 0.006 ? 0.032 + speedRatio * 0.13 + snapshot.kinematics.throttle * 0.045 : 0;
+    speedRatio > 0.006
+      ? 0.028 +
+        speedRatio * 0.12 +
+        snapshot.kinematics.throttle * 0.042 +
+        (regenActive ? snapshot.kinematics.serviceBrake * 0.048 : 0)
+      : 0;
   const vol = rawVol * profile.gainScale;
-  nodes.oscMain.frequency.setTargetAtTime(baseFreq, now, 0.07);
-  nodes.oscHarm.frequency.setTargetAtTime(baseFreq * profile.harmonicRatio, now, 0.07);
-  nodes.filter.frequency.setTargetAtTime(320 + speedRatio * 960, now, 0.08);
-  nodes.gain.gain.setTargetAtTime(vol, now, 0.08);
+  const filterCutoff = profile.regenerativeHum ? 680 + speedRatio * 1450 : 320 + speedRatio * 960;
+  nodes.oscMain.frequency.setTargetAtTime(Math.max(40, baseFreq), now, 0.06);
+  nodes.oscHarm.frequency.setTargetAtTime(Math.max(80, baseFreq * profile.harmonicRatio), now, 0.06);
+  nodes.filter.frequency.setTargetAtTime(filterCutoff, now, 0.08);
+  nodes.gain.gain.setTargetAtTime(vol, now, 0.07);
 }
 
 function updateRollingNoise(nodes: IRollingNoiseNodes, snapshot: ISimulationSnapshot, now: number): void {
   const speedRatio = Math.min(1, snapshot.kinematics.speedKmh / 90);
-  const vol = speedRatio > 0.01 ? speedRatio * speedRatio * 0.18 + speedRatio * 0.04 : 0;
+  const cabinQuietScale = snapshot.trainModel.id === 'varsovia' ? 0.72 : 1.0;
+  const vol = (speedRatio > 0.01 ? speedRatio * speedRatio * 0.18 + speedRatio * 0.04 : 0) * cabinQuietScale;
   nodes.filter.frequency.setTargetAtTime(140 + speedRatio * 420, now, 0.1);
   nodes.gain.gain.setTargetAtTime(vol, now, 0.1);
 }
@@ -204,7 +224,56 @@ function updateBrakeSqueal(nodes: IBrakeSquealNodes, snapshot: ISimulationSnapsh
   const inSquealBand = braking && speedKmh > 0.6 && speedKmh < 20;
   const brakeForce = emergencyBrake ? 1 : serviceBrake;
   const bandFactor = inSquealBand ? Math.sin((speedKmh / 20) * Math.PI) : 0;
-  const vol = inSquealBand ? bandFactor * brakeForce * 0.045 : 0;
+  const squealScale = snapshot.trainModel.audio.brakeSquealScale ?? 1.0;
+  const vol = inSquealBand ? bandFactor * brakeForce * 0.045 * squealScale : 0;
   nodes.osc.frequency.setTargetAtTime(2520 + speedKmh * 18, now, 0.06);
   nodes.gain.gain.setTargetAtTime(vol, now, 0.05);
+}
+
+interface IRainNoiseNodes {
+  source: AudioBufferSourceNode;
+  filter: BiquadFilterNode;
+  gain: GainNode;
+}
+
+function buildRainNoiseLayer(ctx: AudioContext, destination: GainNode): IRainNoiseNodes {
+  const len = ctx.sampleRate * 3;
+  const buffer = ctx.createBuffer(1, len, ctx.sampleRate);
+  const ch = buffer.getChannelData(0);
+  // Pink-ish rain noise with occasional micro raindrop ticks on cab roof/glass
+  let b0 = 0;
+  let b1 = 0;
+  let b2 = 0;
+  for (let i = 0; i < len; i += 1) {
+    const white = Math.random() * 2 - 1;
+    b0 = 0.997 * b0 + white * 0.029;
+    b1 = 0.985 * b1 + white * 0.032;
+    b2 = 0.95 * b2 + white * 0.048;
+    const patter = Math.random() < 0.0025 ? (Math.random() * 2 - 1) * 0.45 : 0;
+    ch[i] = (b0 + b1 + b2 + white * 0.09 + patter) * 0.9;
+  }
+  const source = ctx.createBufferSource();
+  source.buffer = buffer;
+  source.loop = true;
+
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.value = 1850;
+  filter.Q.value = 0.55;
+
+  const gain = ctx.createGain();
+  gain.gain.value = 0;
+  source.connect(filter);
+  filter.connect(gain);
+  gain.connect(destination);
+  source.start();
+  return { source, filter, gain };
+}
+
+function updateRainNoise(nodes: IRainNoiseNodes, snapshot: ISimulationSnapshot, now: number): void {
+  const intensity = snapshot.weather.rainIntensity;
+  const vol = intensity > 0.01 ? intensity * 0.24 : 0;
+  const freq = snapshot.cameraMode === 'exterior' ? 2450 : 1650;
+  nodes.filter.frequency.setTargetAtTime(freq, now, 0.15);
+  nodes.gain.gain.setTargetAtTime(vol, now, 0.18);
 }

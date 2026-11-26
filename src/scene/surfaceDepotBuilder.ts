@@ -4,7 +4,7 @@ import {
   M1_TUNNEL_PORTAL_M,
   type TrackAlignment,
 } from '../domain/trackAlignment';
-import type { TimeOfDayId } from '../domain/types';
+import type { TimeOfDayId, WeatherModeId } from '../domain/types';
 import {
   createDepotBuildingTexture,
   createDepotPortalSignTexture,
@@ -12,7 +12,12 @@ import {
 } from './proceduralTextures';
 
 export interface ISurfaceDepotRig {
-  sync(outdoorBlend: number, timeOfDayId: TimeOfDayId, cameraPos: THREE.Vector3): void;
+  sync(
+    outdoorBlend: number,
+    timeOfDayId: TimeOfDayId,
+    weatherMode: WeatherModeId,
+    cameraPos: THREE.Vector3,
+  ): void;
   dispose(): void;
 }
 
@@ -103,28 +108,42 @@ export function buildSurfaceDepot(
   addDescentRetainingWalls(root, alignment, sharedMats, disposables);
   addConcreteTunnelPortal(root, alignment, sharedMats, disposables);
 
-  let lastTod: TimeOfDayId | null = null;
+  let lastSkyKey = '';
 
   return {
-    sync: (outdoorBlend, timeOfDayId, cameraPos) => {
+    sync: (outdoorBlend, timeOfDayId, weatherMode, cameraPos) => {
       const visibleSky = outdoorBlend > 0.02;
       skyGroup.visible = visibleSky;
       if (visibleSky) {
         skyGroup.position.copy(cameraPos);
       }
-      if (lastTod !== timeOfDayId) {
-        lastTod = timeOfDayId;
+      const skyKey = `${timeOfDayId}|${weatherMode}`;
+      if (lastSkyKey !== skyKey) {
+        lastSkyKey = skyKey;
+        const isRain = weatherMode === 'rain';
         if (timeOfDayId === 'evening') {
-          skyUniforms.uTopColor.value.setHex(0x020612);
-          skyUniforms.uMidColor.value.setHex(0x071228);
-          skyUniforms.uHorizonColor.value.setHex(0x112040);
+          skyUniforms.uTopColor.value.setHex(isRain ? 0x0c1118 : 0x020612);
+          skyUniforms.uMidColor.value.setHex(isRain ? 0x1a2330 : 0x071228);
+          skyUniforms.uHorizonColor.value.setHex(isRain ? 0x2b3644 : 0x112040);
           skyUniforms.uSunDir.value.set(-0.26, 0.34, -0.9).normalize();
           skyUniforms.uSunColor.value.setHex(0xe2ecff);
-          skyUniforms.uSunStrength.value = 0.85;
-          stars.visible = true;
+          skyUniforms.uSunStrength.value = isRain ? 0.08 : 0.85;
+          stars.visible = !isRain;
           sharedMats.mastLamp.emissiveIntensity = 5.2;
           sharedMats.hangarWindow.emissiveIntensity = 2.6;
           sharedMats.hangarSign.emissiveIntensity = 0.95;
+        } else if (isRain) {
+          // Overcast Warsaw rainy morning sky
+          skyUniforms.uTopColor.value.setHex(0x475569);
+          skyUniforms.uMidColor.value.setHex(0x6c7c8e);
+          skyUniforms.uHorizonColor.value.setHex(0x9aa8b8);
+          skyUniforms.uSunDir.value.set(0.32, 0.34, -0.88).normalize();
+          skyUniforms.uSunColor.value.setHex(0xe2e8f0);
+          skyUniforms.uSunStrength.value = 0.14;
+          stars.visible = false;
+          sharedMats.mastLamp.emissiveIntensity = 2.4;
+          sharedMats.hangarWindow.emissiveIntensity = 1.4;
+          sharedMats.hangarSign.emissiveIntensity = 0.65;
         } else {
           skyUniforms.uTopColor.value.setHex(0x2563b5);
           skyUniforms.uMidColor.value.setHex(0x6db0ea);

@@ -1,11 +1,15 @@
 import { CHALLENGE_CATALOG, getChallengeSpec } from '../domain/challengeCatalog';
-import { getMetroLineSpec, METRO_LINE_CATALOG } from '../domain/routeData';
+import { compileCustomLineSpec } from '../domain/customLines';
+import { DRIVER_RANKS, getRankProgress } from '../domain/driverProfile';
+import { METRO_LINE_CATALOG } from '../domain/routeData';
 import { TIME_OF_DAY_CATALOG } from '../domain/timeOfDayCatalog';
 import { TRAIN_CATALOG } from '../domain/trainCatalog';
 import type {
   ChallengeId,
   GameModeId,
   IChallengeSpec,
+  ICustomLineDraft,
+  IDriverProfileStats,
   ILeaderboardEntry,
   IMetroLineSpec,
   ITimeOfDaySpec,
@@ -13,24 +17,34 @@ import type {
   MetroLineId,
   TimeOfDayId,
   TrainModelId,
+  WeatherModeId,
 } from '../domain/types';
 import { LeaderboardPanel } from './LeaderboardPanel';
 
 interface ITitleOverlayProps {
-  readonly selectedLineId: MetroLineId;
+  readonly activeLine: IMetroLineSpec;
+  readonly customLines: readonly ICustomLineDraft[];
+  readonly driverProfile: IDriverProfileStats;
   readonly selectedModelId: TrainModelId;
   readonly selectedTimeOfDayId: TimeOfDayId;
+  readonly selectedWeatherMode: WeatherModeId;
   readonly selectedGameMode: GameModeId;
   readonly selectedChallengeId: ChallengeId;
   readonly leaderboard: readonly ILeaderboardEntry[];
   readonly achievementsUnlocked: number;
   readonly achievementsTotal: number;
   readonly onSelectLine: (lineId: MetroLineId) => void;
+  readonly onOpenLineBuilder: () => void;
+  readonly onEditCustomLine: (draft: ICustomLineDraft) => void;
+  readonly onDeleteCustomLine: (id: string) => void;
   readonly onSelectModel: (modelId: TrainModelId) => void;
   readonly onSelectTimeOfDay: (timeOfDayId: TimeOfDayId) => void;
+  readonly onSelectWeatherMode: (mode: WeatherModeId) => void;
   readonly onSelectGameMode: (mode: GameModeId) => void;
   readonly onSelectChallenge: (challengeId: ChallengeId) => void;
+  readonly onOpenProfile: () => void;
   readonly onOpenAchievements: () => void;
+  readonly onOpenSettings: () => void;
   readonly onToggleHelp: () => void;
   readonly onStart: () => void;
 }
@@ -62,54 +76,89 @@ const MODE_OPTIONS: ReadonlyArray<{
 ];
 
 export function TitleOverlay({
-  selectedLineId,
+  activeLine,
+  customLines,
+  driverProfile,
   selectedModelId,
   selectedTimeOfDayId,
+  selectedWeatherMode,
   selectedGameMode,
   selectedChallengeId,
   leaderboard,
   achievementsUnlocked,
   achievementsTotal,
   onSelectLine,
+  onOpenLineBuilder,
+  onEditCustomLine,
+  onDeleteCustomLine,
   onSelectModel,
   onSelectTimeOfDay,
+  onSelectWeatherMode,
   onSelectGameMode,
   onSelectChallenge,
+  onOpenProfile,
   onOpenAchievements,
+  onOpenSettings,
   onToggleHelp,
   onStart,
 }: ITitleOverlayProps) {
-  const activeLine = getMetroLineSpec(selectedLineId);
   const activeChallenge = getChallengeSpec(selectedChallengeId);
-  const isM2 = activeLine.id === 'M2';
+  const rankProgress = getRankProgress(driverProfile.xp);
+  const rankIndex = DRIVER_RANKS.findIndex((r) => r.id === rankProgress.currentRank.id) + 1;
+  const activeBadge = activeLine.badgeCode ?? activeLine.id;
+  const compiledCustomLines = customLines.map((draft) => ({
+    draft,
+    spec: compileCustomLineSpec(draft),
+  }));
 
   return (
     <div className="fixed inset-0 z-20 pointer-events-none flex flex-col justify-between p-4 md:p-5 bg-gradient-to-r from-[#06090f]/94 via-[#06090f]/78 to-[#06090f]/45 overflow-y-auto">
-      <div className="w-full max-w-6xl mx-auto my-auto pointer-events-auto grid grid-cols-1 lg:grid-cols-[1.62fr_0.86fr] gap-5 items-start">
-        <div>
-          <div className="flex items-center justify-between gap-3 mb-2.5">
-            <div className="flex items-center gap-3">
+      <div className="w-full max-w-6xl mx-auto my-auto pointer-events-auto grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] gap-5 items-start">
+        <div className="min-w-0">
+          <div className="flex items-center justify-between gap-2 mb-2.5">
+            <div className="flex items-center gap-3 min-w-0">
               <svg width="42" height="42" viewBox="0 0 56 56" fill="none" aria-hidden="true" className="shrink-0">
                 <rect x="2" y="2" width="52" height="52" rx="10" fill="#111620" stroke="#e2e8f0" strokeWidth="2.5" />
                 <path d="M12 41V15H19L28 29L37 15H44V41H37.5V26L28 40L18.5 26V41H12Z" fill="#f59e0b" />
                 <rect x="12" y="45" width="32" height="3.5" fill={activeLine.cssColor} />
               </svg>
-              <div>
+              <div className="min-w-0">
                 <p
                   data-testid="title-route-subtitle"
-                  className={`text-[11px] font-mono-tabular tracking-[0.16em] uppercase ${
-                    isM2 ? 'text-red-400' : 'text-blue-400'
-                  }`}
+                  className="text-[11px] font-mono-tabular tracking-[0.14em] uppercase truncate"
+                  style={{ color: activeLine.cssColor }}
                 >
                   {activeLine.name} · {activeLine.stations.length} Stacji · {activeLine.routeLabel}
                 </p>
                 <h1 className="font-display text-2xl md:text-3xl font-bold tracking-tight text-slate-50 leading-none mt-0.5">
-                  METRO {activeLine.id}
+                  METRO {activeBadge}
                 </h1>
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                data-testid="title-profile-btn"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onOpenProfile();
+                }}
+                className="px-2.5 py-1.5 rounded-md border border-emerald-500/60 bg-[#0d1d19]/95 hover:bg-emerald-950/70 text-xs font-mono-tabular text-emerald-200 font-semibold cursor-pointer whitespace-nowrap shrink-0"
+              >
+                Profil
+              </button>
+              <button
+                type="button"
+                data-testid="title-settings-btn"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onOpenSettings();
+                }}
+                className="px-2.5 py-1.5 rounded-md border border-slate-600 bg-[#101622]/95 hover:bg-slate-800 text-xs font-mono-tabular text-slate-100 font-semibold cursor-pointer whitespace-nowrap shrink-0"
+              >
+                ⚙ Ustawienia
+              </button>
               <button
                 type="button"
                 data-testid="title-achievements-btn"
@@ -117,7 +166,7 @@ export function TitleOverlay({
                   e.currentTarget.blur();
                   onOpenAchievements();
                 }}
-                className="px-3 py-1.5 rounded-md border border-amber-500/60 bg-[#18140d]/95 hover:bg-amber-950/70 text-xs font-mono-tabular text-amber-200 font-semibold cursor-pointer flex items-center gap-1.5"
+                className="px-2.5 py-1.5 rounded-md border border-amber-500/60 bg-[#18140d]/95 hover:bg-amber-950/70 text-xs font-mono-tabular text-amber-200 font-semibold cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0"
               >
                 <span>Osiągnięcia</span>
                 <span className="px-1.5 py-0.5 rounded-xs bg-amber-500/20 text-amber-300 text-[10px]">
@@ -131,7 +180,7 @@ export function TitleOverlay({
                   e.currentTarget.blur();
                   onToggleHelp();
                 }}
-                className="px-3 py-1.5 rounded-md border border-slate-700 bg-[#0d1118]/90 hover:bg-slate-800 text-xs font-mono-tabular text-slate-200 cursor-pointer"
+                className="px-2.5 py-1.5 rounded-md border border-slate-700 bg-[#0d1118]/90 hover:bg-slate-800 text-xs font-mono-tabular text-slate-200 cursor-pointer whitespace-nowrap shrink-0"
               >
                 ? Sterowanie
               </button>
@@ -139,16 +188,43 @@ export function TitleOverlay({
           </div>
 
           <div className="mb-2.5">
-            <p className="text-[10px] font-mono-tabular uppercase tracking-[0.18em] text-slate-400 mb-1">
-              1. Wybierz linię metra
-            </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <p className="text-[10px] font-mono-tabular uppercase tracking-[0.18em] text-slate-400">
+                1. Wybierz linię metra
+              </p>
+              <button
+                type="button"
+                data-testid="open-line-builder-btn"
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onOpenLineBuilder();
+                }}
+                className="px-2 py-0.5 rounded border border-emerald-500/60 bg-emerald-500/15 hover:bg-emerald-500/25 text-[10px] font-mono-tabular font-bold text-emerald-200 cursor-pointer whitespace-nowrap"
+              >
+                + Stwórz własną linię
+              </button>
+            </div>
+            <div
+              className={`grid grid-cols-1 md:grid-cols-2 gap-2 ${
+                compiledCustomLines.length > 2 ? 'max-h-[156px] overflow-y-auto pr-0.5' : ''
+              }`}
+            >
               {METRO_LINE_CATALOG.map((lineSpec) => (
                 <LineSelectionCard
                   key={lineSpec.id}
                   spec={lineSpec}
-                  selected={lineSpec.id === selectedLineId}
+                  selected={lineSpec.id === activeLine.id}
                   onSelect={() => onSelectLine(lineSpec.id)}
+                />
+              ))}
+              {compiledCustomLines.map(({ draft, spec }) => (
+                <LineSelectionCard
+                  key={spec.id}
+                  spec={spec}
+                  selected={spec.id === activeLine.id}
+                  onSelect={() => onSelectLine(spec.id)}
+                  onEdit={() => onEditCustomLine(draft)}
+                  onDelete={() => onDeleteCustomLine(draft.id)}
                 />
               ))}
             </div>
@@ -158,7 +234,7 @@ export function TitleOverlay({
             <p className="text-[10px] font-mono-tabular uppercase tracking-[0.18em] text-slate-400 mb-1">
               2. Wybierz skład metra
             </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
               {TRAIN_CATALOG.map((spec) => (
                 <TrainSelectionCard
                   key={spec.id}
@@ -172,9 +248,9 @@ export function TitleOverlay({
 
           <div className="mb-2.5">
             <p className="text-[10px] font-mono-tabular uppercase tracking-[0.18em] text-slate-400 mb-1">
-              3. Pora dnia i natężenie ruchu
+              3. Pora dnia i pogoda (STP Kabaty)
             </p>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
               {TIME_OF_DAY_CATALOG.map((tod) => (
                 <TimeOfDayCard
                   key={tod.id}
@@ -183,6 +259,22 @@ export function TitleOverlay({
                   onSelect={() => onSelectTimeOfDay(tod.id)}
                 />
               ))}
+              <WeatherModeCard
+                mode="clear"
+                title="Bez opadów"
+                badge="SUCHO"
+                description="Dobra widoczność i pełna przyczepność hamowania."
+                selected={selectedWeatherMode === 'clear'}
+                onSelect={() => onSelectWeatherMode('clear')}
+              />
+              <WeatherModeCard
+                mode="rain"
+                title="Deszcz"
+                badge="MOKRO"
+                description="Opady na STP Kabaty, wycieraczki [X] i śliskie szyny (+20% hamowania)."
+                selected={selectedWeatherMode === 'rain'}
+                onSelect={() => onSelectWeatherMode('rain')}
+              />
             </div>
           </div>
 
@@ -265,21 +357,73 @@ export function TitleOverlay({
             className="px-7 py-2.5 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-display font-bold text-base tracking-wide rounded-md shadow-lg transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
           >
             {selectedGameMode === 'sandbox'
-              ? `Uruchom Wolną Jazdę (${activeLine.id})`
+              ? `Uruchom Wolną Jazdę (${activeBadge})`
               : selectedGameMode === 'challenge'
-                ? `Start wyzwania: ${activeChallenge.title} (${activeLine.id})`
-                : `Rozpocznij kurs (${activeLine.id})`}
+                ? `Start wyzwania: ${activeChallenge.title} (${activeBadge})`
+                : `Rozpocznij kurs (${activeBadge})`}
           </button>
         </div>
 
-        <div className="lg:pt-10">
+        <div className="lg:pt-1 space-y-3 min-w-0">
+          <button
+            type="button"
+            data-testid="title-rank-widget"
+            onClick={(e) => {
+              e.currentTarget.blur();
+              onOpenProfile();
+            }}
+            className="w-full text-left rounded-lg border border-slate-700/90 bg-[#0d121c]/95 hover:border-amber-400/70 p-3.5 shadow-lg transition-colors cursor-pointer"
+          >
+            <div className="flex items-start gap-2.5 mb-2">
+              <span
+                className="w-8 h-8 rounded font-display text-sm font-bold text-slate-950 flex items-center justify-center shrink-0 mt-0.5"
+                style={{ backgroundColor: rankProgress.currentRank.badgeColor }}
+              >
+                {rankIndex}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[9.5px] font-mono-tabular uppercase tracking-[0.14em] text-slate-400">
+                    Ranga maszynisty
+                  </p>
+                  <span className="text-xs font-mono-tabular font-bold text-amber-300 whitespace-nowrap shrink-0">
+                    {driverProfile.xp} XP
+                  </span>
+                </div>
+                <p className="font-display text-base font-bold text-slate-50 leading-tight mt-0.5">
+                  {rankProgress.currentRank.title}
+                </p>
+                <p className="text-[10px] font-mono-tabular text-slate-400 mt-0.5">
+                  {driverProfile.totalDistanceKm.toFixed(1)} km · {driverProfile.completedCourses} kursów
+                </p>
+              </div>
+            </div>
+            <div className="w-full h-1.5 bg-slate-800 rounded overflow-hidden">
+              <div
+                className="h-full transition-all duration-500"
+                style={{
+                  width: `${Math.round(rankProgress.progressRatio * 100)}%`,
+                  backgroundColor: rankProgress.currentRank.badgeColor,
+                }}
+              />
+            </div>
+            <div className="flex items-center justify-between gap-2 text-[10px] font-mono-tabular text-slate-400 mt-1.5">
+              <span className="truncate">
+                {rankProgress.nextRank
+                  ? `Następna: ${rankProgress.nextRank.title}`
+                  : 'Maksymalny stopień'}
+              </span>
+              <span className="text-emerald-300 whitespace-nowrap shrink-0">Profil →</span>
+            </div>
+          </button>
+
           <LeaderboardPanel entries={leaderboard} />
         </div>
       </div>
 
       <div className="w-full flex justify-center mt-1.5">
         <p className="text-xs font-mono-tabular text-slate-300 tracking-wide text-center bg-[#090b0f]/85 px-4 py-1.5 rounded border border-slate-800/80">
-          W / S Moc · Spacja Hamulec · B Awaryjny · Q / E Drzwi L/P · V Kamera (4) · R Radio · C Czuwak · L Światła · H Klakson
+          W / S Moc · Spacja Hamulec · B Awaryjny · Q / E Drzwi L/P · V Kamera (4) · F Foto · R Radio · X Wycieraczki · C Czuwak · L Światła
         </p>
       </div>
     </div>
@@ -334,43 +478,84 @@ function LineSelectionCard({
   spec,
   selected,
   onSelect,
+  onEdit,
+  onDelete,
 }: {
   readonly spec: IMetroLineSpec;
   readonly selected: boolean;
   readonly onSelect: () => void;
+  readonly onEdit?: () => void;
+  readonly onDelete?: () => void;
 }) {
-  const isM2 = spec.id === 'M2';
+  const badge = spec.badgeCode ?? spec.id;
   const activeStyles = selected
-    ? isM2
-      ? 'border-red-500 bg-[#231015]/95 shadow-lg'
-      : 'border-blue-500 bg-[#10192b]/95 shadow-lg'
+    ? 'bg-[#121a28]/95 shadow-lg'
     : 'border-slate-700/80 bg-[#0d1118]/90 hover:border-slate-500';
-  const badgeColor = isM2 ? 'bg-red-600 text-white' : 'bg-blue-600 text-white';
 
   return (
-    <button
-      type="button"
-      data-testid={`select-line-${spec.id}`}
-      aria-pressed={selected}
-      onClick={(e) => {
-        e.currentTarget.blur();
-        onSelect();
-      }}
-      className={`text-left rounded-lg border-2 p-2 transition-colors cursor-pointer flex flex-col gap-0.5 ${activeStyles}`}
+    <div
+      className={`rounded-lg border-2 p-2 transition-colors flex flex-col gap-0.5 ${activeStyles}`}
+      style={selected ? { borderColor: spec.cssColor } : undefined}
     >
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          <span className={`px-2 py-0.5 rounded-xs font-mono-tabular text-xs font-bold ${badgeColor}`}>
-            {spec.id}
+        <button
+          type="button"
+          data-testid={`select-line-${spec.id}`}
+          aria-pressed={selected}
+          onClick={(e) => {
+            e.currentTarget.blur();
+            onSelect();
+          }}
+          className="flex-1 text-left flex items-center justify-between gap-2 cursor-pointer min-w-0"
+        >
+          <div className="flex items-center gap-2 min-w-0">
+            <span
+              className="px-2 py-0.5 rounded-xs font-mono-tabular text-xs font-bold text-white shrink-0"
+              style={{ backgroundColor: spec.cssColor }}
+            >
+              {badge}
+            </span>
+            <span className="font-display text-sm font-bold text-slate-50 truncate">{spec.name}</span>
+          </div>
+          <span className="text-[10px] font-mono-tabular text-slate-300 shrink-0">
+            {spec.stations.length} st. · {spec.destinationLed}
           </span>
-          <span className="font-display text-sm font-bold text-slate-50">{spec.name}</span>
-        </div>
-        <span className="text-[10px] font-mono-tabular text-slate-300">
-          {spec.stations.length} stacji · {spec.destinationLed}
-        </span>
+        </button>
+        {spec.isCustom && onEdit && onDelete && (
+          <div className="flex items-center gap-1 shrink-0 ml-1">
+            <button
+              type="button"
+              data-testid={`edit-custom-line-${spec.id}`}
+              aria-label={`Edytuj ${spec.name}`}
+              onClick={onEdit}
+              className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-mono-tabular text-slate-200 cursor-pointer"
+            >
+              Edytuj
+            </button>
+            <button
+              type="button"
+              data-testid={`delete-custom-line-${spec.id}`}
+              aria-label={`Usuń ${spec.name}`}
+              onClick={onDelete}
+              className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-red-900/80 text-[10px] font-mono-tabular text-red-300 cursor-pointer"
+            >
+              ✕
+            </button>
+          </div>
+        )}
       </div>
-      <p className="text-[11px] text-slate-300 leading-snug">{spec.routeLabel}</p>
-    </button>
+      <button
+        type="button"
+        onClick={(e) => {
+          e.currentTarget.blur();
+          onSelect();
+        }}
+        className="text-left text-[11px] text-slate-300 leading-snug truncate cursor-pointer"
+      >
+        {spec.routeLabel}
+        {spec.isCustom ? (spec.hasSurfaceStart ? ' · Start naziemny' : ' · Własna trasa') : ''}
+      </button>
+    </div>
   );
 }
 
@@ -384,10 +569,13 @@ function TrainSelectionCard({
   readonly onSelect: () => void;
 }) {
   const isRetro = spec.visual.theme === 'retro';
+  const isVarsovia = spec.visual.theme === 'varsovia';
   const activeStyles = selected
     ? isRetro
       ? 'border-emerald-400 bg-[#15221e]/95 shadow-lg'
-      : 'border-amber-400 bg-[#121926]/95 shadow-lg'
+      : isVarsovia
+        ? 'border-cyan-400 bg-[#0d1c27]/95 shadow-lg'
+        : 'border-amber-400 bg-[#121926]/95 shadow-lg'
     : 'border-slate-700/80 bg-[#0d1118]/90 hover:border-slate-500';
 
   return (
@@ -399,40 +587,42 @@ function TrainSelectionCard({
         e.currentTarget.blur();
         onSelect();
       }}
-      className={`text-left rounded-lg border-2 p-2.5 transition-colors cursor-pointer flex flex-col justify-between gap-1.5 ${activeStyles}`}
+      className={`text-left rounded-lg border-2 p-2 transition-colors cursor-pointer flex flex-col justify-between gap-1.5 ${activeStyles}`}
     >
       <div>
-        <div className="flex items-center justify-between gap-2 mb-1">
-          <span className="font-display text-sm font-bold text-slate-50 leading-none">
+        <div className="flex items-center justify-between gap-1.5 mb-1">
+          <span className="font-display text-sm font-bold text-slate-50 leading-none truncate">
             {spec.name}
           </span>
           <span
-            className={`text-[10px] font-mono-tabular uppercase tracking-wider px-2 py-0.5 rounded font-semibold ${
+            className={`text-[9px] font-mono-tabular uppercase tracking-wider px-1.5 py-0.5 rounded font-semibold shrink-0 whitespace-nowrap ${
               selected
                 ? isRetro
                   ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/50'
-                  : 'bg-amber-500/20 text-amber-300 border border-amber-400/50'
+                  : isVarsovia
+                    ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/50'
+                    : 'bg-amber-500/20 text-amber-300 border border-amber-400/50'
                 : 'bg-slate-800 text-slate-400'
             }`}
           >
             {selected ? 'WYBRANY' : spec.subtitle}
           </span>
         </div>
-        <p className="text-[11px] text-slate-300 leading-snug">{spec.description}</p>
+        <p className="text-[10.5px] text-slate-300 leading-snug line-clamp-2">{spec.description}</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-2 pt-1.5 border-t border-slate-700/60 font-mono-tabular text-[11px]">
-        <div>
-          <span className="block text-[9px] uppercase text-slate-400">Masa</span>
-          <span className="text-slate-100 font-semibold">{spec.massLabel}</span>
+      <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-700/60 font-mono-tabular text-[10px]">
+        <div className="min-w-0">
+          <span className="block text-[8.5px] uppercase text-slate-400">Masa</span>
+          <span className="text-slate-100 font-semibold truncate block">{spec.massLabel}</span>
         </div>
-        <div>
-          <span className="block text-[9px] uppercase text-slate-400">Rozruch</span>
-          <span className="text-slate-100 font-semibold">{spec.accelLabel}</span>
+        <div className="min-w-0">
+          <span className="block text-[8.5px] uppercase text-slate-400">Rozruch</span>
+          <span className="text-slate-100 font-semibold truncate block">{spec.accelLabel}</span>
         </div>
-        <div>
-          <span className="block text-[9px] uppercase text-slate-400">Hamulce</span>
-          <span className="text-slate-100 font-semibold">{spec.brakeLabel}</span>
+        <div className="min-w-0">
+          <span className="block text-[8.5px] uppercase text-slate-400">Hamulce</span>
+          <span className="text-slate-100 font-semibold truncate block">{spec.brakeLabel}</span>
         </div>
       </div>
     </button>
@@ -480,7 +670,59 @@ function TimeOfDayCard({
           {spec.clockLabel}
         </span>
       </div>
-      <p className="text-[11px] text-slate-300 leading-snug">{spec.description}</p>
+      <p className="text-[10px] text-slate-300 leading-snug line-clamp-2">{spec.description}</p>
+    </button>
+  );
+}
+
+function WeatherModeCard({
+  mode,
+  title,
+  badge,
+  description,
+  selected,
+  onSelect,
+}: {
+  readonly mode: WeatherModeId;
+  readonly title: string;
+  readonly badge: string;
+  readonly description: string;
+  readonly selected: boolean;
+  readonly onSelect: () => void;
+}) {
+  const isRain = mode === 'rain';
+  const activeStyles = selected
+    ? isRain
+      ? 'border-cyan-400 bg-[#0d1c27]/95 shadow-lg'
+      : 'border-amber-400 bg-[#20190f]/95 shadow-lg'
+    : 'border-slate-700/80 bg-[#0d1118]/90 hover:border-slate-500';
+
+  return (
+    <button
+      type="button"
+      data-testid={`select-weather-${mode}`}
+      aria-pressed={selected}
+      onClick={(e) => {
+        e.currentTarget.blur();
+        onSelect();
+      }}
+      className={`text-left rounded-lg border-2 p-2 transition-colors cursor-pointer flex flex-col gap-0.5 ${activeStyles}`}
+    >
+      <div className="flex items-center justify-between gap-1.5">
+        <span className="font-display text-sm font-bold text-slate-50">{title}</span>
+        <span
+          className={`text-[10px] font-mono-tabular font-bold px-1.5 py-0.5 rounded ${
+            selected
+              ? isRain
+                ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/50'
+                : 'bg-amber-500/20 text-amber-200 border border-amber-400/50'
+              : 'bg-slate-800 text-slate-300'
+          }`}
+        >
+          {badge}
+        </span>
+      </div>
+      <p className="text-[10px] text-slate-300 leading-snug line-clamp-2">{description}</p>
     </button>
   );
 }

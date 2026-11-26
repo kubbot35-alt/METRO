@@ -6,6 +6,7 @@ import { evaluateChallengeOutcome, getChallengeSpec } from './challengeCatalog';
 import { FeedbackTracker, type IFeedbackTracker } from './feedbackTracker';
 import { MetroIncidentSystem, type IIncidentController } from './incidentSystem';
 import { DispatcherRadioSystem, type IRadioController } from './radioSystem';
+import { MetroWeatherSystem, type IWeatherController } from './weatherSystem';
 import {
   BOARDING_DURATION_SEC,
   LINE_M1_SPEED_ZONES,
@@ -62,6 +63,7 @@ import type {
   MetroLineId,
   TimeOfDayId,
   TrainModelId,
+  WeatherModeId,
 } from './types';
 
 const STOPPED_SPEED_KMH = 0.25;
@@ -79,6 +81,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
   private readonly incidents: IIncidentController;
   private readonly traffic: ITrafficController;
   private readonly radio: IRadioController;
+  private readonly weather: IWeatherController;
   private line: IMetroLineSpec = METRO_LINE_M1;
   private stations: readonly IStationSpec[];
   private speedZones: readonly ISpeedLimitZone[];
@@ -135,6 +138,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     incidents: IIncidentController = new MetroIncidentSystem(stations),
     traffic: ITrafficController = new OppositeTrackTrafficSystem(),
     radio: IRadioController = new DispatcherRadioSystem(stations),
+    weather: IWeatherController = new MetroWeatherSystem(),
   ) {
     this.physics = physics;
     this.scoring = scoring;
@@ -147,17 +151,25 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.incidents = incidents;
     this.traffic = traffic;
     this.radio = radio;
+    this.weather = weather;
     this.traffic.setStations?.(stations);
     this.alignment = getLineTrackAlignment(this.line.id, stations);
     this.physics.setConfig?.(this.trainModel.physics);
   }
 
   public setMetroLine(lineId: MetroLineId): void {
-    const nextLine = getMetroLineSpec(lineId);
+    this.setMetroLineSpec(getMetroLineSpec(lineId));
+  }
+
+  public setMetroLineSpec(nextLine: IMetroLineSpec): void {
     this.line = nextLine;
     this.stations = nextLine.stations;
     this.speedZones = nextLine.speedZones;
-    this.alignment = getLineTrackAlignment(nextLine.id, nextLine.stations);
+    this.alignment = getLineTrackAlignment(nextLine.id, nextLine.stations, {
+      hasSurfaceStart: nextLine.hasSurfaceStart,
+      tunnelPortalDistanceM: nextLine.tunnelPortalDistanceM,
+      alignmentIntensity: nextLine.alignmentIntensity,
+    });
     this.stationIndex = 0;
     this.signals.setDistances?.(buildSemaphoreDistances(nextLine.stations));
     this.schedule.setStations?.(nextLine.stations);
@@ -178,6 +190,10 @@ export class MetroSimulationEngine implements IMetroSimulation {
     if (this.gameMode === 'challenge') {
       this.applyActiveModeOverrides();
     }
+  }
+
+  public setWeatherMode(mode: WeatherModeId): void {
+    this.weather.setMode(mode);
   }
 
   public triggerSandboxOncomingTrain(): void {
@@ -282,6 +298,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.incidents.reset();
     this.traffic.reset();
     this.radio.reset();
+    this.weather.reset();
     this.applyActiveModeOverrides();
   }
 
@@ -299,7 +316,18 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.feedback.tick(dt);
     const prevPosM = this.kinematics.positionM;
     const prevSpeedKmh = this.kinematics.speedKmh;
-    const emergencyTriggered = this.advancePhysics(input, dt);
+    const preSample = this.alignment.sample(prevPosM);
+    const weatherRes = this.weather.step(
+      this.alignment.hasSurfaceStart,
+      prevPosM,
+      preSample.outdoorBlend,
+      prevSpeedKmh,
+      this.kinematics.serviceBrake,
+      this.kinematics.emergencyBrake,
+      Boolean(input.toggleWipersPressed),
+      dt,
+    );
+    const emergencyTriggered = this.advancePhysics(input, dt, weatherRes.brakeGripMultiplier);
     this.leverTarget = this.computeLeverTarget(input);
     const atpTriggered = this.evaluateSignals(prevPosM, dt);
     const incRes = this.evaluateIncidents(Boolean(input.acknowledgeCzuwakPressed), dt);
@@ -338,6 +366,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
       passingTrainWhoosh: trafficRes.passingTrainWhoosh,
       radioDispatchTriggered: radioRes.dispatchTriggered,
       radioAckChime: radioRes.acknowledgedNow,
+      wiperSweepTick: weatherRes.wiperSweepTick,
     };
   }
 
@@ -409,6 +438,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
       doorFault: this.incidents.getDoorFaultState(),
       czuwak: this.incidents.getCzuwakState(),
       radio: this.radio.getState(),
+      weather: this.weather.getState(),
       totalStations: this.stations.length,
       stationsServed: this.stationsServed,
       stationsMissed: this.stationsMissed,
@@ -471,7 +501,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     return res;
   }
 
-  private advancePhysics(input: IControlInput, dt: number): boolean {
+  private advancePhysics(input: IControlInput, dt: number, weatherGripMultiplier: number): boolean {
     const prevEmergency = this.kinematics.emergencyBrake;
     const effectiveInput: IControlInput = this.atpActive
       ? { ...input, forceEmergencyBrake: true }
@@ -479,7 +509,8 @@ export class MetroSimulationEngine implements IMetroSimulation {
     const gradeFraction = this.alignment.sample(this.kinematics.positionM).gradeFraction;
     const challenge = this.getActiveChallenge();
     const tractionMultiplier = challenge ? challenge.tractionMultiplier : 1.0;
-    const brakeGripMultiplier = this.radio.getState().slipperyRailsActive ? 0.82 : 1.0;
+    const radioGrip = this.radio.getState().slipperyRailsActive ? 0.82 : 1.0;
+    const brakeGripMultiplier = Math.min(radioGrip, weatherGripMultiplier);
     this.kinematics = this.physics.step(
       this.kinematics,
       effectiveInput,
@@ -916,6 +947,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
       passingTrainWhoosh: false,
       radioDispatchTriggered: false,
       radioAckChime: false,
+      wiperSweepTick: false,
     };
   }
 }

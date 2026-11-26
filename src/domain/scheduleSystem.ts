@@ -73,10 +73,21 @@ export class MetroScheduleController implements IScheduleController {
 
   private rebuildTargets(boardingDurationSec: number): void {
     const extraDwell = Math.max(0, boardingDurationSec - BOARDING_DURATION_SEC);
-    const legTotal = SUBSEQUENT_LEG_TOTAL_SEC + extraDwell;
-    this.arrivalTargetsSec = this.stations.map((_, idx) =>
-      idx === 0 ? FIRST_LEG_TRAVEL_SEC : FIRST_LEG_TRAVEL_SEC + idx * legTotal,
-    );
+    const targets: number[] = [];
+    let accSec = 0;
+    for (let idx = 0; idx < this.stations.length; idx += 1) {
+      const prevDist = idx > 0 ? this.stations[idx - 1].distanceM : 0;
+      const legDist = Math.max(250, this.stations[idx].distanceM - prevDist);
+      const scale = legDist / 600;
+      if (idx === 0) {
+        accSec = Math.round(FIRST_LEG_TRAVEL_SEC * scale);
+      } else {
+        const travel = Math.round((SUBSEQUENT_LEG_TOTAL_SEC - DWELL_ALLOWANCE_SEC) * scale);
+        accSec += travel + DWELL_ALLOWANCE_SEC + extraDwell;
+      }
+      targets.push(accSec);
+    }
+    this.arrivalTargetsSec = targets;
   }
 
   public recordStationArrival(stationIndex: number, elapsedSec: number): number {
@@ -99,6 +110,8 @@ export class MetroScheduleController implements IScheduleController {
         ? this.arrivalDeviations.reduce((sum, v) => sum + v, 0) / this.arrivalDeviations.length
         : deviationSec;
 
+    const punctualArrivalsCount = this.arrivalDeviations.filter((d) => d <= 10).length;
+
     return {
       currentClockSec: this.startClockSec + elapsedSec,
       nextArrivalClockSec: this.startClockSec + targetArrival,
@@ -106,6 +119,7 @@ export class MetroScheduleController implements IScheduleController {
       status: classifyPunctuality(deviationSec),
       averageDeviationSec: avg,
       punctualitySamples: this.arrivalDeviations.length,
+      punctualArrivalsCount,
     };
   }
 

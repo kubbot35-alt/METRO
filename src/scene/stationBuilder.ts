@@ -23,22 +23,22 @@ export function buildMetroStations(
   alignment: TrackAlignment,
   stations: readonly IStationSpec[],
   maxAnisotropy: number,
-  lineSpec?: Pick<IMetroLineSpec, 'id' | 'destinationLed' | 'oppositeDestinationLed' | 'cssColor'>,
+  lineSpec?: Pick<IMetroLineSpec, 'id' | 'badgeCode' | 'destinationLed' | 'oppositeDestinationLed' | 'cssColor'>,
 ): ISceneResources {
   const disposables: Array<{ dispose(): void }> = [];
   const root = new THREE.Group();
   root.name = 'MetroStationsGroup';
   scene.add(root);
 
-  const lineId = lineSpec?.id ?? 'M1';
+  const lineBadge = lineSpec?.badgeCode ?? lineSpec?.id ?? 'M1';
   const destLed = lineSpec?.destinationLed ?? 'MŁOCINY';
-  const oppDestLed = lineSpec?.oppositeDestinationLed ?? (lineId === 'M2' ? 'BEMOWO' : 'KABATY');
+  const oppDestLed = lineSpec?.oppositeDestinationLed ?? (lineBadge === 'M2' ? 'BEMOWO' : 'KABATY');
   const lineCss = lineSpec?.cssColor ?? '#2563eb';
 
   const platformTex = createPlatformTileTexture(maxAnisotropy);
   const stopTex = createStopMarkerTexture(maxAnisotropy);
-  const clockTexPlayer = createPlatformClockTexture(lineId, destLed, lineCss, maxAnisotropy);
-  const clockTexOpp = createPlatformClockTexture(lineId, oppDestLed, lineCss, maxAnisotropy);
+  const clockTexPlayer = createPlatformClockTexture(lineBadge, destLed, lineCss, maxAnisotropy);
+  const clockTexOpp = createPlatformClockTexture(lineBadge, oppDestLed, lineCss, maxAnisotropy);
   const sharedMats = createSharedStationMaterials(
     platformTex,
     stopTex,
@@ -54,7 +54,7 @@ export function buildMetroStations(
   );
 
   stations.forEach((station) => {
-    const stationGroup = createSingleStation(station, alignment, lineId, sharedMats, maxAnisotropy, disposables);
+    const stationGroup = createSingleStation(station, alignment, lineBadge, sharedMats, maxAnisotropy, disposables);
     root.add(stationGroup);
   });
 
@@ -143,7 +143,7 @@ function createSharedStationMaterials(
 function createSingleStation(
   station: IStationSpec,
   alignment: TrackAlignment,
-  lineId: 'M1' | 'M2',
+  lineId: string,
   mats: ISharedStationMats,
   maxAnisotropy: number,
   disposables: Array<{ dispose(): void }>,

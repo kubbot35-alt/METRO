@@ -6,17 +6,27 @@ export type SignalAspect = 'green' | 'yellow' | 'red';
 
 export type FeedbackTone = 'neutral' | 'success' | 'warning' | 'danger';
 
-export type TrainModelId = 'seria81' | 'inspiro';
+export type TrainModelId = 'seria81' | 'inspiro' | 'varsovia';
+
+export type TrainVisualTheme = 'retro' | 'modern' | 'varsovia';
+
+export type PhotoFilterId = 'normal' | 'cinematic' | 'vhs' | 'noir';
 
 export type CameraMode = 'cab' | 'mirror' | 'exterior' | 'interior';
 
 export type TimeOfDayId = 'rush' | 'evening';
 
-export type MetroLineId = 'M1' | 'M2';
+export type MetroLineId = string;
+
+export type TrackAlignmentIntensity = 'flat' | 'moderate' | 'curvy';
 
 export type GameModeId = 'duty' | 'sandbox' | 'challenge';
 
 export type ChallengeId = 'inverter_fault' | 'technical_run' | 'black_series';
+
+export type WeatherModeId = 'clear' | 'rain';
+
+export type GraphicsQualityId = 'low' | 'medium' | 'high';
 
 export type PlatformLayout = 'island' | 'side';
 
@@ -87,6 +97,35 @@ export interface IRadioDispatchState {
   readonly slipperyRailsActive: boolean;
 }
 
+export interface IWeatherState {
+  readonly mode: WeatherModeId;
+  readonly wipersOn: boolean;
+  readonly wiperPhaseRad: number;
+  readonly rainIntensity: number;
+  readonly wetRailsActive: boolean;
+  readonly wheelSlipActive: boolean;
+}
+
+export interface IGameSettings {
+  readonly masterVolume: number;
+  readonly trainVolume: number;
+  readonly voiceVolume: number;
+  readonly graphicsQuality: GraphicsQualityId;
+  readonly cabFovDeg: number;
+  readonly showFps: boolean;
+}
+
+export interface IGraphicsQualityPreset {
+  readonly id: GraphicsQualityId;
+  readonly label: string;
+  readonly description: string;
+  readonly drawDistanceM: number;
+  readonly passengerDensity: number;
+  readonly rainDensity: number;
+  readonly pixelRatioCap: number;
+  readonly enableShadows: boolean;
+}
+
 export interface IAchievementRecord {
   readonly id: AchievementId;
   readonly unlockedAtIso: string;
@@ -133,8 +172,27 @@ export interface ITrackProfileSnapshot {
   readonly upcomingCurveDistanceM: number | null;
 }
 
+export interface ICustomStationDraft {
+  readonly name: string;
+  readonly wallHex: string;
+  readonly platformLayout: PlatformLayout;
+  readonly spacingFromPrevM: number;
+}
+
+export interface ICustomLineDraft {
+  readonly id: string;
+  readonly name: string;
+  readonly destinationLed: string;
+  readonly cssColor: string;
+  readonly hasSurfaceStart: boolean;
+  readonly alignmentIntensity: TrackAlignmentIntensity;
+  readonly stations: readonly ICustomStationDraft[];
+}
+
 export interface IMetroLineSpec {
   readonly id: MetroLineId;
+  readonly badgeCode?: string;
+  readonly isCustom?: boolean;
   readonly name: string;
   readonly routeLabel: string;
   readonly destinationLed: string;
@@ -143,8 +201,48 @@ export interface IMetroLineSpec {
   readonly cssColor: string;
   readonly hasSurfaceStart: boolean;
   readonly tunnelPortalDistanceM: number | null;
+  readonly alignmentIntensity?: TrackAlignmentIntensity;
   readonly stations: readonly IStationSpec[];
   readonly speedZones: readonly ISpeedLimitZone[];
+}
+
+export type DriverRankId =
+  | 'trainee'
+  | 'junior'
+  | 'driver'
+  | 'senior'
+  | 'instructor'
+  | 'legend';
+
+export interface IDriverRankSpec {
+  readonly id: DriverRankId;
+  readonly title: string;
+  readonly minXp: number;
+  readonly badgeColor: string;
+  readonly description: string;
+}
+
+export interface IDriverProfileStats {
+  readonly totalDistanceKm: number;
+  readonly totalPassengers: number;
+  readonly completedCourses: number;
+  readonly totalDriveTimeSec: number;
+  readonly highestGrade: DriverGrade | null;
+  readonly punctualArrivals: number;
+  readonly totalArrivals: number;
+  readonly xp: number;
+}
+
+export interface ICourseXpReward {
+  readonly gainedXp: number;
+  readonly baseXp: number;
+  readonly distanceXp: number;
+  readonly scoreXp: number;
+  readonly modeMultiplier: number;
+  readonly previousRank: IDriverRankSpec;
+  readonly newRank: IDriverRankSpec;
+  readonly rankedUp: boolean;
+  readonly totalXpAfter: number;
 }
 
 export interface ITimeOfDaySpec {
@@ -181,8 +279,10 @@ export interface ITrainAudioProfile {
   readonly maxFreqSpanHz: number;
   readonly harmonicRatio: number;
   readonly gainScale: number;
-  readonly waveMain: 'triangle' | 'sawtooth';
+  readonly waveMain: 'triangle' | 'sawtooth' | 'sine';
   readonly waveHarm: 'sawtooth' | 'sine';
+  readonly regenerativeHum?: boolean;
+  readonly brakeSquealScale?: number;
 }
 
 export interface ITrainVisualProfile {
@@ -191,7 +291,35 @@ export interface ITrainVisualProfile {
   readonly roofHex: number;
   readonly noseHex: number;
   readonly cabAccentHex: number;
-  readonly theme: 'retro' | 'modern';
+  readonly theme: TrainVisualTheme;
+}
+
+export interface IPhotoFilterSpec {
+  readonly id: PhotoFilterId;
+  readonly label: string;
+  readonly shortDesc: string;
+  readonly cssFilter: string;
+}
+
+export interface IPhotoCameraState {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly yaw: number;
+  readonly pitch: number;
+  readonly rollDeg: number;
+  readonly fovDeg: number;
+  readonly filter: PhotoFilterId;
+}
+
+export interface IPhotoMoveInput {
+  readonly forward: boolean;
+  readonly backward: boolean;
+  readonly left: boolean;
+  readonly right: boolean;
+  readonly up: boolean;
+  readonly down: boolean;
+  readonly boost: boolean;
 }
 
 export interface ITrainModelSpec {
@@ -287,6 +415,7 @@ export interface IScheduleSnapshot {
   readonly status: PunctualityStatus;
   readonly averageDeviationSec: number;
   readonly punctualitySamples: number;
+  readonly punctualArrivalsCount?: number;
 }
 
 export interface ITrackworkZone {
@@ -317,6 +446,7 @@ export interface IControlInput {
   readonly toggleDoorsLeftPressed?: boolean;
   readonly toggleDoorsRightPressed?: boolean;
   readonly toggleHeadlightsPressed?: boolean;
+  readonly toggleWipersPressed?: boolean;
   readonly acknowledgeCzuwakPressed?: boolean;
   readonly acknowledgeRadioPressed?: boolean;
   readonly cycleCameraPressed?: boolean;
@@ -411,6 +541,7 @@ export interface IAudioEvents {
   readonly passingTrainWhoosh: boolean;
   readonly radioDispatchTriggered?: boolean;
   readonly radioAckChime?: boolean;
+  readonly wiperSweepTick?: boolean;
 }
 
 export interface ISimulationSnapshot {
@@ -453,6 +584,7 @@ export interface ISimulationSnapshot {
   readonly doorFault: IDoorFaultState;
   readonly czuwak: ICzuwakState;
   readonly radio: IRadioDispatchState;
+  readonly weather: IWeatherState;
   readonly totalStations: number;
   readonly stationsServed: number;
   readonly stationsMissed: number;
@@ -474,8 +606,10 @@ export interface ISimulationSnapshot {
 export interface IMetroSimulation {
   getSnapshot(): ISimulationSnapshot;
   setMetroLine(lineId: MetroLineId): void;
+  setMetroLineSpec?(spec: IMetroLineSpec): void;
   setGameMode(mode: GameModeId): void;
   setChallenge?(challengeId: ChallengeId): void;
+  setWeatherMode?(mode: WeatherModeId): void;
   setTrainModel(modelId: TrainModelId): void;
   setTimeOfDay(timeOfDayId: TimeOfDayId): void;
   triggerSandboxOncomingTrain(): void;

@@ -42,10 +42,14 @@ export function TopHudBar({
   onAcknowledgeRadio,
 }: ITopHudBarProps) {
   const { feedback, announcement, cameraNotice, radio, challenge } = snapshot;
-  const isRetro = snapshot.trainModel.visual.theme === 'retro';
+  const theme = snapshot.trainModel.visual.theme;
+  const isRetro = theme === 'retro';
+  const isVarsovia = theme === 'varsovia';
   const barClasses = isRetro
     ? 'bg-[#15201c]/92 border-[#4c6b5f]'
-    : 'bg-[#10141c]/90 border-slate-700/75';
+    : isVarsovia
+      ? 'bg-[#09101a]/92 border-cyan-500/45'
+      : 'bg-[#10141c]/90 border-slate-700/75';
 
   return (
     <div className="fixed top-0 inset-x-0 z-10 pointer-events-none px-4 pt-3 flex items-start justify-between gap-3">
@@ -117,7 +121,11 @@ export function TopHudBar({
 
       <div className="flex-1 min-w-0 flex flex-col items-center gap-1.5 max-w-[44vw]">
         <RouteLineStrip snapshot={snapshot} />
-        <MetroLedDisplay announcement={announcement} lineId={snapshot.line.id} />
+        <MetroLedDisplay
+          announcement={announcement}
+          lineId={snapshot.line.badgeCode ?? snapshot.line.id}
+          lineCssColor={snapshot.line.cssColor}
+        />
         {radio.active && (
           <div
             role="alert"

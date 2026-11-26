@@ -9,14 +9,20 @@ import {
   getStationPlatformLayout,
   getStationPlatformSide,
 } from '../domain/trackGeometry';
-import { SERIA_81_SPEC, SIEMENS_INSPIRO_SPEC } from '../domain/trainCatalog';
+import { getPhotoFilterSpec } from '../domain/photoMode';
+import { DEFAULT_GAME_SETTINGS, getGraphicsQualityPreset } from '../domain/settingsService';
+import { getTrainModelSpec, SERIA_81_SPEC, SIEMENS_INSPIRO_SPEC } from '../domain/trainCatalog';
 import type {
+  IGameSettings,
+  IPhotoCameraState,
   ISimulationSnapshot,
   IStationSpec,
   MetroLineId,
+  PhotoFilterId,
   SignalAspect,
   TimeOfDayId,
   TrainModelId,
+  WeatherModeId,
 } from '../domain/types';
 import { buildMetroCabRig, type ICabRig } from './cabBuilder';
 import { MetroCabMotionController, type ICabMotionController } from './cabMotionController';
@@ -25,20 +31,24 @@ import {
   type IPassengerInteriorRig,
 } from './passengerInteriorBuilder';
 import { buildStationPassengers, type IPassengerRig } from './passengerManager';
+import { buildRainSystem, type IRainSystemRig } from './rainSystemBuilder';
 import { buildTunnelSemaphores, type ISemaphoreRig } from './semaphoreBuilder';
 import { buildMetroStations } from './stationBuilder';
 import { buildSurfaceDepot, type ISurfaceDepotRig } from './surfaceDepotBuilder';
 import { buildTrackworkRig, type ITrackworkRig } from './trackworkBuilder';
 import { buildMetroConsist, type ITrainConsistRig } from './trainMeshBuilder';
 import { buildMetroTunnel } from './tunnelBuilder';
-import type { IMetroSceneRenderer, ISceneResources } from './types';
+import type { IMetroSceneRenderer, IPhotoAnchorPose, ISceneResources } from './types';
 
 const _bgColor = new THREE.Color();
 const _tunnelBgColor = new THREE.Color(0x06080d);
 const _daySkyFogColor = new THREE.Color(0xc5ddf5);
+const _rainDayFogColor = new THREE.Color(0x8897a8);
 const _nightSkyFogColor = new THREE.Color(0x111d38);
+const _rainNightFogColor = new THREE.Color(0x1b2432);
 const _hemiTunnelSky = new THREE.Color(0x6c88ab);
 const _hemiDaySky = new THREE.Color(0xcde6ff);
+const _hemiRainDaySky = new THREE.Color(0x8ea0b5);
 const _hemiNightSky = new THREE.Color(0x3a5284);
 const _hemiTunnelGround = new THREE.Color(0x1e1812);
 const _hemiDayGround = new THREE.Color(0x4a5a44);
@@ -91,14 +101,19 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
   private interiorSideBlend = 1;
   private trackworkRig: ITrackworkRig | null = null;
   private surfaceDepotRig: ISurfaceDepotRig | null = null;
+  private rainRig: IRainSystemRig | null = null;
+  private settings: IGameSettings = DEFAULT_GAME_SETTINGS;
+  private passengerDensity = 1.0;
+  private fogDensityScale = 1.0;
   private alignment: TrackAlignment = getLineTrackAlignment(METRO_LINE_M1.id, LINE_M1_STATIONS);
   private worldResources: ISceneResources[] = [];
   private envTexture: THREE.Texture | null = null;
   private container: HTMLElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
   private maxAniso = 4;
-  private appliedLineId: MetroLineId | null = null;
+  private appliedLineSignature: string | null = null;
   private appliedModelId: TrainModelId | null = null;
+  private appliedOncomingModelId: TrainModelId | null = null;
   private appliedTimeOfDayId: TimeOfDayId | null = null;
 
   public constructor(motion: ICabMotionController = new MetroCabMotionController()) {
@@ -112,7 +127,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     const height = Math.max(container.clientHeight, 1);
 
     this.scene = this.createScene();
-    this.camera = new THREE.PerspectiveCamera(64, width / height, 0.1, 360);
+    this.camera = new THREE.PerspectiveCamera(this.settings.cabFovDeg, width / height, 0.1, 420);
     this.camera.rotation.order = 'YXZ';
     const startFrame = this.alignment.sample(0);
     this.camera.position.set(startFrame.x, startFrame.y + 2.15, startFrame.z);
@@ -123,11 +138,31 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.setupEnvironment(this.renderer, this.scene);
     this.setupLights(this.scene);
     this.setupWorldAndCab(this.renderer, this.scene, this.camera);
-    this.applyAtmosphere(1, 'rush', 0.8, 0.0098);
-    this.surfaceDepotRig?.sync(1, 'rush', this.camera.position);
+    this.applySettings(this.settings);
+    this.applyAtmosphere(1, 'rush', 'clear', 0.8, 0.0098);
+    this.surfaceDepotRig?.sync(1, 'rush', 'clear', this.camera.position);
     this.attachResizeObserver(container);
     this.scene.updateMatrixWorld(true);
     this.renderer.render(this.scene, this.camera);
+  }
+
+  public applySettings(settings: IGameSettings): void {
+    this.settings = settings;
+    const preset = getGraphicsQualityPreset(settings.graphicsQuality);
+    this.passengerDensity = preset.passengerDensity;
+    this.fogDensityScale =
+      preset.id === 'low' ? 1.38 : preset.id === 'medium' ? 1.12 : 1.0;
+    this.rainRig?.setDensity(preset.rainDensity);
+    if (this.camera) {
+      this.camera.far = preset.drawDistanceM;
+      this.camera.updateProjectionMatrix();
+    }
+    if (this.renderer) {
+      this.renderer.setPixelRatio(
+        this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, preset.pixelRatioCap),
+      );
+      this.renderer.shadowMap.enabled = !this.isSoftwareGl && preset.enableShadows;
+    }
   }
 
   public update(snapshot: ISimulationSnapshot, dtSec: number): void {
@@ -145,14 +180,17 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.applyAtmosphere(
       snapshot.trackProfile.outdoorBlend,
       snapshot.timeOfDay.id,
+      snapshot.weather.mode,
       snapshot.timeOfDay.ambientLightIntensity,
       snapshot.timeOfDay.fogDensity,
     );
     this.surfaceDepotRig?.sync(
       snapshot.trackProfile.outdoorBlend,
       snapshot.timeOfDay.id,
+      snapshot.weather.mode,
       this.camera.position,
     );
+    this.rainRig?.update(snapshot, this.camera.position, dtSec);
 
     const headPos = this.alignment.toWorldPoint(posM + 1.45, 0, 1.48, false);
     const headTgt = this.alignment.toWorldPoint(posM + 56, 0, 0.65, false);
@@ -184,11 +222,157 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
       this.cabRig.leverPivot.rotation.x = state.leverAngleRad;
     }
     this.cabRig.update?.(snapshot, dtSec);
-    this.passengerRig?.sync(snapshot, dtSec);
+    this.passengerRig?.sync(snapshot, dtSec, this.passengerDensity);
     this.trackworkRig?.sync(snapshot.trackworkZones, this.alignment, dtSec);
     this.updateStationLights(snapshot.currentStation.station);
     this.updateSemaphoreVisuals(snapshot);
     this.updateCabIndicators(snapshot);
+  }
+
+  public getPhotoAnchorPose(snapshot: ISimulationSnapshot): IPhotoAnchorPose | null {
+    if (!this.camera) {
+      return null;
+    }
+    if (snapshot.cameraMode === 'interior') {
+      const e = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ');
+      return {
+        x: this.camera.position.x,
+        y: this.camera.position.y,
+        z: this.camera.position.z,
+        yaw: e.y,
+        pitch: e.x,
+        fovDeg: this.camera.fov,
+        keepInteriorVisible: true,
+      };
+    }
+    if (snapshot.cameraMode === 'cab') {
+      const posM = snapshot.kinematics.positionM;
+      const outdoor = snapshot.trackProfile.outdoorBlend > 0.35;
+      const inStation = Math.abs(snapshot.currentStation.distanceToTargetM) < 70;
+      const platSide = getStationPlatformSide(snapshot.currentStation.station);
+      const lateral = outdoor ? 4.4 : inStation ? (platSide === 'left' ? -3.4 : 3.4) : 1.65;
+      const ahead = outdoor ? 10.4 : inStation ? 9.4 : 8.6;
+      const height = outdoor ? 2.9 : inStation ? 2.65 : 2.3;
+
+      const camPt = this.alignment.toWorldPoint(posM + ahead, lateral, height, false);
+      const targetPt = this.alignment.toWorldPoint(posM - 3.6, 0, 1.9, false);
+      const dx = targetPt.x - camPt.x;
+      const dy = targetPt.y - camPt.y;
+      const dz = targetPt.z - camPt.z;
+      const horiz = Math.max(0.001, Math.hypot(dx, dz));
+      return {
+        x: camPt.x,
+        y: camPt.y,
+        z: camPt.z,
+        yaw: Math.atan2(-dx, -dz),
+        pitch: Math.atan2(dy, horiz),
+        fovDeg: 58,
+        keepInteriorVisible: false,
+      };
+    }
+    const e = new THREE.Euler().setFromQuaternion(this.camera.quaternion, 'YXZ');
+    return {
+      x: this.camera.position.x,
+      y: this.camera.position.y,
+      z: this.camera.position.z,
+      yaw: e.y,
+      pitch: e.x,
+      fovDeg: this.camera.fov,
+      keepInteriorVisible: false,
+    };
+  }
+
+  public setPhotoModePose(
+    pose: IPhotoCameraState | null,
+    snapshot: ISimulationSnapshot,
+    keepInteriorVisible = false,
+  ): void {
+    if (!this.camera || !this.cabRig || !this.playerTrainRig) {
+      return;
+    }
+    if (!pose) {
+      return;
+    }
+    this.cabRig.group.visible = false;
+    if (keepInteriorVisible && this.passengerInteriorRig) {
+      this.passengerInteriorRig.group.visible = true;
+      this.playerTrainRig.group.visible = false;
+      if (this.cabFillLight) {
+        this.cabFillLight.intensity = 0;
+      }
+    } else {
+      if (this.passengerInteriorRig) {
+        this.passengerInteriorRig.group.visible = false;
+      }
+      this.playerTrainRig.group.visible = true;
+      if (this.cabFillLight) {
+        this.cabFillLight.intensity = snapshot.trackProfile.outdoorBlend > 0.35 ? 12 : 34;
+        this.cabFillLight.distance = 38;
+      }
+    }
+
+    this.camera.rotation.order = 'YXZ';
+    this.camera.position.set(pose.x, pose.y, pose.z);
+    this.camera.rotation.set(pose.pitch, pose.yaw, THREE.MathUtils.degToRad(pose.rollDeg));
+    if (Math.abs(this.camera.fov - pose.fovDeg) > 0.05) {
+      this.camera.fov = pose.fovDeg;
+      this.camera.updateProjectionMatrix();
+    }
+    this.surfaceDepotRig?.sync(
+      snapshot.trackProfile.outdoorBlend,
+      snapshot.timeOfDay.id,
+      snapshot.weather.mode,
+      this.camera.position,
+    );
+  }
+
+  public captureScreenshotPng(filterId: PhotoFilterId): string | null {
+    if (!this.renderer || !this.scene || !this.camera) {
+      return null;
+    }
+    this.renderer.render(this.scene, this.camera);
+    const glCanvas = this.renderer.domElement;
+    const width = Math.max(glCanvas.width, 1);
+    const height = Math.max(glCanvas.height, 1);
+
+    const out = document.createElement('canvas');
+    out.width = width;
+    out.height = height;
+    const ctx = out.getContext('2d');
+    if (!ctx) {
+      return null;
+    }
+    const spec = getPhotoFilterSpec(filterId);
+    ctx.filter = spec.cssFilter;
+    ctx.drawImage(glCanvas, 0, 0, width, height);
+    ctx.filter = 'none';
+
+    if (filterId === 'cinematic' || filterId === 'noir') {
+      const grad = ctx.createRadialGradient(
+        width * 0.5,
+        height * 0.5,
+        Math.min(width, height) * 0.34,
+        width * 0.5,
+        height * 0.5,
+        Math.max(width, height) * 0.68,
+      );
+      grad.addColorStop(0, 'rgba(0,0,0,0)');
+      grad.addColorStop(1, filterId === 'noir' ? 'rgba(0,0,0,0.48)' : 'rgba(0,0,0,0.34)');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, width, height);
+    } else if (filterId === 'vhs') {
+      ctx.fillStyle = 'rgba(255, 224, 175, 0.06)';
+      ctx.fillRect(0, 0, width, height);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.14)';
+      for (let y = 0; y < height; y += 4) {
+        ctx.fillRect(0, y, width, 1);
+      }
+      ctx.fillStyle = 'rgba(254, 240, 138, 0.85)';
+      ctx.font = `bold ${Math.max(16, Math.round(height * 0.028))}px "JetBrains Mono", monospace`;
+      ctx.fillText('REC ● METRO WAW', Math.round(width * 0.03), Math.round(height * 0.06));
+    }
+
+    return out.toDataURL('image/png');
   }
 
   public render(): void {
@@ -233,6 +417,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.resizeObserver?.disconnect();
     this.worldResources.forEach((res) => res.dispose());
     this.surfaceDepotRig?.dispose();
+    this.rainRig?.dispose();
     this.playerTrainRig?.dispose();
     this.passengerInteriorRig?.dispose();
     this.oncomingTrainRig?.dispose();
@@ -309,8 +494,12 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
   ): void {
     const maxAniso = renderer.capabilities.getMaxAnisotropy();
     this.maxAniso = maxAniso;
-    this.appliedLineId = METRO_LINE_M1.id;
-    this.alignment = getLineTrackAlignment(METRO_LINE_M1.id, LINE_M1_STATIONS);
+    this.appliedLineSignature = `${METRO_LINE_M1.id}|initial`;
+    this.alignment = getLineTrackAlignment(METRO_LINE_M1.id, LINE_M1_STATIONS, {
+      hasSurfaceStart: METRO_LINE_M1.hasSurfaceStart,
+      tunnelPortalDistanceM: METRO_LINE_M1.tunnelPortalDistanceM,
+      alignmentIntensity: METRO_LINE_M1.alignmentIntensity,
+    });
     this.worldResources.push(
       buildMetroTunnel(scene, this.alignment, LINE_M1_STATIONS, LINE_M1_SPEED_ZONES, maxAniso),
     );
@@ -318,6 +507,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
       buildMetroStations(scene, this.alignment, LINE_M1_STATIONS, maxAniso, METRO_LINE_M1),
     );
     this.surfaceDepotRig = buildSurfaceDepot(scene, this.alignment, maxAniso);
+    this.rainRig = buildRainSystem(scene);
     this.passengerRig = buildStationPassengers(scene, this.alignment, LINE_M1_STATIONS);
     this.trackworkRig = buildTrackworkRig(scene, maxAniso);
     const initialSignals = SEMAPHORE_DISTANCES_M.map((distanceM, idx) => ({
@@ -347,11 +537,19 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
   }
 
   private syncMetroLine(snapshot: ISimulationSnapshot): void {
-    if (this.appliedLineId === snapshot.line.id || !this.scene) {
+    const { line, stations } = snapshot;
+    const sig = `${line.id}|${line.name}|${line.cssColor}|${line.hasSurfaceStart ? 1 : 0}|${line.alignmentIntensity ?? 'moderate'}|${stations
+      .map((s) => `${s.name}@${s.distanceM}:${s.platformLayout ?? 'island'}:${s.accentHex}`)
+      .join(',')}`;
+    if (this.appliedLineSignature === sig || !this.scene) {
       return;
     }
-    this.appliedLineId = snapshot.line.id;
-    this.alignment = getLineTrackAlignment(snapshot.line.id, snapshot.stations);
+    this.appliedLineSignature = sig;
+    this.alignment = getLineTrackAlignment(line.id, stations, {
+      hasSurfaceStart: line.hasSurfaceStart,
+      tunnelPortalDistanceM: line.tunnelPortalDistanceM,
+      alignmentIntensity: line.alignmentIntensity,
+    });
     this.worldResources.forEach((res) => res.dispose());
     this.worldResources = [];
     this.surfaceDepotRig?.dispose();
@@ -359,32 +557,41 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.semaphoreRig?.dispose();
 
     this.worldResources.push(
-      buildMetroTunnel(this.scene, this.alignment, snapshot.stations, snapshot.line.speedZones, this.maxAniso),
+      buildMetroTunnel(this.scene, this.alignment, stations, line.speedZones, this.maxAniso),
     );
     this.worldResources.push(
-      buildMetroStations(this.scene, this.alignment, snapshot.stations, this.maxAniso, snapshot.line),
+      buildMetroStations(this.scene, this.alignment, stations, this.maxAniso, line),
     );
     this.surfaceDepotRig = buildSurfaceDepot(this.scene, this.alignment, this.maxAniso);
-    this.passengerRig = buildStationPassengers(this.scene, this.alignment, snapshot.stations);
+    this.passengerRig = buildStationPassengers(this.scene, this.alignment, stations);
     this.semaphoreRig = buildTunnelSemaphores(this.scene, this.alignment, snapshot.signals);
-    this.playerTrainRig?.setLine?.(snapshot.line.id, snapshot.line.destinationLed);
-    this.oncomingTrainRig?.setLine?.(snapshot.line.id, snapshot.line.oppositeDestinationLed);
+    const badge = line.badgeCode ?? line.id;
+    this.playerTrainRig?.setLine?.(badge, line.destinationLed);
+    this.oncomingTrainRig?.setLine?.(badge, line.oppositeDestinationLed);
     this.updateStationLights(snapshot.currentStation.station);
   }
 
   private syncTrainThemes(snapshot: ISimulationSnapshot): void {
-    if (this.appliedModelId === snapshot.trainModel.id) {
-      return;
+    if (this.appliedModelId !== snapshot.trainModel.id) {
+      this.appliedModelId = snapshot.trainModel.id;
+      this.playerTrainRig?.setTheme(snapshot.trainModel.visual);
+      this.cabRig?.setTheme(snapshot.trainModel.visual.theme);
+      if (this.headlight) {
+        this.headlight.color.setHex(
+          snapshot.trainModel.id === 'seria81'
+            ? 0xffe29a
+            : snapshot.trainModel.id === 'varsovia'
+              ? 0xe8f8ff
+              : 0xf4f8ff,
+        );
+      }
     }
-    this.appliedModelId = snapshot.trainModel.id;
-    this.playerTrainRig?.setTheme(snapshot.trainModel.visual);
-    this.cabRig?.setTheme(snapshot.trainModel.visual.theme);
-    if (this.headlight) {
-      this.headlight.color.setHex(snapshot.trainModel.id === 'seria81' ? 0xffe29a : 0xf4f8ff);
+    const oncomingModelId = snapshot.oncomingTrain.modelId;
+    if (this.appliedOncomingModelId !== oncomingModelId) {
+      this.appliedOncomingModelId = oncomingModelId;
+      const spec = getTrainModelSpec(oncomingModelId);
+      this.oncomingTrainRig?.setTheme(spec.visual);
     }
-    const oppositeVisual =
-      snapshot.trainModel.id === 'seria81' ? SIEMENS_INSPIRO_SPEC.visual : SERIA_81_SPEC.visual;
-    this.oncomingTrainRig?.setTheme(oppositeVisual);
   }
 
   private syncTimeOfDayLighting(snapshot: ISimulationSnapshot): void {
@@ -406,6 +613,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
   private applyAtmosphere(
     outdoorBlend: number,
     timeOfDayId: TimeOfDayId,
+    weatherMode: WeatherModeId,
     tunnelAmbientIntensity: number,
     tunnelFogDensity: number,
   ): void {
@@ -414,31 +622,49 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     }
     const b = Math.max(0, Math.min(1, outdoorBlend));
     const isEvening = timeOfDayId === 'evening';
+    const isRain = weatherMode === 'rain';
 
-    const targetOutdoorBg = isEvening ? _nightSkyFogColor : _daySkyFogColor;
+    const targetOutdoorBg = isEvening
+      ? isRain
+        ? _rainNightFogColor
+        : _nightSkyFogColor
+      : isRain
+        ? _rainDayFogColor
+        : _daySkyFogColor;
     _bgColor.copy(_tunnelBgColor).lerp(targetOutdoorBg, b);
     if (this.scene.background instanceof THREE.Color) {
       this.scene.background.copy(_bgColor);
     }
     if (this.scene.fog instanceof THREE.FogExp2) {
       this.scene.fog.color.copy(_bgColor);
-      const outdoorFog = isEvening ? 0.0024 : 0.0016;
-      this.scene.fog.density = THREE.MathUtils.lerp(tunnelFogDensity, outdoorFog, b);
+      const outdoorFog = isEvening
+        ? isRain
+          ? 0.0048
+          : 0.0024
+        : isRain
+          ? 0.0044
+          : 0.0016;
+      const effectiveTunnelFog = tunnelFogDensity * this.fogDensityScale;
+      this.scene.fog.density = THREE.MathUtils.lerp(effectiveTunnelFog, outdoorFog, b);
     }
 
-    const outdoorHemiSky = isEvening ? _hemiNightSky : _hemiDaySky;
+    const outdoorHemiSky = isEvening
+      ? _hemiNightSky
+      : isRain
+        ? _hemiRainDaySky
+        : _hemiDaySky;
     const outdoorHemiGround = isEvening ? _hemiNightGround : _hemiDayGround;
     this.hemiLight.color.copy(_hemiTunnelSky).lerp(outdoorHemiSky, b);
     this.hemiLight.groundColor.copy(_hemiTunnelGround).lerp(outdoorHemiGround, b);
-    const outdoorAmbient = isEvening ? 0.62 : 1.45;
+    const outdoorAmbient = isEvening ? (isRain ? 0.48 : 0.62) : isRain ? 1.05 : 1.45;
     this.hemiLight.intensity = THREE.MathUtils.lerp(tunnelAmbientIntensity, outdoorAmbient, b);
 
-    const sunTarget = isEvening ? 0.42 : 2.35;
+    const sunTarget = isEvening ? (isRain ? 0.14 : 0.42) : isRain ? 0.62 : 2.35;
     this.sunLight.intensity = sunTarget * b;
-    this.sunLight.color.setHex(isEvening ? 0x93c5fd : 0xfff0d1);
+    this.sunLight.color.setHex(isEvening ? 0x93c5fd : isRain ? 0xcbd5e1 : 0xfff0d1);
 
     const baseEnv = isEvening ? 0.16 : 0.34;
-    const outdoorEnv = isEvening ? 0.24 : 0.65;
+    const outdoorEnv = isEvening ? 0.22 : isRain ? 0.44 : 0.65;
     this.scene.environmentIntensity = THREE.MathUtils.lerp(baseEnv, outdoorEnv, b);
   }
 
@@ -471,7 +697,9 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
       this.camera.rotation.order = 'YXZ';
       this.camera.position.set(camPt.x, camPt.y, camPt.z);
       this.camera.rotation.set(frame.pitch + state.pitchRad, frame.yaw, state.rollRad);
-      this.updateCameraFov(state.targetFov, dtSec);
+      const speedFovBoost = Math.max(0, state.targetFov - 64);
+      const desiredFov = Math.max(60, Math.min(98, this.settings.cabFovDeg + speedFovBoost));
+      this.updateCameraFov(desiredFov, dtSec);
       return;
     }
     this.cabRig.group.visible = false;

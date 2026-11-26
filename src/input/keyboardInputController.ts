@@ -9,6 +9,7 @@ export class KeyboardInputController implements IInputController {
   private doorRightQueued = false;
   private emergencyBrakeQueued = false;
   private headlightsToggleQueued = false;
+  private wipersToggleQueued = false;
   private czuwakAckQueued = false;
   private radioAckQueued = false;
   private cameraCycleQueued = false;
@@ -43,6 +44,7 @@ export class KeyboardInputController implements IInputController {
       toggleDoorsLeftPressed: this.doorLeftQueued,
       toggleDoorsRightPressed: this.doorRightQueued,
       toggleHeadlightsPressed: this.headlightsToggleQueued,
+      toggleWipersPressed: this.wipersToggleQueued,
       acknowledgeCzuwakPressed: this.czuwakAckQueued,
       acknowledgeRadioPressed: this.radioAckQueued,
       cycleCameraPressed: this.cameraCycleQueued,
@@ -54,6 +56,7 @@ export class KeyboardInputController implements IInputController {
     this.doorRightQueued = false;
     this.emergencyBrakeQueued = false;
     this.headlightsToggleQueued = false;
+    this.wipersToggleQueued = false;
     this.czuwakAckQueued = false;
     this.radioAckQueued = false;
     this.cameraCycleQueued = false;
@@ -83,6 +86,11 @@ export class KeyboardInputController implements IInputController {
   public triggerHeadlightsToggle(): void {
     this.callbacks?.onFirstInteraction();
     this.headlightsToggleQueued = true;
+  }
+
+  public triggerWipersToggle(): void {
+    this.callbacks?.onFirstInteraction();
+    this.wipersToggleQueued = true;
   }
 
   public triggerCzuwakAck(): void {
@@ -121,6 +129,7 @@ export class KeyboardInputController implements IInputController {
     this.doorRightQueued = false;
     this.emergencyBrakeQueued = false;
     this.headlightsToggleQueued = false;
+    this.wipersToggleQueued = false;
     this.czuwakAckQueued = false;
     this.radioAckQueued = false;
     this.cameraCycleQueued = false;
@@ -141,12 +150,20 @@ export class KeyboardInputController implements IInputController {
       this.virtualLeverAxis = null;
     }
     const isTitle = document.body.dataset.state === 'title';
-    if (isTitle && (event.code === 'Enter' || event.code === 'Space')) {
+    const isModalOpen = document.body.dataset.modalOpen === '1';
+    const isPhotoMode = document.body.dataset.photoMode === '1';
+    if (isPhotoMode) {
+      if (!event.repeat && (event.code === 'KeyF' || event.code === 'Escape')) {
+        this.callbacks?.onPhotoModeToggle?.();
+      }
+      return;
+    }
+    if (isTitle && !isModalOpen && (event.code === 'Enter' || event.code === 'Space')) {
       this.callbacks?.onStartRequested();
       return;
     }
     if (!event.repeat) {
-      this.handleOneShotKey(event.code, event.key, event.shiftKey);
+      this.handleOneShotKey(event.code, event.key, event.shiftKey, isTitle, isModalOpen);
     }
     this.heldKeys.add(event.code);
   };
@@ -169,8 +186,18 @@ export class KeyboardInputController implements IInputController {
     }
   };
 
-  private handleOneShotKey(code: string, key: string, shiftKey: boolean): void {
-    if (code === 'KeyQ') {
+  private handleOneShotKey(
+    code: string,
+    key: string,
+    shiftKey: boolean,
+    isTitle: boolean,
+    isModalOpen: boolean,
+  ): void {
+    if (code === 'KeyF') {
+      if (!isTitle && !isModalOpen) {
+        this.callbacks?.onPhotoModeToggle?.();
+      }
+    } else if (code === 'KeyQ') {
       this.doorLeftQueued = true;
     } else if (code === 'KeyE') {
       this.doorRightQueued = true;
@@ -180,6 +207,8 @@ export class KeyboardInputController implements IInputController {
       this.emergencyBrakeQueued = true;
     } else if (code === 'KeyL') {
       this.headlightsToggleQueued = true;
+    } else if (code === 'KeyX') {
+      this.wipersToggleQueued = true;
     } else if (code === 'KeyC') {
       this.czuwakAckQueued = true;
     } else if (code === 'KeyR') {

@@ -41,10 +41,11 @@ test('Siemens Inspiro accelerates faster and brakes shorter than heavier Seria 8
   assert.ok(SERIA_81_SPEC.physics.massKg > SIEMENS_INSPIRO_SPEC.physics.massKg);
 });
 
-test('camera mode cycles cab -> mirror -> exterior -> cab via V and shows temporary label', () => {
+test('camera mode cycles cab -> mirror -> exterior -> interior -> cab via V and shows temporary label', () => {
   assert.equal(getNextCameraMode('cab'), 'mirror');
   assert.equal(getNextCameraMode('mirror'), 'exterior');
-  assert.equal(getNextCameraMode('exterior'), 'cab');
+  assert.equal(getNextCameraMode('exterior'), 'interior');
+  assert.equal(getNextCameraMode('interior'), 'cab');
 
   const sim = new MetroSimulationEngine(new MetroTrainPhysics(), new MetroScoringRules());
   sim.start();
@@ -57,6 +58,10 @@ test('camera mode cycles cab -> mirror -> exterior -> cab via V and shows tempor
   sim.step(makeInput({ cycleCameraPressed: true }), 0.05);
   assert.equal(sim.getSnapshot().cameraMode, 'exterior');
   assert.ok(sim.getSnapshot().cameraNotice?.label.includes('zewnętrzna'));
+
+  sim.step(makeInput({ cycleCameraPressed: true }), 0.05);
+  assert.equal(sim.getSnapshot().cameraMode, 'interior');
+  assert.ok(sim.getSnapshot().cameraNotice?.label.includes('Wnętrze'));
 
   sim.step(makeInput({ cycleCameraPressed: true }), 0.05);
   assert.equal(sim.getSnapshot().cameraMode, 'cab');

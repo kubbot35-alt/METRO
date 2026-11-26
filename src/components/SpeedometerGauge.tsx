@@ -1,10 +1,12 @@
+import type { TrainVisualTheme } from '../domain/types';
+
 interface ISpeedometerGaugeProps {
   readonly speedKmh: number;
   readonly limitKmh: number;
   readonly isOverspeeding: boolean;
   readonly gradePercent: number;
   readonly inCurveLimitZone?: boolean;
-  readonly theme: 'retro' | 'modern';
+  readonly theme: TrainVisualTheme;
 }
 
 const MAX_DIAL_KMH = 100;
@@ -80,6 +82,7 @@ export function SpeedometerGauge({
           speedAngle={speedAngle}
           limitAngle={limitAngle}
           isOverspeeding={isOverspeeding}
+          accentHex={theme === 'varsovia' ? '#22d3ee' : '#38bdf8'}
         />
       )}
 
@@ -210,6 +213,7 @@ interface IModernDialProps {
   readonly speedAngle: number;
   readonly limitAngle: number;
   readonly isOverspeeding: boolean;
+  readonly accentHex: string;
 }
 
 function ModernLedDial({
@@ -218,6 +222,7 @@ function ModernLedDial({
   speedAngle,
   limitAngle,
   isOverspeeding,
+  accentHex,
 }: IModernDialProps) {
   const endAngle = START_ANGLE_DEG + SWEEP_DEG;
   const pointerOuter = polarToCartesian(60, 58, 49, speedAngle);
@@ -247,7 +252,7 @@ function ModernLedDial({
           <path
             d={describeArc(60, 58, 44, START_ANGLE_DEG, speedAngle)}
             fill="none"
-            stroke={isOverspeeding ? '#ef4444' : '#38bdf8'}
+            stroke={isOverspeeding ? '#ef4444' : accentHex}
             strokeWidth="8"
             strokeLinecap="round"
           />

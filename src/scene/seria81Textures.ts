@@ -43,17 +43,17 @@ function drawDestBoardCanvas(
   ctx.lineWidth = 10;
   ctx.strokeRect(5, 5, 502, 118);
 
-  ctx.fillStyle = lineId === 'M2' ? '#b91c1c' : '#1d4ed8';
+  ctx.fillStyle = lineId === 'M2' ? '#b91c1c' : lineId === 'M1' ? '#1d4ed8' : '#059669';
   ctx.fillRect(16, 18, 102, 92);
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 58px "Chakra Petch", sans-serif';
+  ctx.font = lineId.length > 2 ? 'bold 44px "Chakra Petch", sans-serif' : 'bold 58px "Chakra Petch", sans-serif';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(lineId, 67, 66);
+  ctx.fillText(lineId, 67, 66, 92);
 
   ctx.fillStyle = '#020617';
-  ctx.font = 'bold 60px "Chakra Petch", sans-serif';
-  ctx.fillText(destinationLed, 314, 66);
+  ctx.font = 'bold 54px "Chakra Petch", sans-serif';
+  ctx.fillText(destinationLed, 314, 66, 368);
 }
 
 export function createSeria81DestBoard(maxAnisotropy: number): ISeria81DestBoard {

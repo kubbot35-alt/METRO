@@ -7,7 +7,14 @@ import type {
   IStationSpec,
   ITrackSample,
   MetroLineId,
+  TrackAlignmentIntensity,
 } from './types';
+
+export interface ITrackAlignmentOptions {
+  readonly hasSurfaceStart?: boolean;
+  readonly tunnelPortalDistanceM?: number | null;
+  readonly alignmentIntensity?: TrackAlignmentIntensity;
+}
 
 export const M1_TUNNEL_PORTAL_M = 300;
 export const M1_SURFACE_ELEVATION_M = 4.8;
@@ -49,8 +56,14 @@ function smoothstep01(t: number): number {
 function buildCurveZones(
   lineId: MetroLineId,
   stations: readonly IStationSpec[],
+  hasSurfaceStart: boolean,
+  intensity: TrackAlignmentIntensity,
 ): readonly ICurveZoneSpec[] {
+  if (intensity === 'flat') {
+    return [];
+  }
   const curves: ICurveZoneSpec[] = [];
+  const scale = intensity === 'curvy' ? 1.24 : 1.0;
   // Deterministic pattern of gentle and sharper tunnel curves strictly between station halls
   const m1Patterns: ReadonlyArray<{
     readonly dir: 'left' | 'right';
@@ -83,15 +96,15 @@ function buildCurveZones(
     { dir: 'left', maxKappa: 0.0046, sharp: true },
   ];
 
-  // Opening curve on M2 before Rondo Daszyńskiego (M1 stays straight out of STP Kabaty into portal)
-  if (lineId === 'M2' && stations.length > 0) {
+  // Opening curve on underground-start lines before station 1
+  if (!hasSurfaceStart && stations.length > 0) {
     const firstHallStart = stations[0].distanceM - STATION_HALL_START_OFFSET_M - STATION_FLAT_PAD_M;
     if (firstHallStart > 360) {
       curves.push({
         startM: 150,
         endM: 370,
         direction: 'right',
-        maxCurvatureRadPerM: 0.0044,
+        maxCurvatureRadPerM: 0.0044 * scale,
         speedLimitKmh: CURVE_SPEED_LIMIT_KMH,
         signDistanceM: 150 - CURVE_SIGN_LEAD_M,
       });
@@ -107,16 +120,17 @@ function buildCurveZones(
       continue;
     }
     const pat = patterns[i % patterns.length];
-    const curveLen = Math.min(240, span - 80);
+    const isSharp = pat.sharp || intensity === 'curvy';
+    const curveLen = Math.min(260, span - 80);
     const startM = Math.round(prevEnd + (span - curveLen) * 0.45);
     const endM = Math.round(startM + curveLen);
     curves.push({
       startM,
       endM,
       direction: pat.dir,
-      maxCurvatureRadPerM: pat.maxKappa,
-      speedLimitKmh: pat.sharp ? CURVE_SPEED_LIMIT_KMH : undefined,
-      signDistanceM: pat.sharp ? startM - CURVE_SIGN_LEAD_M : undefined,
+      maxCurvatureRadPerM: Math.min(0.0062, pat.maxKappa * scale),
+      speedLimitKmh: isSharp ? CURVE_SPEED_LIMIT_KMH : undefined,
+      signDistanceM: isSharp ? startM - CURVE_SIGN_LEAD_M : undefined,
     });
   }
   return curves;
@@ -125,28 +139,34 @@ function buildCurveZones(
 function buildGradeZones(
   lineId: MetroLineId,
   stations: readonly IStationSpec[],
+  hasSurfaceStart: boolean,
+  intensity: TrackAlignmentIntensity,
 ): readonly IGradeZoneSpec[] {
   const grades: IGradeZoneSpec[] = [];
 
-  if (lineId === 'M1') {
-    // M1 STP Kabaty surface descent ramp: starts gently at 215 m, passes through portal at 300 m,
-    // levels out at 475 m before Kabaty station hall (492..628 m).
-    // Integral of sin^2(pi*u) over length L is L/2 -> deltaY = peakGrade * L / 2.
-    // L = 260 m, desired deltaY = -4.8 m -> peakGrade = -9.6 / 260 = -0.0369 (-3.7% peak, ~-2.5% avg)
+  if (hasSurfaceStart) {
+    // Surface depot descent ramp: starts at 215 m, enters portal at 300 m, levels out at 475 m
     grades.push({
       startM: 215,
       endM: 475,
       peakGrade: -(2 * M1_SURFACE_ELEVATION_M) / 260,
     });
-  } else {
-    // M2 starts underground with a gentle downhill dip toward Rondo Daszyńskiego
-    grades.push({
-      startM: 120,
-      endM: 420,
-      peakGrade: -0.024,
-    });
+  } else if (intensity !== 'flat') {
+    const firstHallStart = (stations[0]?.distanceM ?? 600) - STATION_HALL_START_OFFSET_M - STATION_FLAT_PAD_M;
+    if (firstHallStart > 360) {
+      grades.push({
+        startM: 120,
+        endM: Math.min(420, firstHallStart - 20),
+        peakGrade: intensity === 'curvy' ? -0.031 : -0.024,
+      });
+    }
   }
 
+  if (intensity === 'flat') {
+    return grades;
+  }
+
+  const gradeScale = intensity === 'curvy' ? 1.28 : 1.0;
   // Alternating climbs and descents between stations (stations remain strictly 0.0% flat!)
   const interPeaks =
     lineId === 'M2'
@@ -160,7 +180,7 @@ function buildGradeZones(
     if (span < 160) {
       continue;
     }
-    const peak = interPeaks[i % interPeaks.length];
+    const peak = Math.max(-0.04, Math.min(0.04, interPeaks[i % interPeaks.length] * gradeScale));
     grades.push({
       startM: prevEnd + 18,
       endM: nextStart - 18,
@@ -174,19 +194,30 @@ export class TrackAlignment {
   public readonly lineId: MetroLineId;
   public readonly hasSurfaceStart: boolean;
   public readonly tunnelPortalDistanceM: number | null;
+  public readonly alignmentIntensity: TrackAlignmentIntensity;
   public readonly curveZones: readonly ICurveZoneSpec[];
   private readonly stations: readonly IStationSpec[];
   private readonly gradeZones: readonly IGradeZoneSpec[];
   private readonly lut: readonly ILutPoint[];
   private readonly maxDistM: number;
 
-  public constructor(lineId: MetroLineId, stations: readonly IStationSpec[]) {
+  public constructor(
+    lineId: MetroLineId,
+    stations: readonly IStationSpec[],
+    options?: ITrackAlignmentOptions,
+  ) {
     this.lineId = lineId;
     this.stations = stations;
-    this.hasSurfaceStart = lineId === 'M1';
-    this.tunnelPortalDistanceM = lineId === 'M1' ? M1_TUNNEL_PORTAL_M : null;
-    this.curveZones = buildCurveZones(lineId, stations);
-    this.gradeZones = buildGradeZones(lineId, stations);
+    this.hasSurfaceStart = options?.hasSurfaceStart ?? lineId === 'M1';
+    this.tunnelPortalDistanceM =
+      options?.tunnelPortalDistanceM !== undefined
+        ? options.tunnelPortalDistanceM
+        : this.hasSurfaceStart
+          ? M1_TUNNEL_PORTAL_M
+          : null;
+    this.alignmentIntensity = options?.alignmentIntensity ?? 'moderate';
+    this.curveZones = buildCurveZones(lineId, stations, this.hasSurfaceStart, this.alignmentIntensity);
+    this.gradeZones = buildGradeZones(lineId, stations, this.hasSurfaceStart, this.alignmentIntensity);
 
     const lastStationM = stations[stations.length - 1]?.distanceM ?? 3000;
     this.maxDistM = lastStationM + 320;
@@ -406,13 +437,17 @@ const alignmentCache = new Map<string, TrackAlignment>();
 export function getLineTrackAlignment(
   lineId: MetroLineId,
   stations: readonly IStationSpec[],
+  options?: ITrackAlignmentOptions,
 ): TrackAlignment {
-  const key = `${lineId}:${stations.length}:${stations[0]?.distanceM ?? 0}:${stations[stations.length - 1]?.distanceM ?? 0}`;
+  const surface = options?.hasSurfaceStart ?? lineId === 'M1';
+  const intensity = options?.alignmentIntensity ?? 'moderate';
+  const distSig = stations.map((s) => s.distanceM).join(',');
+  const key = `${lineId}:${surface ? 1 : 0}:${intensity}:${distSig}`;
   const cached = alignmentCache.get(key);
   if (cached) {
     return cached;
   }
-  const created = new TrackAlignment(lineId, stations);
+  const created = new TrackAlignment(lineId, stations, options);
   alignmentCache.set(key, created);
   return created;
 }

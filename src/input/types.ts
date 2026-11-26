@@ -3,6 +3,7 @@ import type { IControlInput } from '../domain/types';
 export interface IInputActionCallbacks {
   readonly onStartRequested: () => void;
   readonly onPauseToggle: () => void;
+  readonly onPhotoModeToggle?: () => void;
   readonly onHelpToggle: () => void;
   readonly onMuteToggle: () => void;
   readonly onRestartRequested: () => void;
@@ -18,6 +19,7 @@ export interface IInputController {
   triggerDoorRightToggle(): void;
   triggerEmergencyBrake(): void;
   triggerHeadlightsToggle(): void;
+  triggerWipersToggle(): void;
   triggerCzuwakAck(): void;
   triggerRadioAck(): void;
   triggerCameraCycle(): void;

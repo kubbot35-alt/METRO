@@ -1,9 +1,10 @@
 import { useRef, type PointerEvent as ReactPointerEvent } from 'react';
+import type { TrainVisualTheme } from '../domain/types';
 
 interface IMasterControllerSliderProps {
   readonly leverTarget: number;
   readonly emergencyBrake: boolean;
-  readonly theme: 'retro' | 'modern';
+  readonly theme: TrainVisualTheme;
   readonly onLeverChange: (axis: number | null) => void;
 }
 

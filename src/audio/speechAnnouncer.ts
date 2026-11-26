@@ -1,5 +1,5 @@
 export interface ISpeechAnnouncer {
-  announce(id: number, text: string, muted: boolean): boolean;
+  announce(id: number, text: string, muted: boolean, volume?: number): boolean;
   isPolishVoiceAvailable(): boolean;
   stop(): void;
   dispose(): void;
@@ -27,12 +27,13 @@ export class WebSpeechAnnouncer implements ISpeechAnnouncer {
     return this.polishVoice !== null;
   }
 
-  public announce(id: number, text: string, muted: boolean): boolean {
+  public announce(id: number, text: string, muted: boolean, volume = 0.92): boolean {
     if (id === this.lastSpokenId) {
-      return this.polishVoice !== null && !muted;
+      return this.polishVoice !== null && !muted && volume > 0.01;
     }
     this.lastSpokenId = id;
-    if (muted || !this.synth || !this.isPolishVoiceAvailable()) {
+    const clampedVol = Math.max(0, Math.min(1, volume));
+    if (muted || clampedVol <= 0.01 || !this.synth || !this.isPolishVoiceAvailable()) {
       return false;
     }
     try {
@@ -42,7 +43,7 @@ export class WebSpeechAnnouncer implements ISpeechAnnouncer {
       utterance.voice = this.polishVoice;
       utterance.rate = 0.98;
       utterance.pitch = 1.0;
-      utterance.volume = 0.92;
+      utterance.volume = clampedVol;
       this.synth.speak(utterance);
       return true;
     } catch {

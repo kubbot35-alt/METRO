@@ -60,7 +60,7 @@ export function buildSeria81CabInterior(maxAnisotropy: number): ISeria81CabInter
   );
   addToggleSwitchBanks(group, deskGreyMat, steelTrimMat, disposables);
   const leverPivot = addHeavyMetalController(group, deskGreyMat, steelTrimMat, disposables);
-  const wiperPivot = addDualRetroWipers(group, gasketMat, disposables);
+  const { pivotL: wiperLeftPivot, pivotR: wiperPivot } = addDualRetroWipers(group, gasketMat, disposables);
   addWarmGaugeLighting(group);
 
   let smoothedSpeed = 0;
@@ -87,6 +87,10 @@ export function buildSeria81CabInterior(maxAnisotropy: number): ISeria81CabInter
       lamps.warnMat.emissiveIntensity = warnOn ? 3.8 : 0.03;
       lamps.headlightMat.emissiveIntensity = snapshot.headlightsOn ? 2.4 : 0.03;
       lamps.czuwakMat.emissiveIntensity = snapshot.czuwak.active ? 4.2 : 0.03;
+      // Dual retro 81-717 wipers sweeping left & right split windshield panes
+      const wPhase = snapshot.weather.wiperPhaseRad;
+      wiperLeftPivot.rotation.z = THREE.MathUtils.lerp(-1.26, 0.84, wPhase);
+      wiperPivot.rotation.z = THREE.MathUtils.lerp(1.26, -0.84, wPhase);
     },
     dispose: (): void => disposables.forEach((d) => d.dispose()),
   };
@@ -330,25 +334,30 @@ function addDualRetroWipers(
   group: THREE.Group,
   gasketMat: THREE.MeshStandardMaterial,
   disposables: Array<{ dispose(): void }>,
-): THREE.Group {
-  const armGeo = new THREE.BoxGeometry(0.013, 0.36, 0.013);
+): { pivotL: THREE.Group; pivotR: THREE.Group } {
+  const armGeo = new THREE.BoxGeometry(0.017, 0.44, 0.015);
+  const bladeGeo = new THREE.BoxGeometry(0.022, 0.34, 0.016);
   const pivotL = new THREE.Group();
-  pivotL.position.set(-0.46, -0.32, -1.04);
+  pivotL.position.set(-0.46, -0.22, -1.0);
   const armL = new THREE.Mesh(armGeo, gasketMat);
-  armL.position.set(0, 0.18, 0);
-  pivotL.add(armL);
-  pivotL.rotation.z = -1.35;
+  armL.position.set(0, 0.22, 0);
+  const bladeL = new THREE.Mesh(bladeGeo, gasketMat);
+  bladeL.position.set(0, 0.42, -0.006);
+  pivotL.add(armL, bladeL);
+  pivotL.rotation.z = -1.26;
 
   const pivotR = new THREE.Group();
-  pivotR.position.set(0.46, -0.32, -1.04);
+  pivotR.position.set(0.46, -0.22, -1.0);
   const armR = new THREE.Mesh(armGeo, gasketMat);
-  armR.position.set(0, 0.18, 0);
-  pivotR.add(armR);
-  pivotR.rotation.z = 1.35;
+  armR.position.set(0, 0.22, 0);
+  const bladeR = new THREE.Mesh(bladeGeo, gasketMat);
+  bladeR.position.set(0, 0.42, -0.006);
+  pivotR.add(armR, bladeR);
+  pivotR.rotation.z = 1.26;
 
   group.add(pivotL, pivotR);
-  disposables.push(armGeo);
-  return pivotR;
+  disposables.push(armGeo, bladeGeo);
+  return { pivotL, pivotR };
 }
 
 function addWarmGaugeLighting(group: THREE.Group): void {

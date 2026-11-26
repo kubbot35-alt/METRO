@@ -10,13 +10,16 @@ const SHORTCUTS: ReadonlyArray<{ readonly key: string; readonly action: string }
   { key: 'Q', action: 'Otwórz / zamknij drzwi LEWE (peron wyspowy)' },
   { key: 'E', action: 'Otwórz / zamknij drzwi PRAWE (peron boczny)' },
   { key: 'O', action: 'Tryb Sandbox: automatyczna strona peronu' },
-  { key: 'V', action: 'Zmiana kamery (Kabina · Lusterko · Zewnętrzna)' },
+  { key: 'V', action: 'Zmiana kamery (Kabina · Lusterko · Zewnętrzna · Wnętrze wagonu)' },
+  { key: 'F', action: 'Tryb Fotograficzny (stop-klatka, wolna kamera WASD/Q/E, filtry, PNG)' },
+  { key: 'R', action: 'Potwierdzenie komunikatu radia dyspozytora (+40 pkt)' },
+  { key: 'X', action: 'Wycieraczki przedniej szyby (włącz / wyłącz)' },
   { key: 'C', action: 'Potwierdzenie czuwaka (alarm bezpieczeństwa)' },
   { key: 'L', action: 'Reflektory przednie (włącz / wyłącz)' },
   { key: 'H', action: 'Klakson' },
   { key: 'M', action: 'Wyciszenie dźwięków' },
-  { key: 'P / Esc', action: 'Pauza / wznowienie kursu' },
-  { key: 'R', action: 'Restart kursu od początku' },
+  { key: 'P / Esc', action: 'Pauza / wznowienie kursu i dostęp do Ustawień' },
+  { key: 'Shift + R', action: 'Restart kursu od początku' },
 ];
 
 export function ControlsHelpModal({ onClose }: IControlsHelpModalProps) {

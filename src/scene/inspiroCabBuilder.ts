@@ -50,6 +50,8 @@ export function buildInspiroCabInterior(maxAnisotropy: number): IInspiroCabInter
       lamps.warnMat.emissiveIntensity = warnActive ? 3.4 : 0.2;
       lamps.headlightMat.emissiveIntensity = snapshot.headlightsOn ? 2.6 : 0.12;
       lamps.czuwakMat.emissiveIntensity = snapshot.czuwak.active ? 4.2 : 0.16;
+      // Smoothly sweep wiper from parked right (1.34 rad) across windshield to left (-1.08 rad)
+      wiperPivot.rotation.z = THREE.MathUtils.lerp(1.34, -1.08, snapshot.weather.wiperPhaseRad);
     },
     dispose: (): void => disposables.forEach((d) => d.dispose()),
   };
@@ -298,16 +300,21 @@ function addErgonomicMasterLever(
 }
 
 function addCabWiper(group: THREE.Group, disposables: Array<{ dispose(): void }>): THREE.Group {
-  const wiperMat = new THREE.MeshStandardMaterial({ color: 0x0b0e14, roughness: 0.88, metalness: 0.15 });
+  const wiperMat = new THREE.MeshStandardMaterial({ color: 0x0c1017, roughness: 0.78, metalness: 0.35 });
+  const bladeMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.9, metalness: 0.1 });
   const pivot = new THREE.Group();
-  pivot.position.set(0.68, -0.35, -1.06);
-  const armGeo = new THREE.BoxGeometry(0.012, 0.42, 0.012);
+  pivot.name = 'InspiroWindshieldWiperPivot';
+  pivot.position.set(0.28, -0.22, -1.0);
+  const armGeo = new THREE.BoxGeometry(0.018, 0.56, 0.016);
   const arm = new THREE.Mesh(armGeo, wiperMat);
-  arm.position.set(0, 0.2, 0);
-  pivot.add(arm);
-  pivot.rotation.z = 1.44;
+  arm.position.set(0, 0.28, 0);
+  const bladeGeo = new THREE.BoxGeometry(0.024, 0.44, 0.018);
+  const blade = new THREE.Mesh(bladeGeo, bladeMat);
+  blade.position.set(0, 0.52, -0.008);
+  pivot.add(arm, blade);
+  pivot.rotation.z = 1.34;
   group.add(pivot);
-  disposables.push(wiperMat, armGeo);
+  disposables.push(wiperMat, bladeMat, armGeo, bladeGeo);
   return pivot;
 }
 

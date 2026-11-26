@@ -9,11 +9,16 @@ import type { IAudioEngine } from './types';
 export class MetroAudioEngine implements IAudioEngine {
   private ctx: AudioContext | null = null;
   private masterGain: GainNode | null = null;
+  private trainGain: GainNode | null = null;
+  private voiceRadioGain: GainNode | null = null;
   private layers: IContinuousSoundLayers | null = null;
   private hornOscA: OscillatorNode | null = null;
   private hornOscB: OscillatorNode | null = null;
   private hornGain: GainNode | null = null;
   private muted = false;
+  private masterVolume = 0.85;
+  private trainVolume = 0.9;
+  private voiceVolume = 0.95;
 
   public unlock(): void {
     if (!this.ctx) {
@@ -26,13 +31,34 @@ export class MetroAudioEngine implements IAudioEngine {
 
   public setMuted(muted: boolean): void {
     this.muted = muted;
-    if (this.masterGain && this.ctx) {
-      this.masterGain.gain.setTargetAtTime(muted ? 0 : 0.45, this.ctx.currentTime, 0.03);
-    }
+    this.syncMixerGains();
   }
 
   public isMuted(): boolean {
     return this.muted;
+  }
+
+  public setAudioSettings(masterVolume: number, trainVolume: number, voiceVolume: number): void {
+    this.masterVolume = Math.max(0, Math.min(1, masterVolume));
+    this.trainVolume = Math.max(0, Math.min(1, trainVolume));
+    this.voiceVolume = Math.max(0, Math.min(1, voiceVolume));
+    this.syncMixerGains();
+  }
+
+  private syncMixerGains(): void {
+    if (!this.ctx) {
+      return;
+    }
+    const now = this.ctx.currentTime;
+    if (this.masterGain) {
+      this.masterGain.gain.setTargetAtTime(this.muted ? 0 : this.masterVolume * 0.52, now, 0.03);
+    }
+    if (this.trainGain) {
+      this.trainGain.gain.setTargetAtTime(this.trainVolume, now, 0.03);
+    }
+    if (this.voiceRadioGain) {
+      this.voiceRadioGain.gain.setTargetAtTime(this.voiceVolume, now, 0.03);
+    }
   }
 
   public update(snapshot: ISimulationSnapshot, events: IAudioEvents): void {
@@ -83,10 +109,19 @@ export class MetroAudioEngine implements IAudioEngine {
     }
     this.ctx = new AudioCtor();
     this.masterGain = this.ctx.createGain();
-    this.masterGain.gain.value = this.muted ? 0 : 0.45;
+    this.masterGain.gain.value = this.muted ? 0 : this.masterVolume * 0.52;
     this.masterGain.connect(this.ctx.destination);
-    this.layers = createContinuousSoundLayers(this.ctx, this.masterGain);
-    this.setupHornNodes(this.ctx, this.masterGain);
+
+    this.trainGain = this.ctx.createGain();
+    this.trainGain.gain.value = this.trainVolume;
+    this.trainGain.connect(this.masterGain);
+
+    this.voiceRadioGain = this.ctx.createGain();
+    this.voiceRadioGain.gain.value = this.voiceVolume;
+    this.voiceRadioGain.connect(this.masterGain);
+
+    this.layers = createContinuousSoundLayers(this.ctx, this.trainGain);
+    this.setupHornNodes(this.ctx, this.trainGain);
   }
 
   private setupHornNodes(ctx: AudioContext, destination: GainNode): void {
@@ -143,14 +178,17 @@ export class MetroAudioEngine implements IAudioEngine {
       this.playTone(340, 0.14, 0.16, 'sawtooth', 0);
       this.playTone(300, 0.18, 0.16, 'sawtooth', 0.18);
     }
-    if (events.passingTrainWhoosh && this.ctx && this.masterGain) {
-      playPassingTrainWhoosh(this.ctx, this.masterGain);
+    if (events.passingTrainWhoosh && this.ctx && this.trainGain) {
+      playPassingTrainWhoosh(this.ctx, this.trainGain);
     }
     if (events.radioDispatchTriggered) {
       this.playRadioSquelch();
     }
     if (events.radioAckChime) {
       this.playRadioRogerBeep();
+    }
+    if (events.wiperSweepTick) {
+      this.playWiperSwish();
     }
   }
 
@@ -169,17 +207,23 @@ export class MetroAudioEngine implements IAudioEngine {
   }
 
   private playRadioSquelch(): void {
-    // Authentic short VHF dispatch squelch burst + carrier chirp
-    this.playNoiseBurst(0.14, 2400, 0.14, 0.0);
-    this.playTone(1750, 0.055, 0.09, 'sine', 0.06);
-    this.playNoiseBurst(0.11, 1900, 0.11, 0.15);
+    const bus = this.voiceRadioGain ?? this.masterGain;
+    this.playNoiseBurst(0.14, 2400, 0.14, 0.0, bus);
+    this.playTone(1750, 0.055, 0.09, 'sine', 0.06, bus);
+    this.playNoiseBurst(0.11, 1900, 0.11, 0.15, bus);
   }
 
   private playRadioRogerBeep(): void {
-    // Crisp two-tone dispatcher roger confirmation pip
-    this.playTone(1180, 0.065, 0.12, 'triangle', 0.0);
-    this.playTone(1580, 0.095, 0.13, 'triangle', 0.075);
-    this.playNoiseBurst(0.05, 2200, 0.06, 0.16);
+    const bus = this.voiceRadioGain ?? this.masterGain;
+    this.playTone(1180, 0.065, 0.12, 'triangle', 0.0, bus);
+    this.playTone(1580, 0.095, 0.13, 'triangle', 0.075, bus);
+    this.playNoiseBurst(0.05, 2200, 0.06, 0.16, bus);
+  }
+
+  private playWiperSwish(): void {
+    // Gentle damped rubber-on-glass swish + subtle mechanical relay click
+    this.playNoiseBurst(0.22, 620, 0.045, 0.0, this.trainGain);
+    this.playTone(145, 0.045, 0.025, 'sine', 0.0, this.trainGain);
   }
 
   private playTone(
@@ -188,8 +232,10 @@ export class MetroAudioEngine implements IAudioEngine {
     volume: number,
     type: OscillatorType,
     delaySec = 0,
+    destination: GainNode | null = null,
   ): void {
-    if (!this.ctx || !this.masterGain) {
+    const target = destination ?? this.trainGain ?? this.masterGain;
+    if (!this.ctx || !target) {
       return;
     }
     const start = this.ctx.currentTime + delaySec;
@@ -200,7 +246,7 @@ export class MetroAudioEngine implements IAudioEngine {
     gain.gain.setValueAtTime(volume, start);
     gain.gain.exponentialRampToValueAtTime(0.001, start + durationSec);
     osc.connect(gain);
-    gain.connect(this.masterGain);
+    gain.connect(target);
     osc.start(start);
     osc.stop(start + durationSec + 0.01);
   }
@@ -210,8 +256,10 @@ export class MetroAudioEngine implements IAudioEngine {
     cutoffHz: number,
     volume: number,
     delaySec = 0,
+    destination: GainNode | null = null,
   ): void {
-    if (!this.ctx || !this.masterGain) {
+    const target = destination ?? this.trainGain ?? this.masterGain;
+    if (!this.ctx || !target) {
       return;
     }
     const sampleCount = Math.floor(this.ctx.sampleRate * durationSec);
@@ -229,7 +277,7 @@ export class MetroAudioEngine implements IAudioEngine {
     gain.gain.value = volume;
     source.connect(filter);
     filter.connect(gain);
-    gain.connect(this.masterGain);
+    gain.connect(target);
     source.start(this.ctx.currentTime + delaySec);
   }
 }

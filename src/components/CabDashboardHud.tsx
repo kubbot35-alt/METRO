@@ -2,6 +2,7 @@ import { getStationPlatformSide } from '../domain/trackGeometry';
 import type { ISimulationSnapshot } from '../domain/types';
 import { CzuwakIndicator } from './CzuwakIndicator';
 import { MasterControllerSlider } from './MasterControllerSlider';
+import { RadioDispatchModule } from './RadioDispatchModule';
 import { ScheduleIndicator } from './ScheduleIndicator';
 import { SignalIndicator } from './SignalIndicator';
 import { SpeedometerGauge } from './SpeedometerGauge';
@@ -11,7 +12,9 @@ interface ICabDashboardHudProps {
   readonly onToggleDoorsLeft: () => void;
   readonly onToggleDoorsRight: () => void;
   readonly onToggleHeadlights: () => void;
+  readonly onToggleWipers: () => void;
   readonly onAcknowledgeCzuwak: () => void;
+  readonly onAcknowledgeRadio: () => void;
   readonly onCycleCamera: () => void;
   readonly onEmergencyBrake: () => void;
   readonly onHornChange: (active: boolean) => void;
@@ -23,7 +26,9 @@ export function CabDashboardHud({
   onToggleDoorsLeft,
   onToggleDoorsRight,
   onToggleHeadlights,
+  onToggleWipers,
   onAcknowledgeCzuwak,
+  onAcknowledgeRadio,
   onCycleCamera,
   onEmergencyBrake,
   onHornChange,
@@ -42,9 +47,12 @@ export function CabDashboardHud({
   const trackworkAlert = snapshot.activeTrackworkZone !== null || snapshot.upcomingTrackworkDistanceM !== null;
   const theme = snapshot.trainModel.visual.theme;
   const isRetro = theme === 'retro';
+  const isVarsovia = theme === 'varsovia';
   const panelClasses = isRetro
     ? 'bg-[#15201c]/95 border-[#4c6b5f]'
-    : 'bg-[#0d121b]/95 border-slate-700/80';
+    : isVarsovia
+      ? 'bg-[#09101a]/95 border-cyan-500/45'
+      : 'bg-[#0d121b]/95 border-slate-700/80';
   const dividerClass = isRetro ? 'border-[#2f453d]' : 'border-slate-800';
 
   const leftActive = doorState === 'open' && openDoorSide === 'left';
@@ -53,11 +61,11 @@ export function CabDashboardHud({
   const rightRecommended = canToggleDoors && doorState === 'closed' && !isLeftPlatform;
 
   return (
-    <div className="fixed bottom-0 inset-x-0 z-10 pointer-events-none flex justify-center px-3 pb-2">
+    <div className="fixed bottom-0 inset-x-0 z-10 pointer-events-none flex justify-center px-2.5 pb-2">
       <section
         aria-label="Pulpit maszynisty"
         data-theme={theme}
-        className={`pointer-events-auto w-full max-w-[1380px] ${panelClasses} border rounded-t-xl rounded-b-md px-3.5 py-2.5 shadow-2xl grid grid-cols-1 lg:grid-cols-[auto_auto_auto_1fr_auto_auto] items-center gap-3`}
+        className={`pointer-events-auto w-full max-w-[1416px] ${panelClasses} border rounded-t-xl rounded-b-md px-3 py-2 shadow-2xl grid grid-cols-1 lg:grid-cols-[auto_auto_auto_minmax(224px,1fr)_auto_auto] items-center gap-2.5`}
       >
         <SpeedometerGauge
           speedKmh={kinematics.speedKmh}
@@ -72,22 +80,45 @@ export function CabDashboardHud({
 
         <ScheduleIndicator schedule={snapshot.schedule} />
 
-        <div className={`min-w-[215px] border-l ${dividerClass} pl-3.5 flex flex-col gap-1`}>
-          <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-mono-tabular uppercase tracking-wider text-slate-400 whitespace-nowrap shrink-0">
-              {currentStation.station.code}
-            </span>
+        <div className={`min-w-0 overflow-hidden border-l ${dividerClass} pl-2.5 flex flex-col gap-1`}>
+          <div className="flex items-center justify-between gap-1.5 min-w-0">
+            <div className="flex items-center gap-1 min-w-0 shrink">
+              <span className="text-[11px] font-mono-tabular uppercase tracking-wider text-slate-400 whitespace-nowrap">
+                {currentStation.station.code}
+              </span>
+              {snapshot.weather.wheelSlipActive ? (
+                <span
+                  data-testid="wheel-slip-indicator"
+                  className="px-1 py-0.5 rounded bg-amber-500 text-slate-950 font-mono-tabular text-[9px] font-bold uppercase animate-pulse whitespace-nowrap"
+                >
+                  POŚLIZG!
+                </span>
+              ) : (snapshot.weather.wetRailsActive || snapshot.radio.slipperyRailsActive) && (
+                <span
+                  data-testid="wet-rails-badge"
+                  className="px-1 py-0.5 rounded bg-sky-500/20 border border-sky-400/60 text-sky-200 font-mono-tabular text-[9px] font-bold uppercase whitespace-nowrap"
+                >
+                  ŚLISKIE SZYNY
+                </span>
+              )}
+            </div>
             <span
               data-testid="platform-side-hint"
-              className={`px-1.5 py-0.5 rounded text-[10px] font-mono-tabular font-bold uppercase tracking-wide whitespace-nowrap border ${
-                currentStation.inStopZone
-                  ? 'bg-emerald-500/25 border-emerald-400 text-emerald-200'
-                  : approachingStation
-                    ? 'bg-amber-500/20 border-amber-400/80 text-amber-200'
-                    : 'bg-slate-800/90 border-slate-700 text-slate-300'
+              className={`px-1.5 py-0.5 rounded text-[9.5px] font-mono-tabular font-bold uppercase tracking-wide whitespace-nowrap shrink-0 border ${
+                snapshot.challenge?.skipStations
+                  ? 'bg-fuchsia-500/20 border-fuchsia-400/80 text-fuchsia-200'
+                  : currentStation.inStopZone
+                    ? 'bg-emerald-500/25 border-emerald-400 text-emerald-200'
+                    : approachingStation
+                      ? 'bg-amber-500/20 border-amber-400/80 text-amber-200'
+                      : 'bg-slate-800/90 border-slate-700 text-slate-300'
               }`}
             >
-              {isLeftPlatform ? '◀ Peron LEWY [Q]' : 'Peron PRAWY [E] ▶'}
+              {snapshot.challenge?.skipStations
+                ? `PRZEJAZD ≤ ${snapshot.challenge.stationPassLimitKmh ?? 40}`
+                : isLeftPlatform
+                  ? '◀ Peron L [Q]'
+                  : 'Peron P [E] ▶'}
             </span>
           </div>
 
@@ -109,11 +140,13 @@ export function CabDashboardHud({
                     ? 'ŁUK 45'
                     : snapshot.trackProfile.upcomingCurveLimitKmh !== null
                       ? `ŁUK ${snapshot.trackProfile.upcomingCurveLimitKmh}`
-                      : currentStation.inStopZone
-                        ? 'STREFA STOP'
-                        : isLeftPlatform
-                          ? 'WYSPOWY'
-                          : 'BOCZNY'}
+                      : snapshot.challenge?.skipStations
+                        ? 'PRZEJAZD 40'
+                        : currentStation.inStopZone
+                          ? 'STREFA STOP'
+                          : isLeftPlatform
+                            ? 'WYSPOWY'
+                            : 'BOCZNY'}
               </span>
               <span className="font-mono-tabular text-base font-bold text-slate-50 whitespace-nowrap">
                 {distM >= 0 ? `${distM} m` : `+${Math.abs(distM)} m`}
@@ -153,7 +186,7 @@ export function CabDashboardHud({
           )}
         </div>
 
-        <div className={`border-l ${dividerClass} pl-3.5 flex flex-col gap-1.5 min-w-[194px]`}>
+        <div className={`border-l ${dividerClass} pl-2.5 flex flex-col gap-1.5 min-w-[186px]`}>
           <div className="flex items-center justify-between text-xs font-mono-tabular">
             <span className="text-slate-400 uppercase">Drzwi L / P</span>
             <span
@@ -223,15 +256,17 @@ export function CabDashboardHud({
             </button>
           </div>
           <span className="text-[10px] text-slate-400 font-mono-tabular">
-            {doorFault.phase === 'resetting'
-              ? `Reset drzwi: ${doorFault.remainingSec.toFixed(1)} s`
-              : snapshot.gameMode === 'sandbox'
-                ? 'Q Lewe · E Prawe · O Auto'
-                : '0 km/h · Otwórz po stronie peronu'}
+            {snapshot.challenge?.skipStations
+              ? 'Przejazd techniczny — bez postojów'
+              : doorFault.phase === 'resetting'
+                ? `Reset drzwi: ${doorFault.remainingSec.toFixed(1)} s`
+                : snapshot.gameMode === 'sandbox'
+                  ? 'Q Lewe · E Prawe · O Auto'
+                  : '0 km/h · Otwórz po stronie peronu'}
           </span>
         </div>
 
-        <div className={`border-l ${dividerClass} pl-3.5 flex items-center gap-3 min-w-[295px]`}>
+        <div className={`border-l ${dividerClass} pl-2.5 flex items-center gap-2.5 min-w-[356px]`}>
           <MasterControllerSlider
             leverTarget={snapshot.leverTarget}
             emergencyBrake={kinematics.emergencyBrake}
@@ -239,9 +274,16 @@ export function CabDashboardHud({
             onLeverChange={onLeverChange}
           />
 
-          <div className="flex-1 flex flex-col gap-1.5 min-w-[238px]">
-            <div className="flex items-center justify-between text-xs font-mono-tabular">
-              <span className="text-slate-400 uppercase">Nastawnik</span>
+          <div className="flex-1 flex flex-col gap-1.5 min-w-[322px]">
+            <div className="flex items-center justify-between text-xs font-mono-tabular gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="text-slate-400 uppercase">Nastawnik</span>
+                {snapshot.challenge && snapshot.challenge.tractionMultiplier < 1 && (
+                  <span className="px-1 py-0.5 rounded bg-amber-500/20 border border-amber-400/60 text-amber-300 text-[9px] font-bold">
+                    MOC {Math.round(snapshot.challenge.tractionMultiplier * 100)}%
+                  </span>
+                )}
+              </div>
               <span
                 className={
                   kinematics.emergencyBrake
@@ -271,8 +313,33 @@ export function CabDashboardHud({
               </div>
             </div>
 
-            <div className="grid grid-cols-3 gap-1">
+            <div className="grid grid-cols-4 gap-1">
               <CzuwakIndicator czuwak={snapshot.czuwak} onAcknowledge={onAcknowledgeCzuwak} />
+              <RadioDispatchModule radio={snapshot.radio} onAcknowledge={onAcknowledgeRadio} />
+              <button
+                type="button"
+                data-testid="wipers-toggle"
+                aria-pressed={snapshot.weather.wipersOn}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onToggleWipers();
+                }}
+                className={`px-1 py-1 rounded text-[10px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer flex items-center justify-center gap-1 border ${
+                  snapshot.weather.wipersOn
+                    ? 'bg-sky-500/25 border-sky-400 text-sky-200 hover:bg-sky-500/35'
+                    : snapshot.weather.rainIntensity > 0.1
+                      ? 'bg-amber-500/15 border-amber-400/70 text-amber-200 hover:bg-amber-500/25'
+                      : 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-800'
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    snapshot.weather.wipersOn ? 'bg-sky-300' : 'bg-slate-600'
+                  }`}
+                  aria-hidden="true"
+                />
+                <span>Wycier. [X]</span>
+              </button>
               <button
                 type="button"
                 data-testid="headlights-toggle"
@@ -281,14 +348,14 @@ export function CabDashboardHud({
                   e.currentTarget.blur();
                   onToggleHeadlights();
                 }}
-                className={`px-1.5 py-1 rounded text-[11px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer flex items-center justify-center gap-1 border ${
+                className={`px-1 py-1 rounded text-[10px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer flex items-center justify-center gap-1 border ${
                   snapshot.headlightsOn
                     ? 'bg-amber-500/20 border-amber-400/70 text-amber-200 hover:bg-amber-500/30'
                     : 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-800'
                 }`}
               >
                 <span
-                  className={`w-1.5 h-1.5 rounded-full ${snapshot.headlightsOn ? 'bg-amber-300' : 'bg-slate-600'}`}
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${snapshot.headlightsOn ? 'bg-amber-300' : 'bg-slate-600'}`}
                   aria-hidden="true"
                 />
                 <span>Światła [L]</span>
@@ -300,7 +367,7 @@ export function CabDashboardHud({
                   e.currentTarget.blur();
                   onCycleCamera();
                 }}
-                className="px-1.5 py-1 rounded text-[11px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer bg-slate-800 hover:bg-slate-700 text-sky-200 border border-slate-700"
+                className="px-1 py-1 rounded text-[10px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer bg-slate-800 hover:bg-slate-700 text-sky-200 border border-slate-700"
               >
                 Kamera [V]
               </button>
@@ -311,7 +378,7 @@ export function CabDashboardHud({
                 onPointerLeave={() => onHornChange(false)}
                 onPointerCancel={() => onHornChange(false)}
                 onClick={(e) => e.currentTarget.blur()}
-                className={`px-1.5 py-1 rounded text-[11px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer ${
+                className={`px-1 py-1 rounded text-[10px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer ${
                   snapshot.hornActive
                     ? 'bg-amber-400 text-slate-950'
                     : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
@@ -325,7 +392,7 @@ export function CabDashboardHud({
                   e.currentTarget.blur();
                   onEmergencyBrake();
                 }}
-                className={`col-span-2 px-1.5 py-1 rounded text-[11px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer ${
+                className={`col-span-2 px-1.5 py-1 rounded text-[10px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer ${
                   kinematics.emergencyBrake
                     ? 'bg-red-600 text-white'
                     : 'bg-slate-800 hover:bg-red-900/70 text-red-300'

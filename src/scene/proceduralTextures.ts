@@ -115,7 +115,7 @@ export function createStationSignTexture(
   code: string,
   accentHex: number,
   maxAnisotropy: number,
-  lineId: 'M1' | 'M2' = 'M1',
+  lineId = 'M1',
 ): THREE.CanvasTexture {
   const [canvas, ctx] = createCanvas(512, 128);
   const accent = `#${accentHex.toString(16).padStart(6, '0')}`;
@@ -140,7 +140,7 @@ export function createStationSignTexture(
 }
 
 export function createPlatformClockTexture(
-  lineId: 'M1' | 'M2',
+  lineId: string,
   destinationLed: string,
   lineCssColor: string,
   maxAnisotropy: number,
@@ -155,13 +155,14 @@ export function createPlatformClockTexture(
   ctx.fillStyle = lineCssColor;
   ctx.fillRect(18, 18, 72, 48);
   ctx.fillStyle = '#ffffff';
-  ctx.font = 'bold 30px "Chakra Petch", sans-serif';
+  ctx.font = `bold ${lineId.length > 2 ? 24 : 30}px "Chakra Petch", sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(lineId, 54, 44);
 
   ctx.fillStyle = '#fbbf24';
-  ctx.font = 'bold 28px "JetBrains Mono", monospace';
+  const destSize = destinationLed.length > 13 ? 21 : 28;
+  ctx.font = `bold ${destSize}px "JetBrains Mono", monospace`;
   ctx.textAlign = 'left';
   ctx.fillText(destinationLed, 108, 44);
 

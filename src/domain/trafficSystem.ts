@@ -190,7 +190,8 @@ export class OppositeTrackTrafficSystem implements ITrafficController {
     this.active = true;
     this.stationIndex = stationIndex;
     this.targetStopPosM = stopPosM;
-    this.modelId = this.rng() < 0.5 ? 'seria81' : 'inspiro';
+    const modelRoll = this.rng();
+    this.modelId = modelRoll < 0.34 ? 'seria81' : modelRoll < 0.67 ? 'inspiro' : 'varsovia';
     this.doorSide = getStationPlatformSide(station);
     this.cruiseTargetSpeedMs = 19 + this.rng() * 4.5;
     this.dwellRemainingSec = 4.5 + this.rng() * 2.0;
@@ -267,7 +268,8 @@ export class OppositeTrackTrafficSystem implements ITrafficController {
     this.positionM = playerPositionM + SPAWN_AHEAD_DIST_M;
     this.speedMs = 19 + this.rng() * 5.5;
     this.cruiseTargetSpeedMs = this.speedMs;
-    this.modelId = this.rng() < 0.5 ? 'seria81' : 'inspiro';
+    const modelRoll = this.rng();
+    this.modelId = modelRoll < 0.34 ? 'seria81' : modelRoll < 0.67 ? 'inspiro' : 'varsovia';
     this.doorsOpen = false;
     this.doorSide = null;
     this.headlightsOn = true;

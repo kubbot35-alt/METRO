@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { formatClockTime } from '../domain/scheduleSystem';
-import type { DoorSide, ISimulationSnapshot } from '../domain/types';
+import type { DoorSide, ISimulationSnapshot, TrainVisualTheme } from '../domain/types';
 
 export interface IPassengerInteriorRig {
   readonly group: THREE.Group;
@@ -50,7 +50,7 @@ export function buildPassengerInteriorRig(
   const seatedPassengers = buildSeatedPassengers(group, disposables);
   const walkers = buildDoorwayWalkers(group, disposables);
 
-  let appliedTheme: 'modern' | 'retro' | null = null;
+  let appliedTheme: TrainVisualTheme | null = null;
   let leftDoorOpen = 0;
   let rightDoorOpen = 0;
   let walkClock = 0;
@@ -64,6 +64,7 @@ export function buildPassengerInteriorRig(
       if (appliedTheme !== theme) {
         appliedTheme = theme;
         applyThemePalette(mats, interiorLights, theme);
+        led.setWidescreenMode(theme === 'varsovia');
       }
 
       const targetL = snapshot.openDoorSide === 'left' ? 1 : 0;
@@ -91,10 +92,11 @@ export function buildPassengerInteriorRig(
         : snapshot.doorState === 'open'
           ? `STACJA: ${stationName.toUpperCase()}`
           : `NASTĘPNA: ${stationName.toUpperCase()}`;
-      const ledKey = `${snapshot.line.id}|${statusText}|${clockStr}`;
+      const lineBadge = snapshot.line.badgeCode ?? snapshot.line.id;
+      const ledKey = `${theme}|${lineBadge}|${snapshot.line.cssColor}|${statusText}|${clockStr}`;
       if (ledKey !== lastLedKey) {
         lastLedKey = ledKey;
-        led.redraw(snapshot.line.id, snapshot.line.cssColor, statusText, clockStr);
+        led.redraw(lineBadge, snapshot.line.cssColor, statusText, clockStr, theme === 'varsovia');
       }
     },
     dispose: () => {
@@ -112,6 +114,7 @@ interface IInteriorMaterials {
   readonly wall: THREE.MeshStandardMaterial;
   readonly ceiling: THREE.MeshStandardMaterial;
   readonly seatCushion: THREE.MeshStandardMaterial;
+  readonly seatBack: THREE.MeshStandardMaterial;
   readonly seatFrame: THREE.MeshStandardMaterial;
   readonly handrail: THREE.MeshStandardMaterial;
   readonly strap: THREE.MeshStandardMaterial;
@@ -129,6 +132,7 @@ function createInteriorMaterials(disposables: Array<{ dispose(): void }>): IInte
     wall: new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.55, metalness: 0.12 }),
     ceiling: new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: 0.5, metalness: 0.1 }),
     seatCushion: new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.82, metalness: 0.04 }),
+    seatBack: new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.82, metalness: 0.04 }),
     seatFrame: new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.45, metalness: 0.55 }),
     handrail: new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.28, metalness: 0.55 }),
     strap: new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.75, metalness: 0.1 }),
@@ -156,7 +160,7 @@ function createInteriorMaterials(disposables: Array<{ dispose(): void }>): IInte
 function applyThemePalette(
   mats: IInteriorMaterials,
   lights: readonly THREE.PointLight[],
-  theme: 'modern' | 'retro',
+  theme: TrainVisualTheme,
 ): void {
   if (theme === 'retro') {
     // Classic Warsaw Seria 81 interior: beige/greenish laminate, brown/burgundy vinyl seats, silver handrails
@@ -165,6 +169,7 @@ function applyThemePalette(
     mats.wall.color.setHex(0xc8cfc0);
     mats.ceiling.color.setHex(0xd8dcd0);
     mats.seatCushion.color.setHex(0x6b2c2a);
+    mats.seatBack.color.setHex(0x6b2c2a);
     mats.handrail.color.setHex(0xd8e0ea);
     mats.handrail.metalness = 0.85;
     mats.handrail.roughness = 0.22;
@@ -175,6 +180,24 @@ function applyThemePalette(
       l.color.setHex(0xfff1d0);
       l.intensity = 10.5;
     });
+  } else if (theme === 'varsovia') {
+    // Flagship Škoda Varsovia interior: bright white/silver panels, gray-and-Warsaw-red seats, brushed steel rails
+    mats.floor.color.setHex(0x94a3b8);
+    mats.aisleStrip.color.setHex(0x64748b);
+    mats.wall.color.setHex(0xf8fafc);
+    mats.ceiling.color.setHex(0xffffff);
+    mats.seatCushion.color.setHex(0x475569);
+    mats.seatBack.color.setHex(0xdc2626);
+    mats.handrail.color.setHex(0xe2e8f0);
+    mats.handrail.metalness = 0.9;
+    mats.handrail.roughness = 0.18;
+    mats.doorPanel.color.setHex(0xe2e8f0);
+    mats.ceilingLamp.emissive.setHex(0xf8fafc);
+    mats.ceilingLamp.emissiveIntensity = 2.6;
+    lights.forEach((l) => {
+      l.color.setHex(0xffffff);
+      l.intensity = 14.5;
+    });
   } else {
     // Modern Siemens Inspiro interior: crisp light panels, blue seats, signature yellow handrails
     mats.floor.color.setHex(0x4b5563);
@@ -182,6 +205,7 @@ function applyThemePalette(
     mats.wall.color.setHex(0xe5e9f0);
     mats.ceiling.color.setHex(0xf8fafc);
     mats.seatCushion.color.setHex(0x1d4ed8);
+    mats.seatBack.color.setHex(0x1d4ed8);
     mats.handrail.color.setHex(0xfacc15);
     mats.handrail.metalness = 0.42;
     mats.handrail.roughness = 0.3;
@@ -360,7 +384,7 @@ function buildSeatsAndHandrails(
       base.position.set(sideSign * 1.07, FLOOR_Y + 0.21, midZ);
       const cushion = new THREE.Mesh(cushionGeo, mats.seatCushion);
       cushion.position.set(sideSign * 1.06, FLOOR_Y + 0.45, midZ);
-      const back = new THREE.Mesh(backGeo, mats.seatCushion);
+      const back = new THREE.Mesh(backGeo, mats.seatBack);
       back.position.set(sideSign * 1.26, FLOOR_Y + 0.68, midZ);
       root.add(base, cushion, back);
     });
@@ -409,11 +433,12 @@ function createOverheadLedDisplay(
   maxAnisotropy: number,
   disposables: Array<{ dispose(): void }>,
 ): {
-  redraw: (lineId: string, lineColor: string, statusText: string, clockStr: string) => void;
+  setWidescreenMode: (wide: boolean) => void;
+  redraw: (lineId: string, lineColor: string, statusText: string, clockStr: string, widescreen: boolean) => void;
   dispose: () => void;
 } {
   const canvas = document.createElement('canvas');
-  canvas.width = 512;
+  canvas.width = 640;
   canvas.height = 96;
   const ctx = canvas.getContext('2d')!;
   const tex = new THREE.CanvasTexture(canvas);
@@ -426,39 +451,61 @@ function createOverheadLedDisplay(
   const screenMat = new THREE.MeshBasicMaterial({ map: tex });
   disposables.push(casingGeo, casingMat, screenGeo, screenMat);
 
+  const frontGroup = new THREE.Group();
+  frontGroup.position.set(0, CEIL_Y - 0.26, 2.28);
   const casing = new THREE.Mesh(casingGeo, casingMat);
-  casing.position.set(0, CEIL_Y - 0.26, 2.28);
   const screen = new THREE.Mesh(screenGeo, screenMat);
-  screen.position.set(0, CEIL_Y - 0.26, 2.34);
-  root.add(casing, screen);
+  screen.position.set(0, 0, 0.06);
+  frontGroup.add(casing, screen);
+  root.add(frontGroup);
 
-  // Second mid-car overhead display visible further down the aisle
+  const midGroup = new THREE.Group();
+  midGroup.position.set(0, CEIL_Y - 0.26, 9.2);
   const casingMid = new THREE.Mesh(casingGeo, casingMat);
-  casingMid.position.set(0, CEIL_Y - 0.26, 9.2);
   const screenMid = new THREE.Mesh(screenGeo, screenMat);
-  screenMid.position.set(0, CEIL_Y - 0.26, 9.26);
-  root.add(casingMid, screenMid);
+  screenMid.position.set(0, 0, 0.06);
+  midGroup.add(casingMid, screenMid);
+  root.add(midGroup);
 
   return {
-    redraw: (lineId, lineColor, statusText, clockStr) => {
-      ctx.fillStyle = '#070b12';
-      ctx.fillRect(0, 0, 512, 96);
+    setWidescreenMode: (wide: boolean) => {
+      const sx = wide ? 1.32 : 1.0;
+      const sy = wide ? 0.86 : 1.0;
+      frontGroup.scale.set(sx, sy, 1);
+      midGroup.scale.set(sx, sy, 1);
+    },
+    redraw: (lineId, lineColor, statusText, clockStr, widescreen) => {
+      ctx.fillStyle = widescreen ? '#09111f' : '#070b12';
+      ctx.fillRect(0, 0, 640, 96);
       ctx.fillStyle = lineColor;
-      ctx.fillRect(10, 14, 72, 68);
+      ctx.fillRect(10, 14, 78, 68);
       ctx.fillStyle = '#ffffff';
       ctx.font = 'bold 34px "JetBrains Mono", monospace';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(lineId, 46, 50);
+      ctx.fillText(lineId, 49, 50);
 
-      ctx.fillStyle = '#fbbf24';
-      ctx.font = 'bold 24px "JetBrains Mono", monospace';
-      ctx.textAlign = 'left';
-      ctx.fillText(statusText.slice(0, 24), 98, 40);
+      if (widescreen) {
+        ctx.fillStyle = '#38bdf8';
+        ctx.fillRect(100, 14, 526, 4);
+        ctx.fillStyle = '#f8fafc';
+        ctx.font = 'bold 26px "JetBrains Mono", monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText(statusText.slice(0, 28), 104, 46);
 
-      ctx.fillStyle = '#94a3b8';
-      ctx.font = '600 18px "JetBrains Mono", monospace';
-      ctx.fillText(`METRO WARSZAWSKIE · ${clockStr}`, 98, 72);
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '600 18px "JetBrains Mono", monospace';
+        ctx.fillText(`ŠKODA VARSOVIA · INFO LCD · ${clockStr}`, 104, 75);
+      } else {
+        ctx.fillStyle = '#fbbf24';
+        ctx.font = 'bold 24px "JetBrains Mono", monospace';
+        ctx.textAlign = 'left';
+        ctx.fillText(statusText.slice(0, 26), 104, 40);
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '600 18px "JetBrains Mono", monospace';
+        ctx.fillText(`METRO WARSZAWSKIE · ${clockStr}`, 104, 72);
+      }
       tex.needsUpdate = true;
     },
     dispose: () => tex.dispose(),

@@ -5,7 +5,7 @@ import { getStationPlatformLayout } from '../domain/trackGeometry';
 import type { ISimulationSnapshot, IStationSpec } from '../domain/types';
 
 export interface IPassengerRig {
-  sync(snapshot: ISimulationSnapshot, dtSec: number): void;
+  sync(snapshot: ISimulationSnapshot, dtSec: number, densityMultiplier?: number): void;
   dispose(): void;
 }
 
@@ -49,9 +49,9 @@ export function buildStationPassengers(
   let walkClock = 0;
 
   return {
-    sync: (snapshot, dtSec) => {
+    sync: (snapshot, dtSec, densityMultiplier = 1) => {
       walkClock += dtSec;
-      syncCrowds(crowds, snapshot, walkClock, dtSec);
+      syncCrowds(crowds, snapshot, walkClock, dtSec, densityMultiplier);
     },
     dispose: () => {
       scene.remove(root);
@@ -205,6 +205,7 @@ function syncCrowds(
   snapshot: ISimulationSnapshot,
   walkClock: number,
   dtSec: number,
+  densityMultiplier: number,
 ): void {
   if (snapshot.challenge?.skipStations) {
     for (let i = 0; i < crowds.length; i += 1) {
@@ -217,7 +218,7 @@ function syncCrowds(
     }
     return;
   }
-  const mult = snapshot.timeOfDay.passengerMultiplier;
+  const mult = snapshot.timeOfDay.passengerMultiplier * Math.max(0.25, Math.min(1, densityMultiplier));
   const isFreshRun =
     snapshot.stationsServed === 0 &&
     snapshot.currentStation.stationIndex === 0 &&

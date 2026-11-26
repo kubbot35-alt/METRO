@@ -34,10 +34,9 @@ export function RouteLineStrip({ snapshot }: IRouteLineStripProps) {
   const maxDistM = stations[stations.length - 1]?.distanceM ?? 4200;
   const trainX = toSvgX(kinematics.positionM, maxDistM);
   const signalStyle = getSignalStyle(nextSignal?.signal.aspect);
-  const isM2 = line.id === 'M2';
-  const badgeClass = isM2 ? 'bg-red-600 text-white' : 'bg-blue-600 text-white';
-  const lineHex = isM2 ? '#dc2626' : '#2563eb';
-  const lineGlowHex = isM2 ? '#f87171' : '#60a5fa';
+  const badgeLabel = line.badgeCode ?? line.id;
+  const lineHex = line.cssColor || '#2563eb';
+  const lineGlowHex = lineHex;
   const targetDistM = Math.max(0, Math.round(currentStation.distanceToTargetM));
 
   return (
@@ -48,8 +47,11 @@ export function RouteLineStrip({ snapshot }: IRouteLineStripProps) {
     >
       <div className="flex items-center justify-between gap-2 mb-0.5 text-[11px] font-mono-tabular">
         <div className="flex items-center gap-2 min-w-0">
-          <span className={`px-1.5 py-0.5 rounded-xs text-[10px] font-bold tracking-wider shrink-0 ${badgeClass}`}>
-            {line.id}
+          <span
+            className="px-1.5 py-0.5 rounded-xs text-[10px] font-bold tracking-wider shrink-0 text-white"
+            style={{ backgroundColor: lineHex }}
+          >
+            {badgeLabel}
           </span>
           <span className="text-slate-100 font-semibold truncate">
             {currentStation.station.name}

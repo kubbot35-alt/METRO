@@ -3,9 +3,18 @@ import { MetroAudioEngine } from '../audio/metroAudioEngine';
 import { WebSpeechAnnouncer, type ISpeechAnnouncer } from '../audio/speechAnnouncer';
 import type { IAudioEngine } from '../audio/types';
 import { AchievementService, type IAchievementService } from '../domain/achievements';
+import {
+  compileCustomLineSpec,
+  createDefaultCustomLineDraft,
+  CustomLineStorageService,
+  type ICustomLineService,
+} from '../domain/customLines';
+import { DriverProfileService, type IDriverProfileService } from '../domain/driverProfile';
 import { LeaderboardService, type ILeaderboardService } from '../domain/leaderboard';
 import { MetroSimulationEngine } from '../domain/metroSimulation';
+import { PhotoCameraController } from '../domain/photoMode';
 import { MetroScoringRules } from '../domain/scoringRules';
+import { SettingsStorageService, type ISettingsService } from '../domain/settingsService';
 import { MetroTrainPhysics } from '../domain/trainPhysics';
 import type {
   ChallengeId,
@@ -13,12 +22,20 @@ import type {
   IAchievementRecord,
   IAchievementSpec,
   IAchievementToast,
+  ICourseXpReward,
+  ICustomLineDraft,
+  IDriverProfileStats,
+  IGameSettings,
   ILeaderboardEntry,
   IMetroSimulation,
+  IPhotoCameraState,
+  IPhotoMoveInput,
   ISimulationSnapshot,
   MetroLineId,
+  PhotoFilterId,
   TimeOfDayId,
   TrainModelId,
+  WeatherModeId,
 } from '../domain/types';
 import { KeyboardInputController } from '../input/keyboardInputController';
 import type { IInputController } from '../input/types';
@@ -27,23 +44,48 @@ import type { IMetroSceneRenderer } from '../scene/types';
 
 export interface IMetroGameController {
   readonly snapshot: ISimulationSnapshot;
+  readonly settings: IGameSettings;
+  readonly fps: number;
   readonly muted: boolean;
   readonly helpOpen: boolean;
+  readonly settingsOpen: boolean;
   readonly achievementsOpen: boolean;
+  readonly profileOpen: boolean;
+  readonly customLines: readonly ICustomLineDraft[];
+  readonly lineBuilderDraft: ICustomLineDraft | null;
+  readonly lineBuilderEditing: boolean;
+  readonly driverProfile: IDriverProfileStats;
+  readonly lastCourseXpReward: ICourseXpReward | null;
   readonly achievementCatalog: readonly IAchievementSpec[];
   readonly unlockedAchievements: readonly IAchievementRecord[];
   readonly achievementToast: IAchievementToast | null;
   readonly leaderboard: readonly ILeaderboardEntry[];
   readonly isNewRecord: boolean;
+  readonly photoModeActive: boolean;
+  readonly photoState: IPhotoCameraState;
+  readonly photoCapturing: boolean;
+  readonly photoSavedNotice: boolean;
   selectMetroLine: (lineId: MetroLineId) => void;
   selectGameMode: (mode: GameModeId) => void;
   selectChallenge: (challengeId: ChallengeId) => void;
+  selectWeatherMode: (mode: WeatherModeId) => void;
   selectTrainModel: (modelId: TrainModelId) => void;
   selectTimeOfDay: (timeOfDayId: TimeOfDayId) => void;
   triggerSandboxOncomingTrain: () => void;
   cycleSandboxNextSignal: () => void;
   openAchievements: () => void;
   closeAchievements: () => void;
+  openProfile: () => void;
+  closeProfile: () => void;
+  resetDriverProfile: () => void;
+  openLineBuilder: (editDraft?: ICustomLineDraft) => void;
+  closeLineBuilder: () => void;
+  saveCustomLine: (draft: ICustomLineDraft) => void;
+  deleteCustomLine: (id: string) => void;
+  openSettings: () => void;
+  closeSettings: () => void;
+  updateSettings: (partial: Partial<IGameSettings>) => void;
+  resetSettings: () => void;
   startGame: () => void;
   pauseGame: () => void;
   resumeGame: () => void;
@@ -56,12 +98,21 @@ export interface IMetroGameController {
   toggleDoorsLeft: () => void;
   toggleDoorsRight: () => void;
   toggleHeadlights: () => void;
+  toggleWipers: () => void;
   acknowledgeCzuwak: () => void;
   acknowledgeRadio: () => void;
   cycleCamera: () => void;
   triggerEmergencyBrake: () => void;
   setHornActive: (active: boolean) => void;
   setManualLeverAxis: (axis: number | null) => void;
+  enterPhotoMode: () => void;
+  exitPhotoMode: () => void;
+  togglePhotoMode: () => void;
+  setPhotoFov: (fovDeg: number) => void;
+  setPhotoTilt: (rollDeg: number) => void;
+  setPhotoFilter: (filter: PhotoFilterId) => void;
+  resetPhotoCamera: () => void;
+  capturePhotoPng: () => void;
 }
 
 const HUD_SYNC_INTERVAL_MS = 100;
@@ -74,21 +125,39 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
   const simRef = useRef<IMetroSimulation | null>(null);
   const leaderboardServiceRef = useRef<ILeaderboardService | null>(null);
   const achievementServiceRef = useRef<IAchievementService | null>(null);
+  const settingsServiceRef = useRef<ISettingsService | null>(null);
+  const customLineServiceRef = useRef<ICustomLineService | null>(null);
+  const driverProfileServiceRef = useRef<IDriverProfileService | null>(null);
   const rendererRef = useRef<IMetroSceneRenderer | null>(null);
   const audioRef = useRef<IAudioEngine | null>(null);
   const speechRef = useRef<ISpeechAnnouncer | null>(null);
   const inputRef = useRef<IInputController | null>(null);
   const helpPausedGameRef = useRef<boolean>(false);
   const helpOpenRef = useRef<boolean>(false);
+  const settingsOpenRef = useRef<boolean>(false);
   const recordedGameOverRef = useRef<boolean>(false);
   const toastQueueRef = useRef<IAchievementSpec[]>([]);
   const activeToastRef = useRef<IAchievementToast | null>(null);
+  const photoControllerRef = useRef<PhotoCameraController>(new PhotoCameraController());
+  const photoModeActiveRef = useRef<boolean>(false);
+  const photoKeepInteriorRef = useRef<boolean>(false);
+  const photoKeysRef = useRef<Set<string>>(new Set());
+  const photoNoticeTimerRef = useRef<number | null>(null);
 
   if (!leaderboardServiceRef.current) {
     leaderboardServiceRef.current = new LeaderboardService();
   }
   if (!achievementServiceRef.current) {
     achievementServiceRef.current = new AchievementService();
+  }
+  if (!settingsServiceRef.current) {
+    settingsServiceRef.current = new SettingsStorageService();
+  }
+  if (!customLineServiceRef.current) {
+    customLineServiceRef.current = new CustomLineStorageService();
+  }
+  if (!driverProfileServiceRef.current) {
+    driverProfileServiceRef.current = new DriverProfileService();
   }
   if (!simRef.current) {
     const initialSim = new MetroSimulationEngine(new MetroTrainPhysics(), new MetroScoringRules());
@@ -100,8 +169,23 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
   }
 
   const [snapshot, setSnapshot] = useState<ISimulationSnapshot>(() => simRef.current!.getSnapshot());
+  const [settings, setSettings] = useState<IGameSettings>(() => settingsServiceRef.current!.load());
+  const settingsRef = useRef<IGameSettings>(settings);
+  const [customLines, setCustomLines] = useState<readonly ICustomLineDraft[]>(() =>
+    customLineServiceRef.current!.list(),
+  );
+  const customLinesRef = useRef<readonly ICustomLineDraft[]>(customLines);
+  const [lineBuilderDraft, setLineBuilderDraft] = useState<ICustomLineDraft | null>(null);
+  const [lineBuilderEditing, setLineBuilderEditing] = useState<boolean>(false);
+  const [driverProfile, setDriverProfile] = useState<IDriverProfileStats>(() =>
+    driverProfileServiceRef.current!.load(),
+  );
+  const [profileOpen, setProfileOpen] = useState<boolean>(false);
+  const [lastCourseXpReward, setLastCourseXpReward] = useState<ICourseXpReward | null>(null);
+  const [fps, setFps] = useState<number>(60);
   const [muted, setMuted] = useState<boolean>(false);
   const [helpOpen, setHelpOpen] = useState<boolean>(false);
+  const [settingsOpen, setSettingsOpen] = useState<boolean>(false);
   const [achievementsOpen, setAchievementsOpen] = useState<boolean>(false);
   const [unlockedAchievements, setUnlockedAchievements] = useState<readonly IAchievementRecord[]>(
     () => achievementServiceRef.current!.getUnlockedRecords(),
@@ -111,6 +195,23 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     leaderboardServiceRef.current!.getTopEntries(),
   );
   const [isNewRecord, setIsNewRecord] = useState<boolean>(false);
+  const [photoModeActive, setPhotoModeActive] = useState<boolean>(false);
+  const [photoState, setPhotoState] = useState<IPhotoCameraState>(() =>
+    photoControllerRef.current.getState(),
+  );
+  const [photoCapturing, setPhotoCapturing] = useState<boolean>(false);
+  const [photoSavedNotice, setPhotoSavedNotice] = useState<boolean>(false);
+
+  useEffect(() => {
+    document.body.dataset.modalOpen =
+      helpOpen || achievementsOpen || settingsOpen || profileOpen || lineBuilderDraft !== null
+        ? '1'
+        : '0';
+  }, [helpOpen, achievementsOpen, settingsOpen, profileOpen, lineBuilderDraft]);
+
+  useEffect(() => {
+    document.body.dataset.photoMode = photoModeActive ? '1' : '0';
+  }, [photoModeActive]);
 
   const syncNow = useCallback((): void => {
     const sim = simRef.current;
@@ -128,7 +229,16 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
 
   const selectMetroLine = useCallback(
     (lineId: MetroLineId): void => {
-      simRef.current?.setMetroLine(lineId);
+      if (lineId === 'M1' || lineId === 'M2') {
+        simRef.current?.setMetroLine(lineId);
+      } else {
+        const custom = customLinesRef.current.find((item) => item.id === lineId);
+        if (custom) {
+          simRef.current?.setMetroLineSpec?.(compileCustomLineSpec(custom));
+        } else {
+          simRef.current?.setMetroLine('M1');
+        }
+      }
       syncNow();
     },
     [syncNow],
@@ -145,6 +255,14 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
   const selectChallenge = useCallback(
     (challengeId: ChallengeId): void => {
       simRef.current?.setChallenge?.(challengeId);
+      syncNow();
+    },
+    [syncNow],
+  );
+
+  const selectWeatherMode = useCallback(
+    (mode: WeatherModeId): void => {
+      simRef.current?.setWeatherMode?.(mode);
       syncNow();
     },
     [syncNow],
@@ -169,6 +287,103 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     setAchievementsOpen(false);
   }, []);
 
+  const openProfile = useCallback((): void => {
+    setDriverProfile(driverProfileServiceRef.current!.load());
+    setProfileOpen(true);
+  }, []);
+
+  const closeProfile = useCallback((): void => {
+    setProfileOpen(false);
+  }, []);
+
+  const resetDriverProfile = useCallback((): void => {
+    const cleared = driverProfileServiceRef.current!.reset();
+    setDriverProfile(cleared);
+    setLastCourseXpReward(null);
+  }, []);
+
+  const openLineBuilder = useCallback((editDraft?: ICustomLineDraft): void => {
+    if (editDraft) {
+      setLineBuilderDraft(editDraft);
+      setLineBuilderEditing(true);
+    } else {
+      setLineBuilderDraft(createDefaultCustomLineDraft());
+      setLineBuilderEditing(false);
+    }
+  }, []);
+
+  const closeLineBuilder = useCallback((): void => {
+    setLineBuilderDraft(null);
+    setLineBuilderEditing(false);
+  }, []);
+
+  const saveCustomLine = useCallback(
+    (draft: ICustomLineDraft): void => {
+      const updated = customLineServiceRef.current!.save(draft);
+      customLinesRef.current = updated;
+      setCustomLines(updated);
+      setLineBuilderDraft(null);
+      setLineBuilderEditing(false);
+      const saved = updated.find((item) => item.id === draft.id) ?? updated[updated.length - 1];
+      if (saved) {
+        simRef.current?.setMetroLineSpec?.(compileCustomLineSpec(saved));
+        syncNow();
+      }
+    },
+    [syncNow],
+  );
+
+  const deleteCustomLine = useCallback(
+    (id: string): void => {
+      const updated = customLineServiceRef.current!.remove(id);
+      customLinesRef.current = updated;
+      setCustomLines(updated);
+      if (simRef.current?.getSnapshot().line.id === id) {
+        simRef.current.setMetroLine('M1');
+        syncNow();
+      }
+    },
+    [syncNow],
+  );
+
+  const openSettings = useCallback((): void => {
+    settingsOpenRef.current = true;
+    setSettingsOpen(true);
+  }, []);
+
+  const closeSettings = useCallback((): void => {
+    settingsOpenRef.current = false;
+    setSettingsOpen(false);
+  }, []);
+
+  const applyAndPersistSettings = useCallback(
+    (next: IGameSettings): void => {
+      const saved = settingsServiceRef.current!.save(next);
+      settingsRef.current = saved;
+      setSettings(saved);
+      audioRef.current?.setAudioSettings?.(saved.masterVolume, saved.trainVolume, saved.voiceVolume);
+      rendererRef.current?.applySettings?.(saved);
+      const snap = simRef.current?.getSnapshot();
+      if (snap && rendererRef.current) {
+        rendererRef.current.update(snap, 0.016);
+        rendererRef.current.render();
+      }
+    },
+    [],
+  );
+
+  const updateSettings = useCallback(
+    (partial: Partial<IGameSettings>): void => {
+      applyAndPersistSettings({ ...settingsRef.current, ...partial });
+    },
+    [applyAndPersistSettings],
+  );
+
+  const resetSettings = useCallback((): void => {
+    const defaults = settingsServiceRef.current!.reset();
+    applyAndPersistSettings(defaults);
+  }, [applyAndPersistSettings]);
+
   const selectTrainModel = useCallback(
     (modelId: TrainModelId): void => {
       simRef.current?.setTrainModel(modelId);
@@ -190,6 +405,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     inputRef.current?.clearHeld();
     recordedGameOverRef.current = false;
     setIsNewRecord(false);
+    setLastCourseXpReward(null);
     helpOpenRef.current = false;
     setHelpOpen(false);
     if (document.activeElement instanceof HTMLElement) {
@@ -220,6 +436,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     inputRef.current?.clearHeld();
     recordedGameOverRef.current = false;
     setIsNewRecord(false);
+    setLastCourseXpReward(null);
     helpOpenRef.current = false;
     setHelpOpen(false);
     simRef.current?.reset();
@@ -228,9 +445,10 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
 
   const returnToTitle = useCallback((): void => {
     const currentSnap = simRef.current?.getSnapshot();
-    const currentLineId = currentSnap?.line.id ?? 'M1';
+    const currentLine = currentSnap?.line;
     const currentMode = currentSnap?.gameMode ?? 'duty';
     const currentChallengeId = currentSnap?.challenge?.id ?? 'inverter_fault';
+    const currentWeatherMode = currentSnap?.weather.mode ?? 'clear';
     const currentModelId = currentSnap?.trainModel.id ?? 'inspiro';
     const currentTimeOfDayId = currentSnap?.timeOfDay.id ?? 'rush';
     simRef.current?.reset();
@@ -239,16 +457,25 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     inputRef.current?.clearHeld();
     recordedGameOverRef.current = false;
     setIsNewRecord(false);
+    setLastCourseXpReward(null);
     helpOpenRef.current = false;
     setHelpOpen(false);
+    settingsOpenRef.current = false;
+    setSettingsOpen(false);
     const freshSim = new MetroSimulationEngine(new MetroTrainPhysics(), new MetroScoringRules());
-    freshSim.setMetroLine(currentLineId);
+    if (currentLine?.isCustom) {
+      freshSim.setMetroLineSpec(currentLine);
+    } else {
+      freshSim.setMetroLine(currentLine?.id ?? 'M1');
+    }
     freshSim.setChallenge?.(currentChallengeId);
+    freshSim.setWeatherMode?.(currentWeatherMode);
     freshSim.setGameMode(currentMode);
     freshSim.setTrainModel(currentModelId);
     freshSim.setTimeOfDay(currentTimeOfDayId);
     simRef.current = freshSim;
     setLeaderboard(leaderboardServiceRef.current!.getTopEntries());
+    setDriverProfile(driverProfileServiceRef.current!.load());
     syncNow();
   }, [syncNow]);
 
@@ -308,6 +535,10 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     inputRef.current?.triggerHeadlightsToggle();
   }, []);
 
+  const toggleWipers = useCallback((): void => {
+    inputRef.current?.triggerWipersToggle();
+  }, []);
+
   const acknowledgeCzuwak = useCallback((): void => {
     inputRef.current?.triggerCzuwakAck();
   }, []);
@@ -332,6 +563,220 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     inputRef.current?.setVirtualLeverAxis(axis);
   }, []);
 
+  const renderCurrentPhotoFrame = useCallback((nextPose: IPhotoCameraState): void => {
+    const snap = simRef.current?.getSnapshot();
+    const renderer = rendererRef.current;
+    if (!snap || !renderer) {
+      return;
+    }
+    renderer.setPhotoModePose?.(nextPose, snap, photoKeepInteriorRef.current);
+    renderer.render();
+  }, []);
+
+  const enterPhotoMode = useCallback((): void => {
+    const sim = simRef.current;
+    const renderer = rendererRef.current;
+    if (!sim || !renderer) {
+      return;
+    }
+    const snap = sim.getSnapshot();
+    if (snap.phase === 'title' || snap.phase === 'gameover') {
+      return;
+    }
+    if (snap.phase === 'playing') {
+      sim.pause();
+    }
+    audioRef.current?.silence();
+    speechRef.current?.stop();
+    inputRef.current?.clearHeld();
+    photoKeysRef.current.clear();
+
+    const anchor = renderer.getPhotoAnchorPose?.(snap);
+    photoKeepInteriorRef.current = anchor?.keepInteriorVisible ?? false;
+    const initial = anchor
+      ? photoControllerRef.current.initializeFromPose(
+          anchor.x,
+          anchor.y,
+          anchor.z,
+          anchor.yaw,
+          anchor.pitch,
+          anchor.fovDeg,
+        )
+      : photoControllerRef.current.getState();
+
+    photoModeActiveRef.current = true;
+    document.body.dataset.photoMode = '1';
+    setPhotoModeActive(true);
+    setPhotoState(initial);
+    setSnapshot(sim.getSnapshot());
+    renderCurrentPhotoFrame(initial);
+  }, [renderCurrentPhotoFrame]);
+
+  const exitPhotoMode = useCallback((): void => {
+    if (!photoModeActiveRef.current) {
+      return;
+    }
+    photoModeActiveRef.current = false;
+    photoKeepInteriorRef.current = false;
+    photoKeysRef.current.clear();
+    document.body.dataset.photoMode = '0';
+    setPhotoModeActive(false);
+    setPhotoCapturing(false);
+    const sim = simRef.current;
+    if (sim && sim.getSnapshot().phase === 'paused') {
+      sim.resume();
+    }
+    audioRef.current?.unlock();
+    inputRef.current?.clearHeld();
+    const snap = sim?.getSnapshot();
+    if (snap) {
+      rendererRef.current?.setPhotoModePose?.(null, snap, false);
+    }
+    syncNow();
+  }, [syncNow]);
+
+  const togglePhotoMode = useCallback((): void => {
+    if (photoModeActiveRef.current) {
+      exitPhotoMode();
+    } else {
+      enterPhotoMode();
+    }
+  }, [enterPhotoMode, exitPhotoMode]);
+
+  const setPhotoFov = useCallback(
+    (fovDeg: number): void => {
+      const next = photoControllerRef.current.setFov(fovDeg);
+      setPhotoState(next);
+      renderCurrentPhotoFrame(next);
+    },
+    [renderCurrentPhotoFrame],
+  );
+
+  const setPhotoTilt = useCallback(
+    (rollDeg: number): void => {
+      const next = photoControllerRef.current.setTilt(rollDeg);
+      setPhotoState(next);
+      renderCurrentPhotoFrame(next);
+    },
+    [renderCurrentPhotoFrame],
+  );
+
+  const setPhotoFilter = useCallback((filter: PhotoFilterId): void => {
+    const next = photoControllerRef.current.setFilter(filter);
+    setPhotoState(next);
+  }, []);
+
+  const resetPhotoCamera = useCallback((): void => {
+    const next = photoControllerRef.current.resetToInitial();
+    setPhotoState(next);
+    renderCurrentPhotoFrame(next);
+  }, [renderCurrentPhotoFrame]);
+
+  const capturePhotoPng = useCallback((): void => {
+    const renderer = rendererRef.current;
+    if (!renderer || !photoModeActiveRef.current) {
+      return;
+    }
+    const current = photoControllerRef.current.getState();
+    setPhotoCapturing(true);
+    window.requestAnimationFrame(() => {
+      const dataUrl = renderer.captureScreenshotPng?.(current.filter) ?? null;
+      if (dataUrl) {
+        const snap = simRef.current?.getSnapshot();
+        const modelSlug = snap?.trainModel.id ?? 'metro';
+        const lineSlug = (snap?.line.badgeCode ?? snap?.line.id ?? 'M1').replace(/[^a-zA-Z0-9_-]/g, '');
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = `metro-${lineSlug}-${modelSlug}-${Date.now()}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setPhotoSavedNotice(true);
+        if (photoNoticeTimerRef.current !== null) {
+          window.clearTimeout(photoNoticeTimerRef.current);
+        }
+        photoNoticeTimerRef.current = window.setTimeout(() => {
+          setPhotoSavedNotice(false);
+        }, 2400);
+      }
+      setPhotoCapturing(false);
+    });
+  }, []);
+
+  useEffect(() => {
+    if (!photoModeActive) {
+      return undefined;
+    }
+    let dragging = false;
+    let lastX = 0;
+    let lastY = 0;
+
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyQ', 'KeyE', 'ShiftLeft', 'ShiftRight'].includes(e.code)) {
+        photoKeysRef.current.add(e.code);
+      }
+    };
+    const onKeyUp = (e: KeyboardEvent): void => {
+      photoKeysRef.current.delete(e.code);
+    };
+    const onPointerDown = (e: PointerEvent): void => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-testid="photo-mode-panel"]')) {
+        return;
+      }
+      dragging = true;
+      lastX = e.clientX;
+      lastY = e.clientY;
+    };
+    const onPointerMove = (e: PointerEvent): void => {
+      if (!dragging) {
+        return;
+      }
+      const dx = e.clientX - lastX;
+      const dy = e.clientY - lastY;
+      lastX = e.clientX;
+      lastY = e.clientY;
+      const next = photoControllerRef.current.applyLookDelta(dx, dy);
+      setPhotoState(next);
+      renderCurrentPhotoFrame(next);
+    };
+    const onPointerUp = (): void => {
+      dragging = false;
+    };
+    const onWheel = (e: WheelEvent): void => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('[data-testid="photo-mode-panel"]')) {
+        return;
+      }
+      e.preventDefault();
+      const next = photoControllerRef.current.applyWheelZoom(e.deltaY);
+      setPhotoState(next);
+      renderCurrentPhotoFrame(next);
+    };
+    const onBlur = (): void => {
+      dragging = false;
+      photoKeysRef.current.clear();
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    window.addEventListener('pointerdown', onPointerDown);
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('wheel', onWheel, { passive: false });
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      window.removeEventListener('pointerdown', onPointerDown);
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('wheel', onWheel);
+      window.removeEventListener('blur', onBlur);
+      photoKeysRef.current.clear();
+    };
+  }, [photoModeActive, renderCurrentPhotoFrame]);
+
   useEffect(() => {
     const container = mountRef.current;
     if (!container) {
@@ -346,11 +791,26 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     speechRef.current = speech;
     inputRef.current = input;
 
+    sceneRenderer.applySettings?.(settingsRef.current);
+    audio.setAudioSettings?.(
+      settingsRef.current.masterVolume,
+      settingsRef.current.trainVolume,
+      settingsRef.current.voiceVolume,
+    );
     sceneRenderer.mount(container);
     input.attach({
       onStartRequested: () => startGame(),
       onHelpToggle: () => toggleHelp(),
+      onPhotoModeToggle: () => togglePhotoMode(),
       onPauseToggle: () => {
+        if (photoModeActiveRef.current) {
+          exitPhotoMode();
+          return;
+        }
+        if (settingsOpenRef.current) {
+          closeSettings();
+          return;
+        }
         if (helpOpenRef.current) {
           closeHelp();
           return;
@@ -376,11 +836,15 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     let frameHandle = 0;
     let lastTime = performance.now();
     let lastHudSync = 0;
+    let fpsFrameCount = 0;
+    let fpsWindowStart = performance.now();
     let lastPhase = simRef.current!.getSnapshot().phase;
     let lastScore = 0;
     let lastDoor = simRef.current!.getSnapshot().doorState;
     let lastDoorSide = simRef.current!.getSnapshot().openDoorSide;
     let lastHeadlights = simRef.current!.getSnapshot().headlightsOn;
+    let lastWipersOn = simRef.current!.getSnapshot().weather.wipersOn;
+    let lastWheelSlip = simRef.current!.getSnapshot().weather.wheelSlipActive;
     let lastPassengers = 0;
     let lastAnnId = -1;
     let lastCzuwak = false;
@@ -401,7 +865,45 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
       const rawDt = Math.min(Math.max((now - lastTime) / 1000, 0), 0.35);
       lastTime = now;
 
+      fpsFrameCount += 1;
+      if (now - fpsWindowStart >= 450) {
+        if (settingsRef.current.showFps) {
+          const measured = Math.round((fpsFrameCount * 1000) / Math.max(1, now - fpsWindowStart));
+          setFps(measured);
+        }
+        fpsFrameCount = 0;
+        fpsWindowStart = now;
+      }
+
       const sim = simRef.current!;
+      if (photoModeActiveRef.current) {
+        audio.silence();
+        const keys = photoKeysRef.current;
+        const moveInput: IPhotoMoveInput = {
+          forward: keys.has('KeyW'),
+          backward: keys.has('KeyS'),
+          left: keys.has('KeyA'),
+          right: keys.has('KeyD'),
+          up: keys.has('KeyE'),
+          down: keys.has('KeyQ'),
+          boost: keys.has('ShiftLeft') || keys.has('ShiftRight'),
+        };
+        const prevPose = photoControllerRef.current.getState();
+        const nextPose = photoControllerRef.current.stepMovement(moveInput, rawDt > 0 ? rawDt : 0.016);
+        const snap = sim.getSnapshot();
+        sceneRenderer.setPhotoModePose?.(nextPose, snap, photoKeepInteriorRef.current);
+        sceneRenderer.render();
+        if (
+          nextPose.x !== prevPose.x ||
+          nextPose.y !== prevPose.y ||
+          nextPose.z !== prevPose.z
+        ) {
+          setPhotoState(nextPose);
+        }
+        frameHandle = sceneRenderer.scheduleNextFrame(tick);
+        return;
+      }
+
       const control = input.sampleControlInput();
       let remaining = rawDt > 0 ? rawDt : 0.016;
       let latestAudio = sim.step(control, Math.min(remaining, 0.05));
@@ -413,6 +915,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         toggleDoorsLeftPressed: false,
         toggleDoorsRightPressed: false,
         toggleHeadlightsPressed: false,
+        toggleWipersPressed: false,
         acknowledgeCzuwakPressed: false,
         acknowledgeRadioPressed: false,
         cycleCameraPressed: false,
@@ -437,6 +940,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
           radioDispatchTriggered:
             Boolean(latestAudio.radioDispatchTriggered) || Boolean(nextAudio.radioDispatchTriggered),
           radioAckChime: Boolean(latestAudio.radioAckChime) || Boolean(nextAudio.radioAckChime),
+          wiperSweepTick: Boolean(latestAudio.wiperSweepTick) || Boolean(nextAudio.wiperSweepTick),
         };
         remaining -= subDt;
       }
@@ -444,6 +948,12 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
 
       if (snap.phase === 'gameover' && !recordedGameOverRef.current) {
         recordedGameOverRef.current = true;
+        const careerRes = driverProfileServiceRef.current!.recordCompletedCourse(snap);
+        setDriverProfile(careerRes.profile);
+        setLastCourseXpReward(careerRes.reward);
+        if (careerRes.reward.rankedUp) {
+          audio.playAchievementChime();
+        }
         if (snap.gameMode === 'duty') {
           const saved = leaderboardServiceRef.current!.recordRun({
             score: snap.score,
@@ -485,13 +995,20 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
 
       audio.update(snap, latestAudio);
       if (snap.phase === 'playing') {
+        const speechVol = settingsRef.current.masterVolume * settingsRef.current.voiceVolume;
         if (latestAudio.radioDispatchTriggered && snap.radio.active) {
-          speech.announce(10000 + snap.radio.messageId, snap.radio.spokenText, audio.isMuted());
+          speech.announce(
+            10000 + snap.radio.messageId,
+            snap.radio.spokenText,
+            audio.isMuted(),
+            speechVol,
+          );
         } else if (snap.announcement) {
           speech.announce(
             snap.announcement.id,
             snap.announcement.spokenText ?? snap.announcement.text,
             audio.isMuted(),
+            speechVol,
           );
         }
       }
@@ -506,6 +1023,8 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         snap.doorState !== lastDoor ||
         snap.openDoorSide !== lastDoorSide ||
         snap.headlightsOn !== lastHeadlights ||
+        snap.weather.wipersOn !== lastWipersOn ||
+        snap.weather.wheelSlipActive !== lastWheelSlip ||
         snap.passengersCarried !== lastPassengers ||
         annId !== lastAnnId ||
         snap.czuwak.active !== lastCzuwak ||
@@ -524,6 +1043,8 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         lastDoor = snap.doorState;
         lastDoorSide = snap.openDoorSide;
         lastHeadlights = snap.headlightsOn;
+        lastWipersOn = snap.weather.wipersOn;
+        lastWheelSlip = snap.weather.wheelSlipActive;
         lastPassengers = snap.passengersCarried;
         lastAnnId = annId;
         lastCzuwak = snap.czuwak.active;
@@ -552,27 +1073,64 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
       audio.dispose();
       sceneRenderer.dispose();
     };
-  }, [closeHelp, mountRef, pauseGame, restartGame, resumeGame, startGame, toggleHelp, toggleMute]);
+  }, [
+    closeHelp,
+    closeSettings,
+    exitPhotoMode,
+    mountRef,
+    pauseGame,
+    restartGame,
+    resumeGame,
+    startGame,
+    toggleHelp,
+    toggleMute,
+    togglePhotoMode,
+  ]);
 
   return {
     snapshot,
+    settings,
+    fps,
     muted,
     helpOpen,
+    settingsOpen,
     achievementsOpen,
+    profileOpen,
+    customLines,
+    lineBuilderDraft,
+    lineBuilderEditing,
+    driverProfile,
+    lastCourseXpReward,
     achievementCatalog: achievementServiceRef.current!.getCatalog(),
     unlockedAchievements,
     achievementToast,
     leaderboard,
     isNewRecord,
+    photoModeActive,
+    photoState,
+    photoCapturing,
+    photoSavedNotice,
     selectMetroLine,
     selectGameMode,
     selectChallenge,
+    selectWeatherMode,
     selectTrainModel,
     selectTimeOfDay,
     triggerSandboxOncomingTrain,
     cycleSandboxNextSignal,
     openAchievements,
     closeAchievements,
+    openProfile,
+    closeProfile,
+    resetDriverProfile,
+    openLineBuilder,
+    closeLineBuilder,
+    saveCustomLine,
+    deleteCustomLine,
+    openSettings,
+    closeSettings,
+    updateSettings,
+    resetSettings,
     startGame,
     pauseGame,
     resumeGame,
@@ -585,11 +1143,20 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     toggleDoorsLeft,
     toggleDoorsRight,
     toggleHeadlights,
+    toggleWipers,
     acknowledgeCzuwak,
     acknowledgeRadio,
     cycleCamera,
     triggerEmergencyBrake,
     setHornActive,
     setManualLeverAxis,
+    enterPhotoMode,
+    exitPhotoMode,
+    togglePhotoMode,
+    setPhotoFov,
+    setPhotoTilt,
+    setPhotoFilter,
+    resetPhotoCamera,
+    capturePhotoPng,
   };
 }

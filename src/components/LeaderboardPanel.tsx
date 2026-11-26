@@ -29,12 +29,12 @@ export function LeaderboardPanel({ entries }: ILeaderboardPanelProps) {
             Najlepsze wyniki
           </h2>
         </div>
-        <span className="text-[11px] font-mono-tabular text-slate-400">TOP 5</span>
+        <span className="text-[11px] font-mono-tabular text-slate-400 whitespace-nowrap shrink-0">TOP 5</span>
       </div>
 
       {entries.length === 0 ? (
         <p className="text-xs text-slate-400 leading-relaxed py-4 text-center">
-          Brak zapisanych kursów. Ukończ przejazd linią M1 lub M2, aby zapisać pierwszy rekord.
+          Brak zapisanych kursów. Ukończ przejazd dowolną linią metra, aby zapisać pierwszy rekord.
         </p>
       ) : (
         <ol className="flex flex-col gap-2">

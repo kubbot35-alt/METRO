@@ -16,19 +16,19 @@ export function RadioDispatchModule({ radio, onAcknowledge }: IRadioDispatchModu
         e.currentTarget.blur();
         onAcknowledge();
       }}
-      className={`px-1.5 py-1 rounded text-[11px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer flex items-center justify-center gap-1 border transition-colors ${
+      className={`px-1 py-1 rounded text-[10px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer flex items-center justify-center gap-1 border transition-colors ${
         isIncoming
           ? 'bg-cyan-500 hover:bg-cyan-400 border-cyan-200 text-slate-950 font-bold shadow-[0_0_12px_rgba(34,211,238,0.65)]'
           : 'bg-slate-900 border-slate-700 text-slate-300 hover:bg-slate-800'
       }`}
     >
       <span
-        className={`w-2 h-2 rounded-full shrink-0 ${
+        className={`w-1.5 h-1.5 rounded-full shrink-0 ${
           isIncoming ? 'bg-slate-950' : radio.slipperyRailsActive ? 'bg-amber-400' : 'bg-emerald-500/75'
         }`}
         aria-hidden="true"
       />
-      <span>{isIncoming ? `RADIO [R] ${radio.remainingSec.toFixed(1)}s` : 'RADIO [R]'}</span>
+      <span>{isIncoming ? `RADIO ${Math.ceil(radio.remainingSec)}s` : 'RADIO [R]'}</span>
     </button>
   );
 }

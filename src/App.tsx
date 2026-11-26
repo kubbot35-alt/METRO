@@ -4,9 +4,16 @@ import { AchievementsModal } from './components/AchievementsModal';
 import { CabDashboardHud } from './components/CabDashboardHud';
 import { ControlsHelpModal } from './components/ControlsHelpModal';
 import { CourseSummaryModal } from './components/CourseSummaryModal';
+import { CustomLineBuilderModal } from './components/CustomLineBuilderModal';
+import { DriverProfileModal } from './components/DriverProfileModal';
+import { FpsCounterBadge } from './components/FpsCounterBadge';
+import { PhotoModeOverlay } from './components/PhotoModeOverlay';
+import { SettingsModal } from './components/SettingsModal';
 import { StatusModal } from './components/StatusModal';
 import { TitleOverlay } from './components/TitleOverlay';
 import { TopHudBar } from './components/TopHudBar';
+import { getRankForXp } from './domain/driverProfile';
+import { getPhotoFilterSpec } from './domain/photoMode';
 import { formatClockTime, formatDeviationTime } from './domain/scheduleSystem';
 import { getStationPlatformLayout, getStationPlatformSide } from './domain/trackGeometry';
 import { useMetroGame } from './hooks/useMetroGame';
@@ -53,35 +60,66 @@ export default function App() {
       data-challenge={snapshot.challenge?.id ?? 'none'}
       data-radio-active={snapshot.radio.active ? '1' : '0'}
       data-radio-ack={snapshot.radio.acknowledgedCount}
+      data-weather={snapshot.weather.mode}
+      data-wipers={snapshot.weather.wipersOn ? 'on' : 'off'}
+      data-wet-rails={snapshot.weather.wetRailsActive ? '1' : '0'}
+      data-wheel-slip={snapshot.weather.wheelSlipActive ? '1' : '0'}
+      data-fov={game.settings.cabFovDeg}
+      data-quality={game.settings.graphicsQuality}
+      data-rank={getRankForXp(game.driverProfile.xp).id}
+      data-xp={game.driverProfile.xp}
+      data-custom-lines={game.customLines.length}
+      data-photo-mode={game.photoModeActive ? '1' : '0'}
+      data-photo-filter={game.photoState.filter}
+      data-photo-fov={game.photoState.fovDeg}
+      data-photo-tilt={game.photoState.rollDeg}
     >
       <div
         ref={mountRef}
         data-testid="three-canvas-mount"
         className="absolute inset-0 w-full h-full"
+        style={
+          game.photoModeActive
+            ? { filter: getPhotoFilterSpec(game.photoState.filter).cssFilter }
+            : undefined
+        }
       />
+
+      {game.settings.showFps && !game.photoModeActive && (
+        <FpsCounterBadge fps={game.fps} quality={game.settings.graphicsQuality} />
+      )}
 
       {snapshot.phase === 'title' && (
         <TitleOverlay
-          selectedLineId={snapshot.line.id}
+          activeLine={snapshot.line}
+          customLines={game.customLines}
+          driverProfile={game.driverProfile}
           selectedModelId={snapshot.trainModel.id}
           selectedTimeOfDayId={snapshot.timeOfDay.id}
+          selectedWeatherMode={snapshot.weather.mode}
           selectedGameMode={snapshot.gameMode}
           selectedChallengeId={snapshot.challenge?.id ?? 'inverter_fault'}
           leaderboard={game.leaderboard}
           achievementsUnlocked={game.unlockedAchievements.length}
           achievementsTotal={game.achievementCatalog.length}
           onSelectLine={game.selectMetroLine}
+          onOpenLineBuilder={() => game.openLineBuilder()}
+          onEditCustomLine={(draft) => game.openLineBuilder(draft)}
+          onDeleteCustomLine={game.deleteCustomLine}
           onSelectModel={game.selectTrainModel}
           onSelectTimeOfDay={game.selectTimeOfDay}
+          onSelectWeatherMode={game.selectWeatherMode}
           onSelectGameMode={game.selectGameMode}
           onSelectChallenge={game.selectChallenge}
+          onOpenProfile={game.openProfile}
           onOpenAchievements={game.openAchievements}
+          onOpenSettings={game.openSettings}
           onToggleHelp={game.toggleHelp}
           onStart={game.startGame}
         />
       )}
 
-      {snapshot.phase !== 'title' && (
+      {snapshot.phase !== 'title' && !game.photoModeActive && (
         <>
           <TopHudBar
             snapshot={snapshot}
@@ -100,6 +138,7 @@ export default function App() {
             onToggleDoorsLeft={game.toggleDoorsLeft}
             onToggleDoorsRight={game.toggleDoorsRight}
             onToggleHeadlights={game.toggleHeadlights}
+            onToggleWipers={game.toggleWipers}
             onAcknowledgeCzuwak={game.acknowledgeCzuwak}
             onAcknowledgeRadio={game.acknowledgeRadio}
             onCycleCamera={game.cycleCamera}
@@ -110,11 +149,28 @@ export default function App() {
         </>
       )}
 
-      {snapshot.phase === 'paused' && !game.helpOpen && (
+      {game.photoModeActive && (
+        <PhotoModeOverlay
+          state={game.photoState}
+          capturing={game.photoCapturing}
+          savedNotice={game.photoSavedNotice}
+          trainName={snapshot.trainModel.name}
+          onFovChange={game.setPhotoFov}
+          onTiltChange={game.setPhotoTilt}
+          onFilterChange={game.setPhotoFilter}
+          onResetCamera={game.resetPhotoCamera}
+          onCapturePng={game.capturePhotoPng}
+          onClose={game.exitPhotoMode}
+        />
+      )}
+
+      {snapshot.phase === 'paused' && !game.photoModeActive && !game.helpOpen && !game.settingsOpen && (
         <StatusModal
           snapshot={snapshot}
           onResume={game.resumeGame}
           onRestart={game.restartGame}
+          onOpenPhotoMode={game.enterPhotoMode}
+          onOpenSettings={game.openSettings}
           onTitle={game.returnToTitle}
         />
       )}
@@ -123,6 +179,8 @@ export default function App() {
         <CourseSummaryModal
           snapshot={snapshot}
           isNewRecord={game.isNewRecord}
+          xpReward={game.lastCourseXpReward}
+          driverProfile={game.driverProfile}
           onRestart={game.restartGame}
           onTitle={game.returnToTitle}
         />
@@ -136,9 +194,35 @@ export default function App() {
         />
       )}
 
+      {game.profileOpen && (
+        <DriverProfileModal
+          profile={game.driverProfile}
+          onReset={game.resetDriverProfile}
+          onClose={game.closeProfile}
+        />
+      )}
+
+      {game.lineBuilderDraft && (
+        <CustomLineBuilderModal
+          initialDraft={game.lineBuilderDraft}
+          isEditing={game.lineBuilderEditing}
+          onSave={game.saveCustomLine}
+          onClose={game.closeLineBuilder}
+        />
+      )}
+
       {game.helpOpen && <ControlsHelpModal onClose={game.closeHelp} />}
 
-      <AchievementToast toast={game.achievementToast} />
+      {game.settingsOpen && (
+        <SettingsModal
+          settings={game.settings}
+          onUpdate={game.updateSettings}
+          onReset={game.resetSettings}
+          onClose={game.closeSettings}
+        />
+      )}
+
+      {!game.photoModeActive && <AchievementToast toast={game.achievementToast} />}
     </main>
   );
 }

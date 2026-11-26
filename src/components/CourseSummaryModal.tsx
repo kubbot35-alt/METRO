@@ -1,9 +1,17 @@
+import { getRankProgress } from '../domain/driverProfile';
 import { formatDeviationTime } from '../domain/scheduleSystem';
-import type { DriverGrade, ISimulationSnapshot } from '../domain/types';
+import type {
+  DriverGrade,
+  ICourseXpReward,
+  IDriverProfileStats,
+  ISimulationSnapshot,
+} from '../domain/types';
 
 interface ICourseSummaryModalProps {
   readonly snapshot: ISimulationSnapshot;
   readonly isNewRecord: boolean;
+  readonly xpReward?: ICourseXpReward | null;
+  readonly driverProfile?: IDriverProfileStats;
   readonly onRestart: () => void;
   readonly onTitle: () => void;
 }
@@ -25,6 +33,8 @@ function formatDuration(seconds: number): string {
 export function CourseSummaryModal({
   snapshot,
   isNewRecord,
+  xpReward,
+  driverProfile,
   onRestart,
   onTitle,
 }: ICourseSummaryModalProps) {
@@ -32,6 +42,11 @@ export function CourseSummaryModal({
   const totalViolations =
     snapshot.overspeedViolations + snapshot.redSignalViolations + snapshot.czuwakViolations;
   const punctualityText = formatDeviationTime(snapshot.schedule.averageDeviationSec);
+  const rankProgress = xpReward
+    ? getRankProgress(xpReward.totalXpAfter)
+    : driverProfile
+      ? getRankProgress(driverProfile.xp)
+      : null;
 
   return (
     <div className="fixed inset-0 z-30 bg-[#07090e]/85 flex items-center justify-center p-4">
@@ -42,6 +57,24 @@ export function CourseSummaryModal({
         data-testid="course-summary-modal"
         className="w-full max-w-lg bg-[#111620] border border-slate-700 rounded-lg p-6 shadow-2xl"
       >
+        {snapshot.challenge && snapshot.challengeOutcome && (
+          <div
+            data-testid="challenge-outcome-banner"
+            className={`mb-4 px-3.5 py-2.5 rounded-md border text-center ${
+              snapshot.challengeOutcome.passed
+                ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200'
+                : 'bg-red-500/20 border-red-400 text-red-200'
+            }`}
+          >
+            <p className="font-display font-bold text-sm uppercase tracking-wide">
+              {snapshot.challengeOutcome.passed
+                ? `WYZWANIE ZALICZONE: ${snapshot.challenge.title} — Odblokowano odznakę!`
+                : `WYZWANIE NIEZALICZONE: ${snapshot.challenge.title}`}
+            </p>
+            <p className="text-xs mt-0.5 text-slate-200">{snapshot.challengeOutcome.reason}</p>
+          </div>
+        )}
+
         {isNewRecord && (
           <div
             data-testid="new-record-badge"
@@ -93,6 +126,51 @@ export function CourseSummaryModal({
           />
           <SummaryTile label="Czas kursu" value={formatDuration(snapshot.elapsedTimeSec)} />
         </div>
+
+        {xpReward && rankProgress && (
+          <div
+            data-testid="summary-xp-panel"
+            className="mb-5 rounded-md border border-slate-700/90 bg-[#0a0f18] p-3.5 space-y-2"
+          >
+            {xpReward.rankedUp && (
+              <div
+                data-testid="rank-up-banner"
+                className="px-3 py-2 rounded border-2 border-amber-300 bg-amber-500/20 text-amber-200 text-center animate-pulse"
+              >
+                <p className="font-display font-bold text-sm uppercase tracking-wider">
+                  AWANS! Nowa ranga: {xpReward.newRank.title}
+                </p>
+                <p className="text-[11px] text-amber-100/90">
+                  {xpReward.previousRank.title} → {xpReward.newRank.title}
+                </p>
+              </div>
+            )}
+            <div className="flex items-center justify-between gap-2 text-xs font-mono-tabular">
+              <div>
+                <span className="text-slate-400">Ranga: </span>
+                <span className="font-bold text-slate-100">{rankProgress.currentRank.title}</span>
+              </div>
+              <span className="font-bold text-emerald-300">+{xpReward.gainedXp} XP</span>
+            </div>
+            <div className="w-full h-2 bg-slate-800 rounded overflow-hidden">
+              <div
+                className="h-full transition-all duration-700"
+                style={{
+                  width: `${Math.round(rankProgress.progressRatio * 100)}%`,
+                  backgroundColor: rankProgress.currentRank.badgeColor,
+                }}
+              />
+            </div>
+            <div className="flex items-center justify-between text-[10px] font-mono-tabular text-slate-400">
+              <span>Łącznie: {xpReward.totalXpAfter} XP</span>
+              <span>
+                {rankProgress.nextRank
+                  ? `Do ${rankProgress.nextRank.title}: ${Math.max(0, rankProgress.nextRank.minXp - xpReward.totalXpAfter)} XP`
+                  : 'Maksymalny poziom'}
+              </span>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-col sm:flex-row gap-2.5">
           <button
