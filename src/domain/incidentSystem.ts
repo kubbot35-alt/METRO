@@ -24,12 +24,14 @@ export interface IIncidentOverrides {
   readonly doorFaultProbability?: number | null;
   readonly czuwakMinSec?: number | null;
   readonly czuwakMaxSec?: number | null;
+  readonly disableTrackwork?: boolean;
 }
 
 export interface IIncidentController {
   setStations?(stations: readonly IStationSpec[]): void;
   setEnabled?(enabled: boolean): void;
   configureOverrides?(overrides: IIncidentOverrides): void;
+  forceTriggerCzuwak?(windowSec?: number): boolean;
   reset(): void;
   step(
     positionM: number,
@@ -72,6 +74,7 @@ export class MetroIncidentSystem implements IIncidentController {
   private doorFaultProb = DOOR_FAULT_PROBABILITY;
   private czuwakMinSec = CZUWAK_MIN_INTERVAL_SEC;
   private czuwakMaxSec = CZUWAK_MAX_INTERVAL_SEC;
+  private disableTrackwork = false;
 
   public constructor(
     stations: readonly IStationSpec[] = LINE_M1_STATIONS,
@@ -96,7 +99,20 @@ export class MetroIncidentSystem implements IIncidentController {
     this.doorFaultProb = overrides.doorFaultProbability ?? DOOR_FAULT_PROBABILITY;
     this.czuwakMinSec = overrides.czuwakMinSec ?? CZUWAK_MIN_INTERVAL_SEC;
     this.czuwakMaxSec = overrides.czuwakMaxSec ?? CZUWAK_MAX_INTERVAL_SEC;
+    this.disableTrackwork = Boolean(overrides.disableTrackwork);
+    if (this.disableTrackwork) {
+      this.trackworkZones = [];
+    }
     this.czuwakCountdownSec = this.rollNextCzuwakInterval();
+  }
+
+  public forceTriggerCzuwak(windowSec: number = 12): boolean {
+    if (this.czuwakActive) {
+      return false;
+    }
+    this.czuwakActive = true;
+    this.czuwakRemainingSec = Math.max(4, windowSec);
+    return true;
   }
 
   public reset(): void {
@@ -107,7 +123,7 @@ export class MetroIncidentSystem implements IIncidentController {
     this.czuwakActive = false;
     this.czuwakRemainingSec = 0;
     this.czuwakCountdownSec = this.rollNextCzuwakInterval();
-    this.trackworkZones = this.enabled ? this.generateTrackworkZones() : [];
+    this.trackworkZones = this.enabled && !this.disableTrackwork ? this.generateTrackworkZones() : [];
   }
 
   public step(

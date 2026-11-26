@@ -93,6 +93,12 @@ export const ACHIEVEMENT_CATALOG: readonly IAchievementSpec[] = [
     description: 'Ukończ wyzwanie „Czarna seria” z czuwakiem co 30 s i awariami drzwi.',
     category: 'challenge',
   },
+  {
+    id: 'academy_license',
+    title: 'Licencja Maszynisty',
+    description: 'Ukończ wszystkie 5 etapów szkolenia w Akademii Maszynisty.',
+    category: 'milestone',
+  },
 ];
 
 export function evaluateUnlockedAchievementIds(
@@ -142,6 +148,10 @@ export function evaluateUnlockedAchievementIds(
   check('challenge_inverter_fault', isChallengePassed && snapshot.challenge?.id === 'inverter_fault');
   check('challenge_technical_run', isChallengePassed && snapshot.challenge?.id === 'technical_run');
   check('challenge_black_series', isChallengePassed && snapshot.challenge?.id === 'black_series');
+  check(
+    'academy_license',
+    snapshot.gameMode === 'academy' && snapshot.academy?.completed === true,
+  );
 
   return newlyUnlocked;
 }

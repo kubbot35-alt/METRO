@@ -1,4 +1,10 @@
 import {
+  ACADEMY_LINE_SPEC,
+  ACADEMY_SEMAPHORE_SPECS,
+  AcademyController,
+  type IAcademyController,
+} from './academySystem';
+import {
   StationAnnouncementTracker,
   type IAnnouncementTracker,
 } from './announcementTracker';
@@ -82,6 +88,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
   private readonly traffic: ITrafficController;
   private readonly radio: IRadioController;
   private readonly weather: IWeatherController;
+  private readonly academy: IAcademyController;
   private line: IMetroLineSpec = METRO_LINE_M1;
   private stations: readonly IStationSpec[];
   private speedZones: readonly ISpeedLimitZone[];
@@ -139,6 +146,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     traffic: ITrafficController = new OppositeTrackTrafficSystem(),
     radio: IRadioController = new DispatcherRadioSystem(stations),
     weather: IWeatherController = new MetroWeatherSystem(),
+    academy: IAcademyController = new AcademyController(),
   ) {
     this.physics = physics;
     this.scoring = scoring;
@@ -152,6 +160,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.traffic = traffic;
     this.radio = radio;
     this.weather = weather;
+    this.academy = academy;
     this.traffic.setStations?.(stations);
     this.alignment = getLineTrackAlignment(this.line.id, stations);
     this.physics.setConfig?.(this.trainModel.physics);
@@ -182,6 +191,10 @@ export class MetroSimulationEngine implements IMetroSimulation {
 
   public setGameMode(mode: GameModeId): void {
     this.gameMode = mode;
+    if (mode === 'academy' && this.line.id !== ACADEMY_LINE_SPEC.id) {
+      this.setMetroLineSpec(ACADEMY_LINE_SPEC);
+      return;
+    }
     this.applyActiveModeOverrides();
   }
 
@@ -241,6 +254,10 @@ export class MetroSimulationEngine implements IMetroSimulation {
     if (this.phase === 'gameover') {
       this.reset();
     }
+    if (this.gameMode === 'academy') {
+      this.headlightsOn = false;
+      this.academy.reset();
+    }
     this.challengeOutcome = null;
     this.applyActiveModeOverrides();
     this.phase = 'playing';
@@ -284,7 +301,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.hornActive = false;
     this.atpActive = false;
     this.activeCautionLimitKmh = null;
-    this.headlightsOn = true;
+    this.headlightsOn = this.gameMode !== 'academy';
     this.leverTarget = 0;
     this.cameraMode = 'cab';
     this.cameraNotice = null;
@@ -299,6 +316,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.traffic.reset();
     this.radio.reset();
     this.weather.reset();
+    this.academy.reset();
     this.applyActiveModeOverrides();
   }
 
@@ -335,7 +353,9 @@ export class MetroSimulationEngine implements IMetroSimulation {
     const trafficRes = this.traffic.step(this.kinematics.positionM, dt);
     const brakeStopHiss = this.checkBrakeStopHiss(prevSpeedKmh);
     const overspeedWarning = this.evaluateOverspeed(dt);
+    const prevStationsServed = this.stationsServed;
     const doorRes = this.handleDoorToggle(input, incRes.doorFaultResolvedClose);
+    const stationServedNow = this.stationsServed > prevStationsServed;
     const boardingCompleteChime = this.updateBoarding(dt);
     this.checkStationOvershoot();
     const progress = this.buildStationProgress();
@@ -350,23 +370,71 @@ export class MetroSimulationEngine implements IMetroSimulation {
         getStationPlatformSide(progress.station),
       );
     }
+
+    let czuwakAlertTriggered = incRes.czuwakAlertTriggered;
+    let radioDispatchTriggered = radioRes.dispatchTriggered;
+    let academyStepCompleted = false;
+    if (this.gameMode === 'academy') {
+      const academyRes = this.academy.step({
+        positionM: this.kinematics.positionM,
+        speedKmh: this.kinematics.speedKmh,
+        headlightsOn: this.headlightsOn,
+        hornActive: this.hornActive,
+        redSignalClearedNow: atpTriggered.cleared,
+        czuwakActive: this.incidents.getCzuwakState().active,
+        czuwakAcknowledgedNow: incRes.czuwakAckChime,
+        radioActive: this.radio.getState().active,
+        radioAcknowledgedNow: radioRes.acknowledgedNow,
+        inStopZone: progress.inStopZone,
+        expectedPlatformSide: getStationPlatformSide(progress.station),
+        doorState: this.doorState,
+        boardingCompleted: this.boardingCompleted,
+        stationServedNow,
+        dtSec: dt,
+      });
+      if (academyRes.requestTriggerCzuwak) {
+        czuwakAlertTriggered =
+          czuwakAlertTriggered || (this.incidents.forceTriggerCzuwak?.(15) ?? false);
+      }
+      if (academyRes.requestTriggerRadio) {
+        radioDispatchTriggered =
+          radioDispatchTriggered ||
+          (this.radio.forceTriggerDispatch?.(
+            'Dyspozytor Akademii: Próba łączności radiowej. Potwierdź odbiór przyciskiem [R].',
+            18,
+          ) ?? false);
+      }
+      if (academyRes.stepCompletedNow) {
+        academyStepCompleted = true;
+        this.score += 50;
+        const stepLabel = academyRes.academyFinishedNow
+          ? 'Akademia ukończona! Przyznano Licencję Maszynisty'
+          : `Akademia: Krok ${academyRes.completedStepNumber}/5 zaliczony!`;
+        this.feedback.push(stepLabel, 50, 'success');
+      }
+      if (academyRes.academyFinishedNow) {
+        this.phase = 'gameover';
+      }
+    }
+
     return {
       hornActive: input.hornActive,
       doorToggledTo: doorRes.toggledTo,
       boardingCompleteChime,
       overspeedWarning,
-      emergencyBrakeTriggered: emergencyTriggered || incRes.czuwakTimedOut,
+      emergencyBrakeTriggered: emergencyTriggered || (this.gameMode !== 'academy' && incRes.czuwakTimedOut),
       railJointPulse: this.checkRailJoint(),
       brakeStopHiss,
       atpTriggered: atpTriggered.violated,
       signalClearedChime: atpTriggered.cleared,
-      czuwakAlertTriggered: incRes.czuwakAlertTriggered,
+      czuwakAlertTriggered,
       czuwakAckChime: incRes.czuwakAckChime,
       doorFaultBeep: doorRes.faultBeep,
       passingTrainWhoosh: trafficRes.passingTrainWhoosh,
-      radioDispatchTriggered: radioRes.dispatchTriggered,
+      radioDispatchTriggered,
       radioAckChime: radioRes.acknowledgedNow,
       wiperSweepTick: weatherRes.wiperSweepTick,
+      academyStepCompleted,
     };
   }
 
@@ -393,6 +461,14 @@ export class MetroSimulationEngine implements IMetroSimulation {
       gameMode: this.gameMode,
       challenge: activeChallenge,
       challengeOutcome: this.challengeOutcome,
+      academy:
+        this.gameMode === 'academy'
+          ? this.academy.getSnapshot(
+              currentStation.inStopZone,
+              getStationPlatformSide(currentStation.station),
+              this.doorState,
+            )
+          : null,
       line: this.line,
       stations: this.stations,
       trainModel: this.trainModel,
@@ -463,6 +539,21 @@ export class MetroSimulationEngine implements IMetroSimulation {
   }
 
   private applyActiveModeOverrides(): void {
+    if (this.gameMode === 'academy') {
+      this.signals.configureScriptedSignals?.(ACADEMY_SEMAPHORE_SPECS);
+      this.traffic.setSpawnIntervalRange?.(22, 36);
+      this.schedule.configure?.(this.timeOfDay.startClockSec, 3.0);
+      this.incidents.setEnabled?.(true);
+      this.incidents.configureOverrides?.({
+        doorFaultProbability: 0,
+        czuwakMinSec: 9999,
+        czuwakMaxSec: 9999,
+        disableTrackwork: true,
+      });
+      this.radio.setEnabled(true);
+      this.radio.setAutoTrigger?.(false);
+      return;
+    }
     const challenge = this.getActiveChallenge();
     if (challenge?.forceTimeOfDay && this.timeOfDay.id !== challenge.forceTimeOfDay) {
       this.timeOfDay = getTimeOfDaySpec(challenge.forceTimeOfDay);
@@ -480,7 +571,10 @@ export class MetroSimulationEngine implements IMetroSimulation {
       doorFaultProbability: challenge?.doorFaultProbability ?? null,
       czuwakMinSec: challenge?.czuwakMinSec ?? null,
       czuwakMaxSec: challenge?.czuwakMaxSec ?? null,
+      disableTrackwork: false,
     });
+    this.radio.setEnabled(true);
+    this.radio.setAutoTrigger?.(true);
   }
 
   private evaluateRadio(ackRadioPressed: boolean, dt: number) {
@@ -536,6 +630,17 @@ export class MetroSimulationEngine implements IMetroSimulation {
     if (res.redSignalViolated) {
       if (this.gameMode === 'sandbox') {
         this.feedback.push('Sandbox: minięto czerwony semafor (bez kary)', 0, 'neutral');
+      } else if (this.gameMode === 'academy') {
+        this.atpActive = true;
+        this.kinematics = { ...this.kinematics, emergencyBrake: true, throttle: 0 };
+        this.signals.configureScriptedSignals?.([
+          { distanceM: Math.round(this.kinematics.positionM + 115), aspect: 'red', waitSec: 3.0 },
+        ]);
+        this.feedback.push(
+          'Akademia: Minięto czerwony semafor! Zatrzymaj się przed kolejnym światłem.',
+          0,
+          'warning',
+        );
       } else {
         this.atpActive = true;
         this.redSignalViolations += 1;
@@ -579,13 +684,17 @@ export class MetroSimulationEngine implements IMetroSimulation {
       this.doorFaultsResolvedCount += 1;
     }
     if (res.czuwakTimedOut) {
-      this.czuwakViolations += 1;
-      this.kinematics = { ...this.kinematics, emergencyBrake: true, throttle: 0 };
-      this.applyPenalty(
-        this.scoring.getCzuwakPenalty(),
-        'CZUWAK: Brak reakcji [C]! Hamulec awaryjny',
-        'danger',
-      );
+      if (this.gameMode === 'academy') {
+        this.feedback.push('Akademia: Czas czuwaka minął — spróbuj ponownie [C]', 0, 'warning');
+      } else {
+        this.czuwakViolations += 1;
+        this.kinematics = { ...this.kinematics, emergencyBrake: true, throttle: 0 };
+        this.applyPenalty(
+          this.scoring.getCzuwakPenalty(),
+          'CZUWAK: Brak reakcji [C]! Hamulec awaryjny',
+          'danger',
+        );
+      }
     }
     return res;
   }
@@ -775,6 +884,9 @@ export class MetroSimulationEngine implements IMetroSimulation {
   }
 
   private getActiveBoardingDurationSec(): number {
+    if (this.gameMode === 'academy') {
+      return 3.0;
+    }
     return this.timeOfDayConfigured ? this.timeOfDay.boardingDurationSec : BOARDING_DURATION_SEC;
   }
 
@@ -948,6 +1060,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
       radioDispatchTriggered: false,
       radioAckChime: false,
       wiperSweepTick: false,
+      academyStepCompleted: false,
     };
   }
 }

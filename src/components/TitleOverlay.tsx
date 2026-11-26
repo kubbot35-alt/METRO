@@ -10,6 +10,7 @@ import type {
   IChallengeSpec,
   ICustomLineDraft,
   IDriverProfileStats,
+  IGamepadStatus,
   ILeaderboardEntry,
   IMetroLineSpec,
   ITimeOfDaySpec,
@@ -25,6 +26,7 @@ interface ITitleOverlayProps {
   readonly activeLine: IMetroLineSpec;
   readonly customLines: readonly ICustomLineDraft[];
   readonly driverProfile: IDriverProfileStats;
+  readonly gamepadStatus: IGamepadStatus;
   readonly selectedModelId: TrainModelId;
   readonly selectedTimeOfDayId: TimeOfDayId;
   readonly selectedWeatherMode: WeatherModeId;
@@ -46,6 +48,7 @@ interface ITitleOverlayProps {
   readonly onOpenAchievements: () => void;
   readonly onOpenSettings: () => void;
   readonly onToggleHelp: () => void;
+  readonly onStartAcademy: () => void;
   readonly onStart: () => void;
 }
 
@@ -79,6 +82,7 @@ export function TitleOverlay({
   activeLine,
   customLines,
   driverProfile,
+  gamepadStatus,
   selectedModelId,
   selectedTimeOfDayId,
   selectedWeatherMode,
@@ -100,6 +104,7 @@ export function TitleOverlay({
   onOpenAchievements,
   onOpenSettings,
   onToggleHelp,
+  onStartAcademy,
   onStart,
 }: ITitleOverlayProps) {
   const activeChallenge = getChallengeSpec(selectedChallengeId);
@@ -347,21 +352,38 @@ export function TitleOverlay({
             )}
           </div>
 
-          <button
-            type="button"
-            data-start="true"
-            onClick={(e) => {
-              e.currentTarget.blur();
-              onStart();
-            }}
-            className="px-7 py-2.5 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-display font-bold text-base tracking-wide rounded-md shadow-lg transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
-          >
-            {selectedGameMode === 'sandbox'
-              ? `Uruchom Wolną Jazdę (${activeBadge})`
-              : selectedGameMode === 'challenge'
-                ? `Start wyzwania: ${activeChallenge.title} (${activeBadge})`
-                : `Rozpocznij kurs (${activeBadge})`}
-          </button>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              data-start="true"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onStart();
+              }}
+              className="px-7 py-2.5 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-display font-bold text-base tracking-wide rounded-md shadow-lg transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+            >
+              {selectedGameMode === 'sandbox'
+                ? `Uruchom Wolną Jazdę (${activeBadge})`
+                : selectedGameMode === 'challenge'
+                  ? `Start wyzwania: ${activeChallenge.title} (${activeBadge})`
+                  : `Rozpocznij kurs (${activeBadge})`}
+            </button>
+
+            <button
+              type="button"
+              data-testid="title-academy-btn"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onStartAcademy();
+              }}
+              className="px-4 py-2.5 bg-[#0a1d2a]/95 hover:bg-cyan-950/90 border-2 border-cyan-400/80 text-cyan-100 font-display font-bold text-sm tracking-wide rounded-md shadow-lg transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap"
+            >
+              <span>Samouczek / Akademia</span>
+              <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-200 text-[10px] font-mono-tabular">
+                +250 XP
+              </span>
+            </button>
+          </div>
         </div>
 
         <div className="lg:pt-1 space-y-3 min-w-0">
@@ -421,10 +443,32 @@ export function TitleOverlay({
         </div>
       </div>
 
-      <div className="w-full flex justify-center mt-1.5">
+      <div className="w-full flex items-center justify-center gap-3 mt-1.5 relative">
         <p className="text-xs font-mono-tabular text-slate-300 tracking-wide text-center bg-[#090b0f]/85 px-4 py-1.5 rounded border border-slate-800/80">
           W / S Moc · Spacja Hamulec · B Awaryjny · Q / E Drzwi L/P · V Kamera (4) · F Foto · R Radio · X Wycieraczki · C Czuwak · L Światła
         </p>
+        {gamepadStatus.connected && (
+          <div
+            data-testid="gamepad-connected-badge"
+            title={gamepadStatus.name}
+            className="pointer-events-auto fixed bottom-4 right-4 z-30 flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border border-sky-400/75 bg-[#091827]/95 text-sky-200 text-[11px] font-mono-tabular font-semibold shadow-lg"
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className="text-sky-300 shrink-0"
+              aria-hidden="true"
+            >
+              <rect x="2" y="6" width="20" height="12" rx="4" />
+              <path d="M6 12h4M8 10v4M15 11h.01M18 13h.01" />
+            </svg>
+            <span>Pad aktywny</span>
+          </div>
+        )}
       </div>
     </div>
   );

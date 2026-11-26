@@ -59,6 +59,10 @@ export function CabDashboardHud({
   const rightActive = doorState === 'open' && openDoorSide === 'right';
   const leftRecommended = canToggleDoors && doorState === 'closed' && isLeftPlatform;
   const rightRecommended = canToggleDoors && doorState === 'closed' && !isLeftPlatform;
+  const academyHighlight = snapshot.academy && !snapshot.academy.completed
+    ? snapshot.academy.highlightTarget
+    : null;
+  const highlightRing = 'ring-2 ring-cyan-300 shadow-[0_0_16px_rgba(34,211,238,0.85)] animate-pulse';
 
   return (
     <div className="fixed bottom-0 inset-x-0 z-10 pointer-events-none flex justify-center px-2.5 pb-2">
@@ -76,7 +80,11 @@ export function CabDashboardHud({
           theme={theme}
         />
 
-        <SignalIndicator nextSignal={snapshot.nextSignal} atpActive={snapshot.atpActive} />
+        <SignalIndicator
+          nextSignal={snapshot.nextSignal}
+          atpActive={snapshot.atpActive}
+          highlighted={academyHighlight === 'signal'}
+        />
 
         <ScheduleIndicator schedule={snapshot.schedule} />
 
@@ -211,6 +219,7 @@ export function CabDashboardHud({
             <button
               type="button"
               data-testid="doors-left-btn"
+              data-academy-highlight={academyHighlight === 'doors-left' ? '1' : '0'}
               aria-label="Drzwi lewe [Q]"
               disabled={!canToggleDoors}
               onClick={(e) => {
@@ -227,13 +236,14 @@ export function CabDashboardHud({
                       : canToggleDoors
                         ? 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-200 cursor-pointer'
                         : 'bg-slate-900 border-slate-800 text-slate-500 cursor-not-allowed'
-              }`}
+              } ${academyHighlight === 'doors-left' ? highlightRing : ''}`}
             >
               ◀ DRZWI L [Q]
             </button>
             <button
               type="button"
               data-testid="doors-right-btn"
+              data-academy-highlight={academyHighlight === 'doors-right' ? '1' : '0'}
               aria-label="Drzwi prawe [E]"
               disabled={!canToggleDoors}
               onClick={(e) => {
@@ -250,7 +260,7 @@ export function CabDashboardHud({
                       : canToggleDoors
                         ? 'bg-slate-800 hover:bg-slate-700 border-slate-600 text-slate-200 cursor-pointer'
                         : 'bg-slate-900 border-slate-800 text-slate-500 cursor-not-allowed'
-              }`}
+              } ${academyHighlight === 'doors-right' ? highlightRing : ''}`}
             >
               DRZWI P [E] ▶
             </button>
@@ -271,6 +281,7 @@ export function CabDashboardHud({
             leverTarget={snapshot.leverTarget}
             emergencyBrake={kinematics.emergencyBrake}
             theme={theme}
+            highlighted={academyHighlight === 'throttle'}
             onLeverChange={onLeverChange}
           />
 
@@ -314,8 +325,16 @@ export function CabDashboardHud({
             </div>
 
             <div className="grid grid-cols-4 gap-1">
-              <CzuwakIndicator czuwak={snapshot.czuwak} onAcknowledge={onAcknowledgeCzuwak} />
-              <RadioDispatchModule radio={snapshot.radio} onAcknowledge={onAcknowledgeRadio} />
+              <CzuwakIndicator
+                czuwak={snapshot.czuwak}
+                highlighted={academyHighlight === 'czuwak'}
+                onAcknowledge={onAcknowledgeCzuwak}
+              />
+              <RadioDispatchModule
+                radio={snapshot.radio}
+                highlighted={academyHighlight === 'radio'}
+                onAcknowledge={onAcknowledgeRadio}
+              />
               <button
                 type="button"
                 data-testid="wipers-toggle"
@@ -343,6 +362,7 @@ export function CabDashboardHud({
               <button
                 type="button"
                 data-testid="headlights-toggle"
+                data-academy-highlight={academyHighlight === 'headlights' ? '1' : '0'}
                 aria-pressed={snapshot.headlightsOn}
                 onClick={(e) => {
                   e.currentTarget.blur();
@@ -352,7 +372,7 @@ export function CabDashboardHud({
                   snapshot.headlightsOn
                     ? 'bg-amber-500/20 border-amber-400/70 text-amber-200 hover:bg-amber-500/30'
                     : 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-800'
-                }`}
+                } ${academyHighlight === 'headlights' ? highlightRing : ''}`}
               >
                 <span
                   className={`w-1.5 h-1.5 rounded-full shrink-0 ${snapshot.headlightsOn ? 'bg-amber-300' : 'bg-slate-600'}`}
@@ -373,6 +393,8 @@ export function CabDashboardHud({
               </button>
               <button
                 type="button"
+                data-testid="horn-btn"
+                data-academy-highlight={academyHighlight === 'horn' ? '1' : '0'}
                 onPointerDown={() => onHornChange(true)}
                 onPointerUp={() => onHornChange(false)}
                 onPointerLeave={() => onHornChange(false)}
@@ -382,7 +404,7 @@ export function CabDashboardHud({
                   snapshot.hornActive
                     ? 'bg-amber-400 text-slate-950'
                     : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
-                }`}
+                } ${academyHighlight === 'horn' ? highlightRing : ''}`}
               >
                 Klakson [H]
               </button>

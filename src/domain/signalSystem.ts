@@ -8,9 +8,16 @@ export interface ISignalStepResult {
   readonly waitingAtRedRemainingSec: number | null;
 }
 
+export interface IScriptedSignalConfig {
+  readonly distanceM: number;
+  readonly aspect: SignalAspect;
+  readonly waitSec: number;
+}
+
 export interface ISignalController {
   setRedProbability?(probability: number): void;
   setDistances?(distances: readonly number[]): void;
+  configureScriptedSignals?(configs: readonly IScriptedSignalConfig[]): void;
   cycleNextSignalAspect?(positionM: number): SignalAspect | null;
   reset(): void;
   step(prevPosM: number, nextPosM: number, speedKmh: number, dtSec: number): ISignalStepResult;
@@ -70,6 +77,19 @@ export class TunnelSignalSystem implements ISignalController {
   public setRedProbability(probability: number): void {
     this.redProbability = Math.max(0, Math.min(0.6, probability));
     this.reset();
+  }
+
+  public configureScriptedSignals(configs: readonly IScriptedSignalConfig[]): void {
+    this.cautionActive = false;
+    this.distances = configs.map((c) => c.distanceM);
+    this.signals = configs.map((cfg, idx) => ({
+      id: idx + 1,
+      distanceM: cfg.distanceM,
+      aspect: cfg.aspect,
+      waitRequiredSec: cfg.waitSec,
+      waitElapsedSec: 0,
+      violated: false,
+    }));
   }
 
   public cycleNextSignalAspect(positionM: number): SignalAspect | null {

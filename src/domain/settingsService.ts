@@ -24,6 +24,7 @@ export const DEFAULT_GAME_SETTINGS: IGameSettings = {
   graphicsQuality: 'high',
   cabFovDeg: 64,
   showFps: false,
+  gamepadVibration: true,
 };
 
 export const GRAPHICS_QUALITY_PRESETS: readonly IGraphicsQualityPreset[] = [
@@ -89,6 +90,10 @@ export function sanitizeGameSettings(raw: unknown): IGameSettings {
     graphicsQuality: parseGraphicsQuality(obj.graphicsQuality),
     cabFovDeg: Math.round(clampNum(obj.cabFovDeg, 60, 95, DEFAULT_GAME_SETTINGS.cabFovDeg)),
     showFps: typeof obj.showFps === 'boolean' ? obj.showFps : DEFAULT_GAME_SETTINGS.showFps,
+    gamepadVibration:
+      typeof obj.gamepadVibration === 'boolean'
+        ? obj.gamepadVibration
+        : DEFAULT_GAME_SETTINGS.gamepadVibration,
   };
 }
 

@@ -19,14 +19,17 @@ import { MetroTrainPhysics } from '../domain/trainPhysics';
 import type {
   ChallengeId,
   GameModeId,
+  GamepadBrand,
   IAchievementRecord,
   IAchievementSpec,
   IAchievementToast,
   ICourseXpReward,
   ICustomLineDraft,
   IDriverProfileStats,
+  IGamepadStatus,
   IGameSettings,
   ILeaderboardEntry,
+  IMetroLineSpec,
   IMetroSimulation,
   IPhotoCameraState,
   IPhotoMoveInput,
@@ -37,10 +40,16 @@ import type {
   TrainModelId,
   WeatherModeId,
 } from '../domain/types';
+import { BrowserGamepadController, type IGamepadController } from '../input/gamepadController';
 import { KeyboardInputController } from '../input/keyboardInputController';
 import type { IInputController } from '../input/types';
 import { MetroSceneRenderer } from '../scene/metroSceneRenderer';
 import type { IMetroSceneRenderer } from '../scene/types';
+
+export interface IGamepadToastState {
+  readonly name: string;
+  readonly brand: GamepadBrand;
+}
 
 export interface IMetroGameController {
   readonly snapshot: ISimulationSnapshot;
@@ -65,6 +74,8 @@ export interface IMetroGameController {
   readonly photoState: IPhotoCameraState;
   readonly photoCapturing: boolean;
   readonly photoSavedNotice: boolean;
+  readonly gamepadStatus: IGamepadStatus;
+  readonly gamepadToast: IGamepadToastState | null;
   selectMetroLine: (lineId: MetroLineId) => void;
   selectGameMode: (mode: GameModeId) => void;
   selectChallenge: (challengeId: ChallengeId) => void;
@@ -87,6 +98,7 @@ export interface IMetroGameController {
   updateSettings: (partial: Partial<IGameSettings>) => void;
   resetSettings: () => void;
   startGame: () => void;
+  startAcademy: () => void;
   pauseGame: () => void;
   resumeGame: () => void;
   restartGame: () => void;
@@ -132,6 +144,10 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
   const audioRef = useRef<IAudioEngine | null>(null);
   const speechRef = useRef<ISpeechAnnouncer | null>(null);
   const inputRef = useRef<IInputController | null>(null);
+  const gamepadRef = useRef<IGamepadController | null>(null);
+  const gamepadToastTimerRef = useRef<number | null>(null);
+  const preAcademyLineRef = useRef<IMetroLineSpec | null>(null);
+  const preAcademyModeRef = useRef<GameModeId>('duty');
   const helpPausedGameRef = useRef<boolean>(false);
   const helpOpenRef = useRef<boolean>(false);
   const settingsOpenRef = useRef<boolean>(false);
@@ -201,6 +217,13 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
   );
   const [photoCapturing, setPhotoCapturing] = useState<boolean>(false);
   const [photoSavedNotice, setPhotoSavedNotice] = useState<boolean>(false);
+  const [gamepadStatus, setGamepadStatus] = useState<IGamepadStatus>({
+    connected: false,
+    name: '',
+    brand: 'generic',
+    supportsVibration: false,
+  });
+  const [gamepadToast, setGamepadToast] = useState<IGamepadToastState | null>(null);
 
   useEffect(() => {
     document.body.dataset.modalOpen =
@@ -415,6 +438,31 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     syncNow();
   }, [syncNow]);
 
+  const startAcademy = useCallback((): void => {
+    const sim = simRef.current;
+    if (!sim) {
+      return;
+    }
+    const currentSnap = sim.getSnapshot();
+    if (currentSnap.gameMode !== 'academy') {
+      preAcademyLineRef.current = currentSnap.line;
+      preAcademyModeRef.current = currentSnap.gameMode;
+    }
+    audioRef.current?.unlock();
+    inputRef.current?.clearHeld();
+    recordedGameOverRef.current = false;
+    setIsNewRecord(false);
+    setLastCourseXpReward(null);
+    helpOpenRef.current = false;
+    setHelpOpen(false);
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    sim.setGameMode('academy');
+    sim.start();
+    syncNow();
+  }, [syncNow]);
+
   const pauseGame = useCallback((): void => {
     simRef.current?.pause();
     audioRef.current?.silence();
@@ -445,8 +493,13 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
 
   const returnToTitle = useCallback((): void => {
     const currentSnap = simRef.current?.getSnapshot();
-    const currentLine = currentSnap?.line;
-    const currentMode = currentSnap?.gameMode ?? 'duty';
+    const isAcademy = currentSnap?.gameMode === 'academy';
+    const restoredLine = isAcademy ? preAcademyLineRef.current : currentSnap?.line;
+    const restoredMode: GameModeId = isAcademy
+      ? preAcademyModeRef.current === 'academy'
+        ? 'duty'
+        : preAcademyModeRef.current
+      : currentSnap?.gameMode ?? 'duty';
     const currentChallengeId = currentSnap?.challenge?.id ?? 'inverter_fault';
     const currentWeatherMode = currentSnap?.weather.mode ?? 'clear';
     const currentModelId = currentSnap?.trainModel.id ?? 'inspiro';
@@ -463,14 +516,16 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     settingsOpenRef.current = false;
     setSettingsOpen(false);
     const freshSim = new MetroSimulationEngine(new MetroTrainPhysics(), new MetroScoringRules());
-    if (currentLine?.isCustom) {
-      freshSim.setMetroLineSpec(currentLine);
+    if (restoredLine?.isCustom) {
+      freshSim.setMetroLineSpec(restoredLine);
+    } else if (restoredLine && restoredLine.id !== 'ACADEMY') {
+      freshSim.setMetroLine(restoredLine.id);
     } else {
-      freshSim.setMetroLine(currentLine?.id ?? 'M1');
+      freshSim.setMetroLine('M1');
     }
     freshSim.setChallenge?.(currentChallengeId);
     freshSim.setWeatherMode?.(currentWeatherMode);
-    freshSim.setGameMode(currentMode);
+    freshSim.setGameMode(restoredMode);
     freshSim.setTrainModel(currentModelId);
     freshSim.setTimeOfDay(currentTimeOfDayId);
     simRef.current = freshSim;
@@ -786,10 +841,48 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     const audio = new MetroAudioEngine();
     const speech = new WebSpeechAnnouncer();
     const input = new KeyboardInputController();
+    const gamepad = new BrowserGamepadController();
     rendererRef.current = sceneRenderer;
     audioRef.current = audio;
     speechRef.current = speech;
     inputRef.current = input;
+    gamepadRef.current = gamepad;
+
+    const handlePauseToggle = (): void => {
+      if (photoModeActiveRef.current) {
+        exitPhotoMode();
+        return;
+      }
+      if (settingsOpenRef.current) {
+        closeSettings();
+        return;
+      }
+      if (helpOpenRef.current) {
+        closeHelp();
+        return;
+      }
+      const phase = simRef.current?.getSnapshot().phase;
+      if (phase === 'playing') {
+        pauseGame();
+      } else if (phase === 'paused') {
+        resumeGame();
+      }
+    };
+
+    gamepad.attach({
+      onStatusChanged: (nextStatus, justConnected) => {
+        setGamepadStatus(nextStatus);
+        if (justConnected && nextStatus.connected) {
+          setGamepadToast({ name: nextStatus.name, brand: nextStatus.brand });
+          if (gamepadToastTimerRef.current !== null) {
+            window.clearTimeout(gamepadToastTimerRef.current);
+          }
+          gamepadToastTimerRef.current = window.setTimeout(() => {
+            setGamepadToast(null);
+          }, 4200);
+        }
+      },
+    });
 
     sceneRenderer.applySettings?.(settingsRef.current);
     audio.setAudioSettings?.(
@@ -802,26 +895,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
       onStartRequested: () => startGame(),
       onHelpToggle: () => toggleHelp(),
       onPhotoModeToggle: () => togglePhotoMode(),
-      onPauseToggle: () => {
-        if (photoModeActiveRef.current) {
-          exitPhotoMode();
-          return;
-        }
-        if (settingsOpenRef.current) {
-          closeSettings();
-          return;
-        }
-        if (helpOpenRef.current) {
-          closeHelp();
-          return;
-        }
-        const phase = simRef.current?.getSnapshot().phase;
-        if (phase === 'playing') {
-          pauseGame();
-        } else if (phase === 'paused') {
-          resumeGame();
-        }
-      },
+      onPauseToggle: handlePauseToggle,
       onMuteToggle: () => toggleMute(),
       onRestartRequested: () => {
         if (simRef.current?.getSnapshot().phase !== 'title') {
@@ -856,6 +930,8 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     let lastLineId = simRef.current!.getSnapshot().line.id;
     let lastTrainModelId = simRef.current!.getSnapshot().trainModel.id;
     let lastTimeOfDayId = simRef.current!.getSnapshot().timeOfDay.id;
+    let lastAcademyStep = simRef.current!.getSnapshot().academy?.currentStep ?? 0;
+    let lastAcademyHighlight = simRef.current!.getSnapshot().academy?.highlightTarget ?? null;
 
     const tick = (): void => {
       if (!active) {
@@ -904,7 +980,38 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         return;
       }
 
-      const control = input.sampleControlInput();
+      const padSample = gamepad.poll();
+      if (padSample?.pauseTogglePressed) {
+        handlePauseToggle();
+      }
+      const keyControl = input.sampleControlInput();
+      const control = padSample
+        ? {
+            ...keyControl,
+            manualLeverAxis:
+              padSample.analogLeverAxis !== null
+                ? padSample.analogLeverAxis
+                : keyControl.manualLeverAxis,
+            hornActive: keyControl.hornActive || padSample.hornActive,
+            toggleDoorsLeftPressed:
+              Boolean(keyControl.toggleDoorsLeftPressed) || padSample.toggleDoorsLeftPressed,
+            toggleDoorsRightPressed:
+              Boolean(keyControl.toggleDoorsRightPressed) || padSample.toggleDoorsRightPressed,
+            acknowledgeCzuwakPressed:
+              Boolean(keyControl.acknowledgeCzuwakPressed) || padSample.acknowledgeCzuwakPressed,
+            acknowledgeRadioPressed:
+              Boolean(keyControl.acknowledgeRadioPressed) || padSample.acknowledgeRadioPressed,
+            emergencyBrakePressed:
+              keyControl.emergencyBrakePressed || padSample.emergencyBrakePressed,
+            cycleCameraPressed:
+              Boolean(keyControl.cycleCameraPressed) || padSample.cycleCameraPressed,
+            toggleHeadlightsPressed:
+              Boolean(keyControl.toggleHeadlightsPressed) || padSample.toggleHeadlightsPressed,
+            toggleWipersPressed:
+              Boolean(keyControl.toggleWipersPressed) || padSample.toggleWipersPressed,
+          }
+        : keyControl;
+
       let remaining = rawDt > 0 ? rawDt : 0.016;
       let latestAudio = sim.step(control, Math.min(remaining, 0.05));
       remaining -= 0.05;
@@ -941,10 +1048,29 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
             Boolean(latestAudio.radioDispatchTriggered) || Boolean(nextAudio.radioDispatchTriggered),
           radioAckChime: Boolean(latestAudio.radioAckChime) || Boolean(nextAudio.radioAckChime),
           wiperSweepTick: Boolean(latestAudio.wiperSweepTick) || Boolean(nextAudio.wiperSweepTick),
+          academyStepCompleted:
+            Boolean(latestAudio.academyStepCompleted) || Boolean(nextAudio.academyStepCompleted),
         };
         remaining -= subDt;
       }
       const snap = sim.getSnapshot();
+
+      if (latestAudio.academyStepCompleted) {
+        audio.playAchievementChime();
+      }
+
+      if (settingsRef.current.gamepadVibration && snap.phase === 'playing') {
+        if (snap.weather.wheelSlipActive) {
+          gamepad.triggerRumble(0.55, 0.78, 170);
+        } else if (
+          (snap.kinematics.emergencyBrake || snap.kinematics.serviceBrake > 0.72) &&
+          snap.kinematics.speedKmh > 6
+        ) {
+          gamepad.triggerRumble(0.68, 0.35, 145);
+        } else if (snap.trackProfile.turnoutSwayFactor > 0.28 && snap.kinematics.speedKmh > 8) {
+          gamepad.triggerRumble(0.24, 0.48, 120);
+        }
+      }
 
       if (snap.phase === 'gameover' && !recordedGameOverRef.current) {
         recordedGameOverRef.current = true;
@@ -1017,6 +1143,8 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
 
       const annId = snap.announcement?.id ?? -1;
       const camNoticeId = snap.cameraNotice?.id ?? -1;
+      const academyStep = snap.academy?.currentStep ?? 0;
+      const academyHighlight = snap.academy?.highlightTarget ?? null;
       const discreteChanged =
         snap.phase !== lastPhase ||
         snap.score !== lastScore ||
@@ -1035,7 +1163,9 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         camNoticeId !== lastCameraNoticeId ||
         snap.line.id !== lastLineId ||
         snap.trainModel.id !== lastTrainModelId ||
-        snap.timeOfDay.id !== lastTimeOfDayId;
+        snap.timeOfDay.id !== lastTimeOfDayId ||
+        academyStep !== lastAcademyStep ||
+        academyHighlight !== lastAcademyHighlight;
       if (discreteChanged || now - lastHudSync >= HUD_SYNC_INTERVAL_MS) {
         lastHudSync = now;
         lastPhase = snap.phase;
@@ -1056,6 +1186,8 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         lastLineId = snap.line.id;
         lastTrainModelId = snap.trainModel.id;
         lastTimeOfDayId = snap.timeOfDay.id;
+        lastAcademyStep = academyStep;
+        lastAcademyHighlight = academyHighlight;
         document.body.dataset.state = snap.phase;
         setSnapshot(snap);
       }
@@ -1068,6 +1200,10 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     return () => {
       active = false;
       sceneRenderer.cancelScheduledFrame(frameHandle);
+      if (gamepadToastTimerRef.current !== null) {
+        window.clearTimeout(gamepadToastTimerRef.current);
+      }
+      gamepad.detach();
       input.detach();
       speech.dispose();
       audio.dispose();
@@ -1110,6 +1246,8 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     photoState,
     photoCapturing,
     photoSavedNotice,
+    gamepadStatus,
+    gamepadToast,
     selectMetroLine,
     selectGameMode,
     selectChallenge,
@@ -1132,6 +1270,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     updateSettings,
     resetSettings,
     startGame,
+    startAcademy,
     pauseGame,
     resumeGame,
     restartGame,

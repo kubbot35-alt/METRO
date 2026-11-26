@@ -12,6 +12,8 @@ export interface IRadioStepResult {
 export interface IRadioController {
   setStations(stations: readonly IStationSpec[]): void;
   setEnabled(enabled: boolean): void;
+  setAutoTrigger?(enabled: boolean): void;
+  forceTriggerDispatch?(customText?: string, windowSec?: number): boolean;
   reset(): void;
   step(
     stationIndex: number,
@@ -54,6 +56,7 @@ export class DispatcherRadioSystem implements IRadioController {
   private stations: readonly IStationSpec[];
   private readonly rng: () => number;
   private enabled = true;
+  private autoTrigger = true;
   private active = false;
   private messageId = 0;
   private text = '';
@@ -86,6 +89,25 @@ export class DispatcherRadioSystem implements IRadioController {
       this.remainingSec = 0;
       this.slipperyRailsTimerSec = 0;
     }
+  }
+
+  public setAutoTrigger(enabled: boolean): void {
+    this.autoTrigger = enabled;
+  }
+
+  public forceTriggerDispatch(customText?: string, windowSec: number = 15): boolean {
+    if (this.active) {
+      return false;
+    }
+    this.messageId += 1;
+    this.category = 'traffic';
+    this.text =
+      customText ??
+      'Dyspozytor Akademii: Próba łączności radiowej. Potwierdź odbiór przyciskiem [R].';
+    this.spokenText = this.text.replace(/^Dyspozytor[^:]*:\s*/, 'Uwaga dyspozytor. ');
+    this.active = true;
+    this.remainingSec = Math.max(6, windowSec);
+    return true;
   }
 
   public reset(): void {
@@ -147,6 +169,16 @@ export class DispatcherRadioSystem implements IRadioController {
           feedbackText: 'Centrala: brak potwierdzenia komunikatu radiowego [R]',
         };
       }
+      return {
+        dispatchTriggered: false,
+        acknowledgedNow: false,
+        expiredNow: false,
+        bonusPoints: 0,
+        feedbackText: null,
+      };
+    }
+
+    if (!this.autoTrigger) {
       return {
         dispatchTriggered: false,
         acknowledgedNow: false,

@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { AcademyGuidePanel } from './components/AcademyGuidePanel';
 import { AchievementToast } from './components/AchievementToast';
 import { AchievementsModal } from './components/AchievementsModal';
 import { CabDashboardHud } from './components/CabDashboardHud';
@@ -7,6 +8,7 @@ import { CourseSummaryModal } from './components/CourseSummaryModal';
 import { CustomLineBuilderModal } from './components/CustomLineBuilderModal';
 import { DriverProfileModal } from './components/DriverProfileModal';
 import { FpsCounterBadge } from './components/FpsCounterBadge';
+import { GamepadToast } from './components/GamepadToast';
 import { PhotoModeOverlay } from './components/PhotoModeOverlay';
 import { SettingsModal } from './components/SettingsModal';
 import { StatusModal } from './components/StatusModal';
@@ -73,6 +75,9 @@ export default function App() {
       data-photo-filter={game.photoState.filter}
       data-photo-fov={game.photoState.fovDeg}
       data-photo-tilt={game.photoState.rollDeg}
+      data-academy-step={snapshot.academy?.currentStep ?? 0}
+      data-academy-done={snapshot.academy?.completed ? '1' : '0'}
+      data-gamepad={game.gamepadStatus.connected ? '1' : '0'}
     >
       <div
         ref={mountRef}
@@ -94,6 +99,7 @@ export default function App() {
           activeLine={snapshot.line}
           customLines={game.customLines}
           driverProfile={game.driverProfile}
+          gamepadStatus={game.gamepadStatus}
           selectedModelId={snapshot.trainModel.id}
           selectedTimeOfDayId={snapshot.timeOfDay.id}
           selectedWeatherMode={snapshot.weather.mode}
@@ -115,6 +121,7 @@ export default function App() {
           onOpenAchievements={game.openAchievements}
           onOpenSettings={game.openSettings}
           onToggleHelp={game.toggleHelp}
+          onStartAcademy={game.startAcademy}
           onStart={game.startGame}
         />
       )}
@@ -133,6 +140,12 @@ export default function App() {
             onSandboxSpawnTrain={game.triggerSandboxOncomingTrain}
             onSandboxCycleSignal={game.cycleSandboxNextSignal}
           />
+          {snapshot.gameMode === 'academy' && snapshot.academy && snapshot.phase === 'playing' && (
+            <AcademyGuidePanel
+              academy={snapshot.academy}
+              gamepadConnected={game.gamepadStatus.connected}
+            />
+          )}
           <CabDashboardHud
             snapshot={snapshot}
             onToggleDoorsLeft={game.toggleDoorsLeft}
@@ -216,6 +229,7 @@ export default function App() {
       {game.settingsOpen && (
         <SettingsModal
           settings={game.settings}
+          gamepadStatus={game.gamepadStatus}
           onUpdate={game.updateSettings}
           onReset={game.resetSettings}
           onClose={game.closeSettings}
@@ -223,6 +237,7 @@ export default function App() {
       )}
 
       {!game.photoModeActive && <AchievementToast toast={game.achievementToast} />}
+      <GamepadToast toast={game.gamepadToast} />
     </main>
   );
 }

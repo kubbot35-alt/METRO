@@ -5,6 +5,7 @@ interface IMasterControllerSliderProps {
   readonly leverTarget: number;
   readonly emergencyBrake: boolean;
   readonly theme: TrainVisualTheme;
+  readonly highlighted?: boolean;
   readonly onLeverChange: (axis: number | null) => void;
 }
 
@@ -12,6 +13,7 @@ export function MasterControllerSlider({
   leverTarget,
   emergencyBrake,
   theme,
+  highlighted = false,
   onLeverChange,
 }: IMasterControllerSliderProps) {
   const trackRef = useRef<HTMLDivElement | null>(null);
@@ -83,12 +85,15 @@ export function MasterControllerSlider({
         aria-valuemax={100}
         aria-valuenow={Math.round(clamped * 100)}
         data-testid="master-controller-slider"
+        data-academy-highlight={highlighted ? '1' : '0'}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         onDoubleClick={() => onLeverChange(0)}
-        className={`relative w-8 h-[72px] rounded-md border ${railBorder} cursor-ns-resize touch-none flex justify-center`}
+        className={`relative w-8 h-[72px] rounded-md border ${railBorder} cursor-ns-resize touch-none flex justify-center ${
+          highlighted ? 'ring-2 ring-cyan-300 shadow-[0_0_16px_rgba(34,211,238,0.85)] animate-pulse' : ''
+        }`}
       >
         <div className="absolute top-1.5 bottom-1/2 w-1.5 rounded-t bg-emerald-500/30" />
         <div className="absolute top-1/2 bottom-1.5 w-1.5 rounded-b bg-amber-500/30" />

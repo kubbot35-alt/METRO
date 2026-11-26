@@ -3,6 +3,7 @@ import type { ISemaphoreProgress, SignalAspect } from '../domain/types';
 interface ISignalIndicatorProps {
   readonly nextSignal: ISemaphoreProgress | null;
   readonly atpActive: boolean;
+  readonly highlighted?: boolean;
 }
 
 function getAspectLabel(aspect: SignalAspect, waitSec: number | null): { text: string; toneClass: string } {
@@ -18,14 +19,21 @@ function getAspectLabel(aspect: SignalAspect, waitSec: number | null): { text: s
   return { text: 'WOLNA DROGA', toneClass: 'text-emerald-400 font-semibold' };
 }
 
-export function SignalIndicator({ nextSignal, atpActive }: ISignalIndicatorProps) {
+export function SignalIndicator({
+  nextSignal,
+  atpActive,
+  highlighted = false,
+}: ISignalIndicatorProps) {
   const aspect: SignalAspect = nextSignal?.signal.aspect ?? 'green';
   const distM = nextSignal ? Math.max(0, Math.round(nextSignal.distanceAheadM)) : null;
   const status = getAspectLabel(aspect, nextSignal?.signal.waitRemainingSec ?? null);
 
   return (
     <div
-      className="border-l border-slate-800 pl-3.5 flex items-center gap-2.5 shrink-0"
+      data-academy-highlight={highlighted ? '1' : '0'}
+      className={`border-l border-slate-800 pl-3.5 flex items-center gap-2.5 shrink-0 rounded-md py-1 pr-2 ${
+        highlighted ? 'ring-2 ring-cyan-300 bg-cyan-500/10 shadow-[0_0_16px_rgba(34,211,238,0.65)] animate-pulse' : ''
+      }`}
       aria-label={
         nextSignal
           ? `Semafor ${aspect}, odległość ${distM} metrów`

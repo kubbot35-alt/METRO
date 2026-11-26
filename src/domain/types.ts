@@ -20,7 +20,7 @@ export type MetroLineId = string;
 
 export type TrackAlignmentIntensity = 'flat' | 'moderate' | 'curvy';
 
-export type GameModeId = 'duty' | 'sandbox' | 'challenge';
+export type GameModeId = 'duty' | 'sandbox' | 'challenge' | 'academy';
 
 export type ChallengeId = 'inverter_fault' | 'technical_run' | 'black_series';
 
@@ -50,7 +50,8 @@ export type AchievementId =
   | 'passenger_carrier'
   | 'challenge_inverter_fault'
   | 'challenge_technical_run'
-  | 'challenge_black_series';
+  | 'challenge_black_series'
+  | 'academy_license';
 
 export interface IAchievementSpec {
   readonly id: AchievementId;
@@ -113,6 +114,53 @@ export interface IGameSettings {
   readonly graphicsQuality: GraphicsQualityId;
   readonly cabFovDeg: number;
   readonly showFps: boolean;
+  readonly gamepadVibration: boolean;
+}
+
+export type AcademyStepNumber = 1 | 2 | 3 | 4 | 5;
+
+export type AcademyHighlightTarget =
+  | 'headlights'
+  | 'horn'
+  | 'throttle'
+  | 'signal'
+  | 'czuwak'
+  | 'radio'
+  | 'doors-left'
+  | 'doors-right'
+  | null;
+
+export interface IAcademySubTask {
+  readonly label: string;
+  readonly done: boolean;
+}
+
+export interface IAcademySnapshot {
+  readonly currentStep: AcademyStepNumber;
+  readonly totalSteps: number;
+  readonly title: string;
+  readonly instruction: string;
+  readonly gamepadHint: string;
+  readonly subTasks: readonly IAcademySubTask[];
+  readonly highlightTarget: AcademyHighlightTarget;
+  readonly completed: boolean;
+  readonly stepFlashSec: number;
+}
+
+export type GamepadBrand = 'xbox' | 'playstation' | 'generic';
+
+export interface IGamepadStatus {
+  readonly connected: boolean;
+  readonly name: string;
+  readonly brand: GamepadBrand;
+  readonly supportsVibration: boolean;
+}
+
+export interface IGamepadButtonMapping {
+  readonly action: string;
+  readonly xbox: string;
+  readonly playstation: string;
+  readonly keyboard: string;
 }
 
 export interface IGraphicsQualityPreset {
@@ -542,6 +590,7 @@ export interface IAudioEvents {
   readonly radioDispatchTriggered?: boolean;
   readonly radioAckChime?: boolean;
   readonly wiperSweepTick?: boolean;
+  readonly academyStepCompleted?: boolean;
 }
 
 export interface ISimulationSnapshot {
@@ -549,6 +598,7 @@ export interface ISimulationSnapshot {
   readonly gameMode: GameModeId;
   readonly challenge: IChallengeSpec | null;
   readonly challengeOutcome: IChallengeOutcome | null;
+  readonly academy: IAcademySnapshot | null;
   readonly line: IMetroLineSpec;
   readonly stations: readonly IStationSpec[];
   readonly trainModel: ITrainModelSpec;

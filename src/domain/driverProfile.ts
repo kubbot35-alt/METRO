@@ -153,11 +153,14 @@ export function calculateCourseXp(
   currentXp: number,
 ): ICourseXpReward {
   const routeKm = Math.max(0.4, snapshot.kinematics.positionM / 1000);
-  const baseXp = 80;
-  const distanceXp = Math.round(routeKm * 45);
-  const scoreXp = Math.max(0, Math.round(snapshot.score / 12));
-  const modeMultiplier =
-    snapshot.gameMode === 'sandbox'
+  const isAcademyCompleted =
+    snapshot.gameMode === 'academy' && snapshot.academy?.completed === true;
+  const baseXp = isAcademyCompleted ? 250 : 80;
+  const distanceXp = isAcademyCompleted ? 0 : Math.round(routeKm * 45);
+  const scoreXp = isAcademyCompleted ? 0 : Math.max(0, Math.round(snapshot.score / 12));
+  const modeMultiplier = isAcademyCompleted
+    ? 1.0
+    : snapshot.gameMode === 'sandbox'
       ? 0.55
       : snapshot.gameMode === 'challenge'
         ? snapshot.challengeOutcome?.passed
@@ -165,7 +168,9 @@ export function calculateCourseXp(
           : 1.15
         : 1.0;
 
-  const gainedXp = Math.max(40, Math.round((baseXp + distanceXp + scoreXp) * modeMultiplier));
+  const gainedXp = isAcademyCompleted
+    ? 250
+    : Math.max(40, Math.round((baseXp + distanceXp + scoreXp) * modeMultiplier));
   const previousRank = getRankForXp(currentXp);
   const totalXpAfter = currentXp + gainedXp;
   const newRank = getRankForXp(totalXpAfter);

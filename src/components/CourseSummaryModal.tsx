@@ -57,6 +57,20 @@ export function CourseSummaryModal({
         data-testid="course-summary-modal"
         className="w-full max-w-lg bg-[#111620] border border-slate-700 rounded-lg p-6 shadow-2xl"
       >
+        {snapshot.gameMode === 'academy' && snapshot.academy?.completed && (
+          <div
+            data-testid="academy-complete-banner"
+            className="mb-4 px-3.5 py-2.5 rounded-md border-2 border-cyan-400 bg-cyan-500/20 text-cyan-100 text-center"
+          >
+            <p className="font-display font-bold text-sm uppercase tracking-wide text-cyan-200">
+              LICENCJA MASZYNISTY PRZYZNANA!
+            </p>
+            <p className="text-xs mt-0.5 text-slate-100">
+              Ukończono wszystkie 5 etapów Akademii · Odblokowano odznakę i bonus +250 XP
+            </p>
+          </div>
+        )}
+
         {snapshot.challenge && snapshot.challengeOutcome && (
           <div
             data-testid="challenge-outcome-banner"

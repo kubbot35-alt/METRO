@@ -2,14 +2,16 @@ import type { ICzuwakState } from '../domain/types';
 
 interface ICzuwakIndicatorProps {
   readonly czuwak: ICzuwakState;
+  readonly highlighted?: boolean;
   readonly onAcknowledge: () => void;
 }
 
-export function CzuwakIndicator({ czuwak, onAcknowledge }: ICzuwakIndicatorProps) {
+export function CzuwakIndicator({ czuwak, highlighted = false, onAcknowledge }: ICzuwakIndicatorProps) {
   return (
     <button
       type="button"
       data-testid="czuwak-button"
+      data-academy-highlight={highlighted ? '1' : '0'}
       aria-pressed={czuwak.active}
       onClick={(e) => {
         e.currentTarget.blur();
@@ -19,7 +21,7 @@ export function CzuwakIndicator({ czuwak, onAcknowledge }: ICzuwakIndicatorProps
         czuwak.active
           ? 'bg-orange-500 border-orange-300 text-slate-950 font-bold shadow-lg'
           : 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-800'
-      }`}
+      } ${highlighted ? 'ring-2 ring-cyan-300 shadow-[0_0_16px_rgba(34,211,238,0.85)] animate-pulse' : ''}`}
     >
       <span
         className={`w-1.5 h-1.5 rounded-full shrink-0 ${czuwak.active ? 'bg-slate-950' : 'bg-orange-900'}`}
