@@ -2,6 +2,8 @@ interface ISpeedometerGaugeProps {
   readonly speedKmh: number;
   readonly limitKmh: number;
   readonly isOverspeeding: boolean;
+  readonly gradePercent: number;
+  readonly inCurveLimitZone?: boolean;
   readonly theme: 'retro' | 'modern';
 }
 
@@ -26,18 +28,44 @@ function describeArc(cx: number, cy: number, r: number, startAngle: number, endA
   return `M ${start.x.toFixed(1)} ${start.y.toFixed(1)} A ${r} ${r} 0 ${largeArc} 0 ${end.x.toFixed(1)} ${end.y.toFixed(1)}`;
 }
 
+function formatGradeDisplay(gradePercent: number): {
+  readonly text: string;
+  readonly colorClass: string;
+} {
+  const rounded = Math.round(gradePercent * 10) / 10;
+  if (rounded >= 0.2) {
+    return {
+      text: `+${rounded.toFixed(1)}% ↗`,
+      colorClass: 'bg-amber-500/20 border-amber-400/70 text-amber-200',
+    };
+  }
+  if (rounded <= -0.2) {
+    return {
+      text: `${rounded.toFixed(1)}% ↘`,
+      colorClass: 'bg-sky-500/20 border-sky-400/70 text-sky-200',
+    };
+  }
+  return {
+    text: '0.0% →',
+    colorClass: 'bg-slate-800/90 border-slate-700 text-slate-300',
+  };
+}
+
 export function SpeedometerGauge({
   speedKmh,
   limitKmh,
   isOverspeeding,
+  gradePercent,
+  inCurveLimitZone = false,
   theme,
 }: ISpeedometerGaugeProps) {
   const clamped = Math.max(0, Math.min(MAX_DIAL_KMH, speedKmh));
   const limitAngle = START_ANGLE_DEG + (Math.min(limitKmh, MAX_DIAL_KMH) / MAX_DIAL_KMH) * SWEEP_DEG;
   const speedAngle = START_ANGLE_DEG + (clamped / MAX_DIAL_KMH) * SWEEP_DEG;
+  const grade = formatGradeDisplay(gradePercent);
 
   return (
-    <div className="flex items-center gap-3.5 shrink-0">
+    <div className="flex items-center gap-3 shrink-0">
       {theme === 'retro' ? (
         <RetroAnalogDial
           speedKmh={speedKmh}
@@ -57,23 +85,32 @@ export function SpeedometerGauge({
 
       <div className="flex flex-col items-center gap-1">
         <div
-          className={`w-12 h-12 rounded-full border-4 flex items-center justify-center bg-slate-100 ${
-            isOverspeeding ? 'border-red-500' : 'border-red-600'
-          }`}
+          className={`w-11 h-11 rounded-full border-4 flex items-center justify-center ${
+            inCurveLimitZone ? 'bg-amber-300 border-slate-900' : 'bg-slate-100'
+          } ${!inCurveLimitZone ? (isOverspeeding ? 'border-red-500' : 'border-red-600') : ''}`}
           aria-label={`Ograniczenie prędkości ${limitKmh} km/h`}
         >
-          <span className="font-mono-tabular text-base font-bold text-slate-950">{limitKmh}</span>
+          <span className="font-mono-tabular text-[15px] font-bold text-slate-950">{limitKmh}</span>
         </div>
         <span
-          className={`text-[10px] font-mono-tabular uppercase tracking-wider ${
+          className={`text-[9px] font-mono-tabular uppercase tracking-wider leading-none ${
             isOverspeeding
               ? 'text-red-400 font-bold'
-              : theme === 'retro'
-                ? 'text-[#9bb8ad]'
-                : 'text-slate-400'
+              : inCurveLimitZone
+                ? 'text-amber-300 font-bold'
+                : theme === 'retro'
+                  ? 'text-[#9bb8ad]'
+                  : 'text-slate-400'
           }`}
         >
-          {isOverspeeding ? 'ZA SZYBKO' : 'LIMIT'}
+          {isOverspeeding ? 'ZA SZYBKO' : inCurveLimitZone ? 'ŁUK' : 'LIMIT'}
+        </span>
+        <span
+          data-testid="track-grade-indicator"
+          aria-label={`Nachylenie toru ${grade.text}`}
+          className={`px-1.5 py-0.5 rounded text-[10px] font-mono-tabular font-bold leading-none whitespace-nowrap border ${grade.colorClass}`}
+        >
+          {grade.text}
         </span>
       </div>
     </div>

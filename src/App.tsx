@@ -47,6 +47,9 @@ export default function App() {
       data-camera={snapshot.cameraMode}
       data-oncoming={snapshot.oncomingTrain.active ? '1' : '0'}
       data-oncoming-mode={snapshot.oncomingTrain.mode}
+      data-grade-pct={snapshot.trackProfile.gradePercent.toFixed(1)}
+      data-elevation-m={snapshot.trackProfile.elevationM.toFixed(1)}
+      data-outdoor={snapshot.trackProfile.outdoorBlend.toFixed(2)}
     >
       <div
         ref={mountRef}

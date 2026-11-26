@@ -24,6 +24,7 @@ import {
   getTimeOfDaySpec,
   RUSH_HOUR_SPEC,
 } from './timeOfDayCatalog';
+import { getLineTrackAlignment, type TrackAlignment } from './trackAlignment';
 import { getStationPlatformSide } from './trackGeometry';
 import {
   CAMERA_MODE_LABELS,
@@ -75,6 +76,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
   private line: IMetroLineSpec = METRO_LINE_M1;
   private stations: readonly IStationSpec[];
   private speedZones: readonly ISpeedLimitZone[];
+  private alignment: TrackAlignment;
 
   private phase: GamePhase = 'title';
   private gameMode: GameModeId = 'duty';
@@ -136,6 +138,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.incidents = incidents;
     this.traffic = traffic;
     this.traffic.setStations?.(stations);
+    this.alignment = getLineTrackAlignment(this.line.id, stations);
     this.physics.setConfig?.(this.trainModel.physics);
   }
 
@@ -144,6 +147,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.line = nextLine;
     this.stations = nextLine.stations;
     this.speedZones = nextLine.speedZones;
+    this.alignment = getLineTrackAlignment(nextLine.id, nextLine.stations);
     this.stationIndex = 0;
     this.signals.setDistances?.(buildSemaphoreDistances(nextLine.stations));
     this.schedule.setStations?.(nextLine.stations);
@@ -326,6 +330,9 @@ export class MetroSimulationEngine implements IMetroSimulation {
     });
     const boardingDurationSec = this.getActiveBoardingDurationSec();
     const effectiveWaitingPassengers = this.getEffectiveWaitingPassengers(currentStation.station);
+    const trackSample = this.alignment.sample(posM);
+    const activeCurveLimit = this.alignment.getCurveSpeedLimitAt(posM);
+    const upcomingCurve = this.alignment.getUpcomingCurveLimit(posM, 130);
     return {
       phase: this.phase,
       gameMode: this.gameMode,
@@ -337,6 +344,17 @@ export class MetroSimulationEngine implements IMetroSimulation {
       cameraNotice: this.cameraNotice,
       oncomingTrain: this.traffic.getState(),
       kinematics: this.kinematics,
+      trackProfile: {
+        gradePercent: trackSample.gradePercent,
+        elevationM: trackSample.y,
+        curvatureRadPerM: trackSample.curvatureRadPerM,
+        cantRollRad: trackSample.cantRollRad,
+        turnoutSwayFactor: trackSample.turnoutSwayFactor,
+        outdoorBlend: trackSample.outdoorBlend,
+        inCurveLimitZone: activeCurveLimit !== null,
+        upcomingCurveLimitKmh: upcomingCurve?.limitKmh ?? null,
+        upcomingCurveDistanceM: upcomingCurve?.distanceAheadM ?? null,
+      },
       speedLimitKmh,
       isOverspeeding: this.kinematics.speedKmh > speedLimitKmh + OVERSPEED_TOLERANCE_KMH,
       doorState: this.doorState,
@@ -386,7 +404,14 @@ export class MetroSimulationEngine implements IMetroSimulation {
     const effectiveInput: IControlInput = this.atpActive
       ? { ...input, forceEmergencyBrake: true }
       : input;
-    this.kinematics = this.physics.step(this.kinematics, effectiveInput, this.doorState === 'open', dt);
+    const gradeFraction = this.alignment.sample(this.kinematics.positionM).gradeFraction;
+    this.kinematics = this.physics.step(
+      this.kinematics,
+      effectiveInput,
+      this.doorState === 'open',
+      dt,
+      gradeFraction,
+    );
     if (this.atpActive && this.kinematics.speedKmh <= STOPPED_SPEED_KMH) {
       this.atpActive = false;
     }
@@ -464,6 +489,10 @@ export class MetroSimulationEngine implements IMetroSimulation {
 
   private computeEffectiveSpeedLimit(): number {
     let limit = getSpeedLimitAt(this.kinematics.positionM, this.speedZones);
+    const curveLimit = this.alignment.getCurveSpeedLimitAt(this.kinematics.positionM);
+    if (curveLimit !== null) {
+      limit = Math.min(limit, curveLimit);
+    }
     if (this.activeCautionLimitKmh !== null) {
       limit = Math.min(limit, this.activeCautionLimitKmh);
     }

@@ -63,6 +63,8 @@ export function CabDashboardHud({
           speedKmh={kinematics.speedKmh}
           limitKmh={snapshot.speedLimitKmh}
           isOverspeeding={snapshot.isOverspeeding}
+          gradePercent={snapshot.trackProfile.gradePercent}
+          inCurveLimitZone={snapshot.trackProfile.inCurveLimitZone}
           theme={theme}
         />
 
@@ -96,16 +98,22 @@ export function CabDashboardHud({
             <div className="flex items-baseline gap-2 shrink-0">
               <span
                 className={`text-[10px] font-mono-tabular whitespace-nowrap ${
-                  trackworkAlert ? 'text-amber-400 font-bold' : 'text-emerald-400'
+                  trackworkAlert || snapshot.trackProfile.inCurveLimitZone || snapshot.trackProfile.upcomingCurveLimitKmh !== null
+                    ? 'text-amber-400 font-bold'
+                    : 'text-emerald-400'
                 }`}
               >
                 {trackworkAlert
                   ? 'ROBOTY 25'
-                  : currentStation.inStopZone
-                    ? 'STREFA STOP'
-                    : isLeftPlatform
-                      ? 'WYSPOWY'
-                      : 'BOCZNY'}
+                  : snapshot.trackProfile.inCurveLimitZone
+                    ? 'ŁUK 45'
+                    : snapshot.trackProfile.upcomingCurveLimitKmh !== null
+                      ? `ŁUK ${snapshot.trackProfile.upcomingCurveLimitKmh}`
+                      : currentStation.inStopZone
+                        ? 'STREFA STOP'
+                        : isLeftPlatform
+                          ? 'WYSPOWY'
+                          : 'BOCZNY'}
               </span>
               <span className="font-mono-tabular text-base font-bold text-slate-50 whitespace-nowrap">
                 {distM >= 0 ? `${distM} m` : `+${Math.abs(distM)} m`}

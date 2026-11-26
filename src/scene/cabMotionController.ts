@@ -25,6 +25,8 @@ export class MetroCabMotionController implements ICabMotionController {
   private vibPhase = 0;
   private pitchOffset = 0;
   private zDipOffset = 0;
+  private bankRoll = 0;
+  private turnoutLat = 0;
   private leverAngle = 0;
   private headlightIntensity = HEADLIGHT_ON_INTENSITY;
 
@@ -32,16 +34,27 @@ export class MetroCabMotionController implements ICabMotionController {
     const dt = Math.max(0, Math.min(dtSec, 0.1));
     const speedRatio = Math.min(1, snapshot.kinematics.speedKmh / 85);
     const accel = snapshot.kinematics.netAccelerationMs2;
+    const track = snapshot.trackProfile;
 
     this.bobPhase += dt * (1.8 + speedRatio * 14.5);
     this.vibPhase += dt * (14 + speedRatio * 48);
 
+    const turnoutStrength = track.turnoutSwayFactor * Math.min(1, snapshot.kinematics.speedKmh / 35);
+    const targetTurnoutLat = turnoutStrength * 0.085;
+    this.turnoutLat = THREE.MathUtils.damp(this.turnoutLat, targetTurnoutLat, 10, dt);
+
     const swayX =
       Math.cos(this.bobPhase * 0.52) * (0.002 + speedRatio * 0.015) +
-      Math.cos(this.vibPhase * 1.33) * speedRatio * speedRatio * 0.004;
+      Math.cos(this.vibPhase * 1.33) * speedRatio * speedRatio * 0.004 +
+      this.turnoutLat;
     const bobY =
       Math.sin(this.bobPhase) * (0.002 + speedRatio * 0.016) +
       Math.sin(this.vibPhase) * speedRatio * speedRatio * 0.0065;
+
+    // Superelevation (banking) on curves + subtle lateral bogie roll through turnouts
+    const targetBankRoll =
+      track.cantRollRad * (0.65 + 0.55 * speedRatio) - turnoutStrength * 0.022;
+    this.bankRoll = THREE.MathUtils.damp(this.bankRoll, targetBankRoll, 5.5, dt);
 
     const brakeDecel = Math.min(1.8, Math.max(0, -accel));
     const accelLift = Math.min(0.9, Math.max(0, accel));
@@ -60,7 +73,7 @@ export class MetroCabMotionController implements ICabMotionController {
       offsetY: bobY,
       offsetZ: this.zDipOffset,
       pitchRad: BASE_PITCH_RAD + this.pitchOffset,
-      rollRad: -swayX * 0.42,
+      rollRad: this.bankRoll - (swayX - this.turnoutLat) * 0.42,
       targetFov: 64 + speedRatio * 7.5,
       leverAngleRad: this.leverAngle,
       headlightIntensity: this.headlightIntensity,

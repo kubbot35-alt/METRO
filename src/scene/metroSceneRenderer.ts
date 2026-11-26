@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
 import { LINE_M1_SPEED_ZONES, LINE_M1_STATIONS, METRO_LINE_M1 } from '../domain/routeData';
 import { SEMAPHORE_DISTANCES_M } from '../domain/signalSystem';
+import { getLineTrackAlignment, type TrackAlignment } from '../domain/trackAlignment';
 import {
   getOppositeTrackX,
   getOppositeTrackYaw,
@@ -22,10 +23,22 @@ import { MetroCabMotionController, type ICabMotionController } from './cabMotion
 import { buildStationPassengers, type IPassengerRig } from './passengerManager';
 import { buildTunnelSemaphores, type ISemaphoreRig } from './semaphoreBuilder';
 import { buildMetroStations } from './stationBuilder';
+import { buildSurfaceDepot, type ISurfaceDepotRig } from './surfaceDepotBuilder';
 import { buildTrackworkRig, type ITrackworkRig } from './trackworkBuilder';
 import { buildMetroConsist, type ITrainConsistRig } from './trainMeshBuilder';
 import { buildMetroTunnel } from './tunnelBuilder';
 import type { IMetroSceneRenderer, ISceneResources } from './types';
+
+const _bgColor = new THREE.Color();
+const _tunnelBgColor = new THREE.Color(0x06080d);
+const _daySkyFogColor = new THREE.Color(0xc5ddf5);
+const _nightSkyFogColor = new THREE.Color(0x111d38);
+const _hemiTunnelSky = new THREE.Color(0x6c88ab);
+const _hemiDaySky = new THREE.Color(0xcde6ff);
+const _hemiNightSky = new THREE.Color(0x3a5284);
+const _hemiTunnelGround = new THREE.Color(0x1e1812);
+const _hemiDayGround = new THREE.Color(0x4a5a44);
+const _hemiNightGround = new THREE.Color(0x141b2b);
 
 function detectSoftwareWebGl(): boolean {
   const probe = document.createElement('canvas');
@@ -59,6 +72,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
   private headlight: THREE.SpotLight | null = null;
   private headlightTarget: THREE.Object3D | null = null;
   private hemiLight: THREE.HemisphereLight | null = null;
+  private sunLight: THREE.DirectionalLight | null = null;
   private stationLightA: THREE.PointLight | null = null;
   private stationLightB: THREE.PointLight | null = null;
   private signalLight: THREE.PointLight | null = null;
@@ -70,6 +84,8 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
   private semaphoreRig: ISemaphoreRig | null = null;
   private passengerRig: IPassengerRig | null = null;
   private trackworkRig: ITrackworkRig | null = null;
+  private surfaceDepotRig: ISurfaceDepotRig | null = null;
+  private alignment: TrackAlignment = getLineTrackAlignment(METRO_LINE_M1.id, LINE_M1_STATIONS);
   private worldResources: ISceneResources[] = [];
   private envTexture: THREE.Texture | null = null;
   private container: HTMLElement | null = null;
@@ -90,15 +106,19 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     const height = Math.max(container.clientHeight, 1);
 
     this.scene = this.createScene();
-    this.camera = new THREE.PerspectiveCamera(64, width / height, 0.1, 320);
-    this.camera.position.set(0, 2.15, 0);
-    this.camera.rotation.set(-0.035, 0, 0);
+    this.camera = new THREE.PerspectiveCamera(64, width / height, 0.1, 360);
+    this.camera.rotation.order = 'YXZ';
+    const startFrame = this.alignment.sample(0);
+    this.camera.position.set(startFrame.x, startFrame.y + 2.15, startFrame.z);
+    this.camera.rotation.set(startFrame.pitch - 0.035, startFrame.yaw, 0);
 
     this.renderer = this.createRenderer(width, height);
     container.appendChild(this.renderer.domElement);
     this.setupEnvironment(this.renderer, this.scene);
     this.setupLights(this.scene);
     this.setupWorldAndCab(this.renderer, this.scene, this.camera);
+    this.applyAtmosphere(1, 'rush', 0.8, 0.0098);
+    this.surfaceDepotRig?.sync(1, 'rush', this.camera.position);
     this.attachResizeObserver(container);
     this.scene.updateMatrixWorld(true);
     this.renderer.render(this.scene, this.camera);
@@ -108,22 +128,41 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     if (!this.camera || !this.headlight || !this.headlightTarget || !this.cabRig) {
       return;
     }
-    const z = -snapshot.kinematics.positionM;
+    const posM = snapshot.kinematics.positionM;
     const state = this.motion.step(snapshot, dtSec);
     this.syncMetroLine(snapshot);
     this.syncTrainThemes(snapshot);
     this.syncTimeOfDayLighting(snapshot);
-    this.updateCameraView(snapshot, z, state, dtSec);
 
+    const frame = this.alignment.sample(posM);
+    this.updateCameraView(snapshot, posM, frame, state, dtSec);
+    this.applyAtmosphere(
+      snapshot.trackProfile.outdoorBlend,
+      snapshot.timeOfDay.id,
+      snapshot.timeOfDay.ambientLightIntensity,
+      snapshot.timeOfDay.fogDensity,
+    );
+    this.surfaceDepotRig?.sync(
+      snapshot.trackProfile.outdoorBlend,
+      snapshot.timeOfDay.id,
+      this.camera.position,
+    );
+
+    const headPos = this.alignment.toWorldPoint(posM + 1.45, 0, 1.48, false);
+    const headTgt = this.alignment.toWorldPoint(posM + 56, 0, 0.65, false);
     this.headlight.intensity = state.headlightIntensity;
-    this.headlight.position.set(0, 1.48, z - 1.45);
-    this.headlightTarget.position.set(0, 0.65, z - 56);
+    this.headlight.position.set(headPos.x, headPos.y, headPos.z);
+    this.headlightTarget.position.set(headTgt.x, headTgt.y, headTgt.z);
     this.headlightTarget.updateMatrixWorld();
 
-    this.playerTrainRig?.group.position.set(0, 0, z);
-    this.playerTrainRig?.setDoorsOpen(snapshot.openDoorSide, dtSec);
-    this.playerTrainRig?.setHeadlights(snapshot.headlightsOn);
-    this.playerTrainRig?.updateMotion?.(snapshot.kinematics.speedMs, dtSec);
+    if (this.playerTrainRig) {
+      this.playerTrainRig.group.rotation.order = 'YXZ';
+      this.playerTrainRig.group.position.set(frame.x, frame.y, frame.z);
+      this.playerTrainRig.group.rotation.set(frame.pitch, frame.yaw, state.rollRad * 0.85);
+      this.playerTrainRig.setDoorsOpen(snapshot.openDoorSide, dtSec);
+      this.playerTrainRig.setHeadlights(snapshot.headlightsOn);
+      this.playerTrainRig.updateMotion?.(snapshot.kinematics.speedMs, dtSec);
+    }
     this.updateOncomingTrain(snapshot, dtSec);
 
     if (this.cabRig.setLeverAngle) {
@@ -133,7 +172,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     }
     this.cabRig.update?.(snapshot, dtSec);
     this.passengerRig?.sync(snapshot, dtSec);
-    this.trackworkRig?.sync(snapshot.trackworkZones, dtSec);
+    this.trackworkRig?.sync(snapshot.trackworkZones, this.alignment, dtSec);
     this.updateStationLights(snapshot.currentStation.station);
     this.updateSemaphoreVisuals(snapshot);
     this.updateCabIndicators(snapshot);
@@ -180,6 +219,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
   public dispose(): void {
     this.resizeObserver?.disconnect();
     this.worldResources.forEach((res) => res.dispose());
+    this.surfaceDepotRig?.dispose();
     this.playerTrainRig?.dispose();
     this.oncomingTrainRig?.dispose();
     this.passengerRig?.dispose();
@@ -208,7 +248,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     });
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = 1.22;
+    renderer.toneMappingExposure = 1.2;
     renderer.setPixelRatio(this.isSoftwareGl ? 1 : Math.min(window.devicePixelRatio, 2));
     renderer.setSize(width, height);
     renderer.shadowMap.enabled = !this.isSoftwareGl;
@@ -228,6 +268,10 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.hemiLight = new THREE.HemisphereLight(0x6c88ab, 0x1e1812, 0.8);
     scene.add(this.hemiLight);
 
+    this.sunLight = new THREE.DirectionalLight(0xfff1d6, 2.2);
+    this.sunLight.position.set(60, 85, -140);
+    scene.add(this.sunLight);
+
     this.headlightTarget = new THREE.Object3D();
     this.headlightTarget.position.set(0, 0.65, -52);
     scene.add(this.headlightTarget);
@@ -239,7 +283,6 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.stationLightA = new THREE.PointLight(0xe0f2fe, 65, 95, 1.25);
     this.stationLightB = new THREE.PointLight(0xd1fae5, 45, 65, 1.35);
     this.signalLight = new THREE.PointLight(0x10b981, 14, 24, 1.6);
-    this.signalLight.position.set(2.1, 2.8, -(SEMAPHORE_DISTANCES_M[0] ?? 250) + 0.6);
     this.oncomingLight = new THREE.PointLight(0xfff1d6, 0, 68, 1.35);
     this.updateStationLights(LINE_M1_STATIONS[0]);
     scene.add(this.stationLightA, this.stationLightB, this.signalLight, this.oncomingLight);
@@ -253,9 +296,15 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     const maxAniso = renderer.capabilities.getMaxAnisotropy();
     this.maxAniso = maxAniso;
     this.appliedLineId = METRO_LINE_M1.id;
-    this.worldResources.push(buildMetroTunnel(scene, LINE_M1_STATIONS, LINE_M1_SPEED_ZONES, maxAniso));
-    this.worldResources.push(buildMetroStations(scene, LINE_M1_STATIONS, maxAniso, METRO_LINE_M1));
-    this.passengerRig = buildStationPassengers(scene, LINE_M1_STATIONS);
+    this.alignment = getLineTrackAlignment(METRO_LINE_M1.id, LINE_M1_STATIONS);
+    this.worldResources.push(
+      buildMetroTunnel(scene, this.alignment, LINE_M1_STATIONS, LINE_M1_SPEED_ZONES, maxAniso),
+    );
+    this.worldResources.push(
+      buildMetroStations(scene, this.alignment, LINE_M1_STATIONS, maxAniso, METRO_LINE_M1),
+    );
+    this.surfaceDepotRig = buildSurfaceDepot(scene, this.alignment, maxAniso);
+    this.passengerRig = buildStationPassengers(scene, this.alignment, LINE_M1_STATIONS);
     this.trackworkRig = buildTrackworkRig(scene, maxAniso);
     const initialSignals = SEMAPHORE_DISTANCES_M.map((distanceM, idx) => ({
       id: idx + 1,
@@ -264,11 +313,12 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
       violated: false,
       waitRemainingSec: null,
     }));
-    this.semaphoreRig = buildTunnelSemaphores(scene, initialSignals);
+    this.semaphoreRig = buildTunnelSemaphores(scene, this.alignment, initialSignals);
     this.playerTrainRig = buildMetroConsist(scene, SIEMENS_INSPIRO_SPEC.visual, maxAniso);
     this.playerTrainRig.group.visible = false;
     this.oncomingTrainRig = buildMetroConsist(scene, SERIA_81_SPEC.visual, maxAniso);
     this.oncomingTrainRig.setLine?.(METRO_LINE_M1.id, METRO_LINE_M1.oppositeDestinationLed);
+    this.oncomingTrainRig.group.rotation.order = 'YXZ';
     this.oncomingTrainRig.group.rotation.y = Math.PI;
     this.oncomingTrainRig.group.visible = false;
     this.cabRig = buildMetroCabRig(maxAniso);
@@ -286,19 +336,22 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
       return;
     }
     this.appliedLineId = snapshot.line.id;
+    this.alignment = getLineTrackAlignment(snapshot.line.id, snapshot.stations);
     this.worldResources.forEach((res) => res.dispose());
     this.worldResources = [];
+    this.surfaceDepotRig?.dispose();
     this.passengerRig?.dispose();
     this.semaphoreRig?.dispose();
 
     this.worldResources.push(
-      buildMetroTunnel(this.scene, snapshot.stations, snapshot.line.speedZones, this.maxAniso),
+      buildMetroTunnel(this.scene, this.alignment, snapshot.stations, snapshot.line.speedZones, this.maxAniso),
     );
     this.worldResources.push(
-      buildMetroStations(this.scene, snapshot.stations, this.maxAniso, snapshot.line),
+      buildMetroStations(this.scene, this.alignment, snapshot.stations, this.maxAniso, snapshot.line),
     );
-    this.passengerRig = buildStationPassengers(this.scene, snapshot.stations);
-    this.semaphoreRig = buildTunnelSemaphores(this.scene, snapshot.signals);
+    this.surfaceDepotRig = buildSurfaceDepot(this.scene, this.alignment, this.maxAniso);
+    this.passengerRig = buildStationPassengers(this.scene, this.alignment, snapshot.stations);
+    this.semaphoreRig = buildTunnelSemaphores(this.scene, this.alignment, snapshot.signals);
     this.playerTrainRig?.setLine?.(snapshot.line.id, snapshot.line.destinationLed);
     this.oncomingTrainRig?.setLine?.(snapshot.line.id, snapshot.line.oppositeDestinationLed);
     this.updateStationLights(snapshot.currentStation.station);
@@ -325,9 +378,6 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     }
     this.appliedTimeOfDayId = snapshot.timeOfDay.id;
     const tod = snapshot.timeOfDay;
-    if (this.hemiLight) {
-      this.hemiLight.intensity = tod.ambientLightIntensity;
-    }
     if (this.stationLightA) {
       this.stationLightA.intensity = tod.stationLightIntensityA;
       this.stationLightA.color.setHex(tod.stationLightColorHex);
@@ -336,17 +386,51 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
       this.stationLightB.intensity = tod.stationLightIntensityB;
       this.stationLightB.color.setHex(tod.stationLightColorHex);
     }
-    if (this.scene && this.scene.fog instanceof THREE.FogExp2) {
-      this.scene.fog.density = tod.fogDensity;
+  }
+
+  private applyAtmosphere(
+    outdoorBlend: number,
+    timeOfDayId: TimeOfDayId,
+    tunnelAmbientIntensity: number,
+    tunnelFogDensity: number,
+  ): void {
+    if (!this.scene || !this.hemiLight || !this.sunLight) {
+      return;
     }
-    if (this.scene) {
-      this.scene.environmentIntensity = tod.id === 'evening' ? 0.14 : 0.34;
+    const b = Math.max(0, Math.min(1, outdoorBlend));
+    const isEvening = timeOfDayId === 'evening';
+
+    const targetOutdoorBg = isEvening ? _nightSkyFogColor : _daySkyFogColor;
+    _bgColor.copy(_tunnelBgColor).lerp(targetOutdoorBg, b);
+    if (this.scene.background instanceof THREE.Color) {
+      this.scene.background.copy(_bgColor);
     }
+    if (this.scene.fog instanceof THREE.FogExp2) {
+      this.scene.fog.color.copy(_bgColor);
+      const outdoorFog = isEvening ? 0.0024 : 0.0016;
+      this.scene.fog.density = THREE.MathUtils.lerp(tunnelFogDensity, outdoorFog, b);
+    }
+
+    const outdoorHemiSky = isEvening ? _hemiNightSky : _hemiDaySky;
+    const outdoorHemiGround = isEvening ? _hemiNightGround : _hemiDayGround;
+    this.hemiLight.color.copy(_hemiTunnelSky).lerp(outdoorHemiSky, b);
+    this.hemiLight.groundColor.copy(_hemiTunnelGround).lerp(outdoorHemiGround, b);
+    const outdoorAmbient = isEvening ? 0.62 : 1.45;
+    this.hemiLight.intensity = THREE.MathUtils.lerp(tunnelAmbientIntensity, outdoorAmbient, b);
+
+    const sunTarget = isEvening ? 0.42 : 2.35;
+    this.sunLight.intensity = sunTarget * b;
+    this.sunLight.color.setHex(isEvening ? 0x93c5fd : 0xfff0d1);
+
+    const baseEnv = isEvening ? 0.16 : 0.34;
+    const outdoorEnv = isEvening ? 0.24 : 0.65;
+    this.scene.environmentIntensity = THREE.MathUtils.lerp(baseEnv, outdoorEnv, b);
   }
 
   private updateCameraView(
     snapshot: ISimulationSnapshot,
-    z: number,
+    posM: number,
+    frame: ReturnType<TrackAlignment['sample']>,
     state: ReturnType<ICabMotionController['step']>,
     dtSec: number,
   ): void {
@@ -360,8 +444,15 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
         this.cabFillLight.intensity = 0.55;
         this.cabFillLight.distance = 2.0;
       }
-      this.camera.position.set(state.offsetX, 2.15 + state.offsetY, z + state.offsetZ);
-      this.camera.rotation.set(state.pitchRad, 0, state.rollRad);
+      const camPt = this.alignment.toWorldPoint(
+        posM - state.offsetZ,
+        state.offsetX,
+        2.15 + state.offsetY,
+        true,
+      );
+      this.camera.rotation.order = 'YXZ';
+      this.camera.position.set(camPt.x, camPt.y, camPt.z);
+      this.camera.rotation.set(frame.pitch + state.pitchRad, frame.yaw, state.rollRad);
       this.updateCameraFov(state.targetFov, dtSec);
       return;
     }
@@ -373,13 +464,17 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     }
     if (snapshot.cameraMode === 'mirror') {
       const sideSign = getStationPlatformSide(snapshot.currentStation.station) === 'left' ? -1 : 1;
-      this.camera.position.set(sideSign * 1.92, 2.48, z - 0.9);
-      this.camera.lookAt(sideSign * 1.82, 1.85, z + 26);
+      const eyePt = this.alignment.toWorldPoint(posM + 0.9, sideSign * 1.92, 2.48, false);
+      const lookPt = this.alignment.toWorldPoint(posM - 26, sideSign * 1.82, 1.85, false);
+      this.camera.position.set(eyePt.x, eyePt.y, eyePt.z);
+      this.camera.lookAt(lookPt.x, lookPt.y, lookPt.z);
       this.updateCameraFov(64, dtSec);
       return;
     }
-    this.camera.position.set(-1.58, 3.45, z + 78.0);
-    this.camera.lookAt(0, 1.75, z + 61);
+    const extEye = this.alignment.toWorldPoint(posM - 78.0, -1.58, 3.45, false);
+    const extLook = this.alignment.toWorldPoint(posM - 61.0, 0, 1.75, false);
+    this.camera.position.set(extEye.x, extEye.y, extEye.z);
+    this.camera.lookAt(extLook.x, extLook.y, extLook.z);
     this.updateCameraFov(62, dtSec);
   }
 
@@ -403,16 +498,23 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
       this.oncomingLight.intensity = 0;
       return;
     }
+    const oppFrame = this.alignment.sample(oncoming.positionM);
     const oncomingX = getOppositeTrackX(oncoming.positionM, snapshot.stations);
     const oncomingYaw = getOppositeTrackYaw(oncoming.positionM, snapshot.stations);
-    const oncomingZ = -oncoming.positionM;
-    this.oncomingTrainRig.group.position.set(oncomingX, 0, oncomingZ);
-    this.oncomingTrainRig.group.rotation.y = Math.PI + oncomingYaw;
+    const oppPos = this.alignment.toWorldPoint(oncoming.positionM, oncomingX, 0, false);
+    this.oncomingTrainRig.group.rotation.order = 'YXZ';
+    this.oncomingTrainRig.group.position.set(oppPos.x, oppPos.y, oppPos.z);
+    this.oncomingTrainRig.group.rotation.set(
+      -oppFrame.pitch,
+      oppFrame.yaw + Math.PI + oncomingYaw,
+      -oppFrame.cantRollRad * 0.7,
+    );
     this.oncomingTrainRig.setDoorsOpen(oncoming.doorsOpen ? oncoming.doorSide : null, dtSec);
     this.oncomingTrainRig.setHeadlights(oncoming.headlightsOn);
     this.oncomingTrainRig.updateMotion?.(oncoming.speedMs, dtSec);
     this.oncomingLight.intensity = oncoming.headlightsOn ? 56 : 10;
-    this.oncomingLight.position.set(oncomingX, 1.65, oncomingZ + 1.8);
+    const lampPt = this.alignment.toWorldPoint(oncoming.positionM - 1.8, oncomingX, 1.65, false);
+    this.oncomingLight.position.set(lampPt.x, lampPt.y, lampPt.z);
   }
 
   private attachResizeObserver(container: HTMLElement): void {
@@ -435,8 +537,10 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     }
     const isIsland = getStationPlatformLayout(station) === 'island';
     const centerX = isIsland ? -4.4 : -1.6;
-    this.stationLightA.position.set(centerX, 4.5, -(station.distanceM - 48));
-    this.stationLightB.position.set(centerX, 4.2, -(station.distanceM - 8));
+    const posA = this.alignment.toWorldPoint(station.distanceM - 48, centerX, 4.5, false);
+    const posB = this.alignment.toWorldPoint(station.distanceM - 8, centerX, 4.2, false);
+    this.stationLightA.position.set(posA.x, posA.y, posA.z);
+    this.stationLightB.position.set(posB.x, posB.y, posB.z);
   }
 
   private updateSemaphoreVisuals(snapshot: ISimulationSnapshot): void {
@@ -451,7 +555,8 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     }
     this.signalLight.intensity = 16;
     this.signalLight.color.setHex(getAspectHex(next.signal.aspect));
-    this.signalLight.position.set(2.15, 2.85, -next.signal.distanceM + 0.7);
+    const sigPt = this.alignment.toWorldPoint(next.signal.distanceM - 0.7, 2.15, 2.85, false);
+    this.signalLight.position.set(sigPt.x, sigPt.y, sigPt.z);
   }
 
   private updateCabIndicators(snapshot: ISimulationSnapshot): void {

@@ -1,8 +1,9 @@
 import * as THREE from 'three';
+import type { TrackAlignment } from '../domain/trackAlignment';
 import type { ITrackworkZone } from '../domain/types';
 
 export interface ITrackworkRig {
-  sync(zones: readonly ITrackworkZone[], dtSec: number): void;
+  sync(zones: readonly ITrackworkZone[], alignment: TrackAlignment, dtSec: number): void;
   dispose(): void;
 }
 
@@ -103,7 +104,7 @@ export function buildTrackworkRig(
 
   let flashClock = 0;
   return {
-    sync: (zones, dtSec) => {
+    sync: (zones, alignment, dtSec) => {
       flashClock += dtSec;
       const blinkOn = Math.sin(flashClock * 13) > 0;
       for (let i = 0; i < slots.length; i += 1) {
@@ -116,8 +117,17 @@ export function buildTrackworkRig(
         }
         slot.startGroup.visible = true;
         slot.endGroup.visible = true;
-        slot.startGroup.position.set(-2.05, 0, -(zone.startM - 12));
-        slot.endGroup.position.set(-2.05, 0, -zone.endM);
+        const startDist = zone.startM - 12;
+        const startFrame = alignment.sample(startDist);
+        const startPt = alignment.toWorldPoint(startDist, -2.05, 0, false);
+        slot.startGroup.position.set(startPt.x, startPt.y, startPt.z);
+        slot.startGroup.rotation.set(0, startFrame.yaw, 0);
+
+        const endFrame = alignment.sample(zone.endM);
+        const endPt = alignment.toWorldPoint(zone.endM, -2.05, 0, false);
+        slot.endGroup.position.set(endPt.x, endPt.y, endPt.z);
+        slot.endGroup.rotation.set(0, endFrame.yaw, 0);
+
         slot.beaconMat.emissiveIntensity = blinkOn ? 5.2 : 0.25;
         slot.haloMat.opacity = blinkOn ? 0.92 : 0.1;
       }

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { computeEffectivePassengers } from '../domain/timeOfDayCatalog';
+import type { TrackAlignment } from '../domain/trackAlignment';
 import { getStationPlatformLayout } from '../domain/trackGeometry';
 import type { ISimulationSnapshot, IStationSpec } from '../domain/types';
 
@@ -33,6 +34,7 @@ const COAT_COLORS = [0x1e3a5f, 0x334155, 0x7c2d12, 0x3f3f46, 0x1e40af, 0x4c1d95]
 
 export function buildStationPassengers(
   scene: THREE.Scene,
+  alignment: TrackAlignment,
   stations: readonly IStationSpec[],
 ): IPassengerRig {
   const disposables: Array<{ dispose(): void }> = [];
@@ -41,7 +43,9 @@ export function buildStationPassengers(
   scene.add(root);
 
   const shared = createPassengerAssets(disposables);
-  const crowds = stations.map((station, idx) => createStationCrowd(root, station, idx, shared));
+  const crowds = stations.map((station, idx) =>
+    createStationCrowd(root, alignment, station, idx, shared),
+  );
   let walkClock = 0;
 
   return {
@@ -80,10 +84,18 @@ function createPassengerAssets(disposables: Array<{ dispose(): void }>): IPassen
 
 function createStationCrowd(
   root: THREE.Group,
+  alignment: TrackAlignment,
   station: IStationSpec,
   stationIndex: number,
   assets: IPassengerAssets,
 ): IStationCrowd {
+  const frame = alignment.sample(station.distanceM);
+  const stationGroup = new THREE.Group();
+  stationGroup.position.set(frame.x, frame.y, frame.z);
+  stationGroup.rotation.set(0, frame.yaw, 0);
+  root.add(stationGroup);
+
+  const localStation: IStationSpec = { ...station, distanceM: 0 };
   const layout = getStationPlatformLayout(station);
   const maxPlayerCount = computeEffectivePassengers(station.waitingPassengers, 1.7);
   const maxOppCount = Math.max(6, Math.round(maxPlayerCount * 0.65));
@@ -95,8 +107,8 @@ function createStationCrowd(
   const playerFaceYaw = layout === 'island' ? Math.PI / 2 : -Math.PI / 2;
 
   const playerUnits = spawnPlatformUnits(
-    root,
-    station,
+    stationGroup,
+    localStation,
     maxPlayerCount,
     playerWaitBaseX,
     playerWaitSpreadDir,
@@ -113,8 +125,8 @@ function createStationCrowd(
   const oppFaceYaw = layout === 'island' ? -Math.PI / 2 : Math.PI / 2;
 
   const oppositeUnits = spawnPlatformUnits(
-    root,
-    station,
+    stationGroup,
+    localStation,
     maxOppCount,
     oppWaitBaseX,
     oppWaitSpreadDir,

@@ -54,6 +54,42 @@ export interface IAchievementToast {
   readonly remainingSec: number;
 }
 
+export interface ICurveZoneSpec {
+  readonly startM: number;
+  readonly endM: number;
+  readonly direction: 'left' | 'right';
+  readonly maxCurvatureRadPerM: number;
+  readonly speedLimitKmh?: number;
+  readonly signDistanceM?: number;
+}
+
+export interface ITrackSample {
+  readonly distanceM: number;
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly yaw: number;
+  readonly pitch: number;
+  readonly gradeFraction: number;
+  readonly gradePercent: number;
+  readonly curvatureRadPerM: number;
+  readonly cantRollRad: number;
+  readonly turnoutSwayFactor: number;
+  readonly outdoorBlend: number;
+}
+
+export interface ITrackProfileSnapshot {
+  readonly gradePercent: number;
+  readonly elevationM: number;
+  readonly curvatureRadPerM: number;
+  readonly cantRollRad: number;
+  readonly turnoutSwayFactor: number;
+  readonly outdoorBlend: number;
+  readonly inCurveLimitZone: boolean;
+  readonly upcomingCurveLimitKmh: number | null;
+  readonly upcomingCurveDistanceM: number | null;
+}
+
 export interface IMetroLineSpec {
   readonly id: MetroLineId;
   readonly name: string;
@@ -62,6 +98,8 @@ export interface IMetroLineSpec {
   readonly oppositeDestinationLed: string;
   readonly colorHex: number;
   readonly cssColor: string;
+  readonly hasSurfaceStart: boolean;
+  readonly tunnelPortalDistanceM: number | null;
   readonly stations: readonly IStationSpec[];
   readonly speedZones: readonly ISpeedLimitZone[];
 }
@@ -271,6 +309,7 @@ export interface ITrainPhysicsModel {
     input: IControlInput,
     doorsOpen: boolean,
     dtSec: number,
+    gradeFraction?: number,
   ): ITrainKinematics;
 }
 
@@ -337,6 +376,7 @@ export interface ISimulationSnapshot {
   readonly cameraNotice: ICameraNotice | null;
   readonly oncomingTrain: IOncomingTrainState;
   readonly kinematics: ITrainKinematics;
+  readonly trackProfile: ITrackProfileSnapshot;
   readonly speedLimitKmh: number;
   readonly isOverspeeding: boolean;
   readonly doorState: DoorState;

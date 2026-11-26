@@ -246,3 +246,115 @@ export function createSpeedSignTexture(limitKmh: number, maxAnisotropy: number):
   tex.anisotropy = maxAnisotropy;
   return tex;
 }
+
+export function createCurveLimitSignTexture(
+  limitKmh: number,
+  direction: 'left' | 'right',
+  maxAnisotropy: number,
+): THREE.CanvasTexture {
+  const [canvas, ctx] = createCanvas(256, 256);
+  ctx.fillStyle = '#facc15';
+  ctx.fillRect(0, 0, 256, 256);
+  ctx.strokeStyle = '#0f172a';
+  ctx.lineWidth = 18;
+  ctx.strokeRect(10, 10, 236, 236);
+
+  // Curved directional arrow at top
+  ctx.strokeStyle = '#0f172a';
+  ctx.lineWidth = 14;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  if (direction === 'left') {
+    ctx.moveTo(156, 118);
+    ctx.quadraticCurveTo(156, 62, 92, 62);
+  } else {
+    ctx.moveTo(100, 118);
+    ctx.quadraticCurveTo(100, 62, 164, 62);
+  }
+  ctx.stroke();
+
+  // Arrowhead
+  ctx.fillStyle = '#0f172a';
+  ctx.beginPath();
+  if (direction === 'left') {
+    ctx.moveTo(74, 62);
+    ctx.lineTo(108, 40);
+    ctx.lineTo(108, 84);
+  } else {
+    ctx.moveTo(182, 62);
+    ctx.lineTo(148, 40);
+    ctx.lineTo(148, 84);
+  }
+  ctx.closePath();
+  ctx.fill();
+
+  // Bold curve speed limit value
+  ctx.fillStyle = '#0f172a';
+  ctx.font = 'bold 92px "JetBrains Mono", monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(String(limitKmh), 128, 178);
+  ctx.font = 'bold 24px "Chakra Petch", sans-serif';
+  ctx.fillText('ŁUK · KM/H', 128, 224);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = maxAnisotropy;
+  return tex;
+}
+
+export function createDepotPortalSignTexture(maxAnisotropy: number): THREE.CanvasTexture {
+  const [canvas, ctx] = createCanvas(512, 112);
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, 512, 112);
+  ctx.fillStyle = '#2563eb';
+  ctx.fillRect(0, 0, 512, 14);
+  ctx.fillStyle = '#facc15';
+  ctx.fillRect(0, 98, 512, 14);
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = 'bold 42px "Chakra Petch", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('TUNEL M1 · KABATY', 256, 48);
+  ctx.fillStyle = '#94a3b8';
+  ctx.font = '600 17px "JetBrains Mono", monospace';
+  ctx.fillText('STP KABATY → STACJA A-1 · LIMIT 45 KM/H', 256, 82);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = maxAnisotropy;
+  return tex;
+}
+
+export function createDepotBuildingTexture(maxAnisotropy: number): THREE.CanvasTexture {
+  const [canvas, ctx] = createCanvas(512, 256);
+  ctx.fillStyle = '#334e68';
+  ctx.fillRect(0, 0, 512, 256);
+  // Corrugated steel vertical ribs
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.22)';
+  for (let x = 0; x < 512; x += 12) {
+    ctx.fillRect(x, 0, 4, 256);
+  }
+  // Yellow & red Warsaw Metro depot stripe
+  ctx.fillStyle = '#facc15';
+  ctx.fillRect(0, 148, 512, 18);
+  ctx.fillStyle = '#dc2626';
+  ctx.fillRect(0, 166, 512, 22);
+  // Dark concrete plinth at bottom
+  ctx.fillStyle = '#475569';
+  ctx.fillRect(0, 210, 512, 46);
+  // Depot signage band
+  ctx.fillStyle = '#f8fafc';
+  ctx.font = 'bold 34px "Chakra Petch", sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('METRO WARSZAWSKIE · STP KABATY', 256, 118);
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.repeat.set(2, 1);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.anisotropy = maxAnisotropy;
+  return tex;
+}
+

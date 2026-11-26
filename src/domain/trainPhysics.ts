@@ -40,6 +40,7 @@ export class MetroTrainPhysics implements ITrainPhysicsModel {
     input: IControlInput,
     doorsOpen: boolean,
     dtSec: number,
+    gradeFraction = 0,
   ): ITrainKinematics {
     const dt = clamp(dtSec, 0, 0.05);
     const emergencyBrake = this.resolveEmergencyBrake(current, input);
@@ -52,7 +53,14 @@ export class MetroTrainPhysics implements ITrainPhysicsModel {
       serviceBrake,
       dt,
     );
-    const netAccel = this.computeAcceleration(current.speedMs, throttle, serviceBrake, emergencyBrake);
+    const netAccel = this.computeAcceleration(
+      current.speedMs,
+      throttle,
+      serviceBrake,
+      emergencyBrake,
+      doorsOpen,
+      gradeFraction,
+    );
     return this.integrateMotion(current, throttle, serviceBrake, emergencyBrake, netAccel, dt);
   }
 
@@ -119,6 +127,8 @@ export class MetroTrainPhysics implements ITrainPhysicsModel {
     throttle: number,
     serviceBrake: number,
     emergencyBrake: boolean,
+    doorsOpen: boolean,
+    gradeFraction: number,
   ): number {
     const speedRatio = clamp(speedMs / (this.config.maxSpeedKmh / MS_TO_KMH), 0, 1);
     const tractionCurve = 1 - 0.35 * speedRatio;
@@ -127,7 +137,13 @@ export class MetroTrainPhysics implements ITrainPhysicsModel {
       ? this.config.emergencyBrakeForceN
       : serviceBrake * this.config.maxServiceBrakeForceN;
     const resistanceN = this.computePassiveResistance(speedMs);
-    return (tractionN - brakeN - resistanceN) / this.config.massKg;
+
+    // Gravity component along track slope: positive grade (uphill) opposes motion,
+    // negative grade (downhill) accelerates the train unless held by brakes/doors.
+    const holdingStopped = speedMs <= 0.02 && (doorsOpen || emergencyBrake || serviceBrake > 0.05);
+    const gravityN = holdingStopped ? 0 : -this.config.massKg * GRAVITY_MS2 * gradeFraction;
+
+    return (tractionN + gravityN - brakeN - resistanceN) / this.config.massKg;
   }
 
   private computePassiveResistance(speedMs: number): number {

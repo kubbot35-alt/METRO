@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { TrackAlignment } from '../domain/trackAlignment';
 import { getStationPlatformLayout } from '../domain/trackGeometry';
 import type { IMetroLineSpec, IStationSpec } from '../domain/types';
 import {
@@ -19,6 +20,7 @@ interface ISharedStationMats extends IHallMaterials, IStationFurnitureMaterials 
 
 export function buildMetroStations(
   scene: THREE.Scene,
+  alignment: TrackAlignment,
   stations: readonly IStationSpec[],
   maxAnisotropy: number,
   lineSpec?: Pick<IMetroLineSpec, 'id' | 'destinationLed' | 'oppositeDestinationLed' | 'cssColor'>,
@@ -52,7 +54,7 @@ export function buildMetroStations(
   );
 
   stations.forEach((station) => {
-    const stationGroup = createSingleStation(station, lineId, sharedMats, maxAnisotropy, disposables);
+    const stationGroup = createSingleStation(station, alignment, lineId, sharedMats, maxAnisotropy, disposables);
     root.add(stationGroup);
   });
 
@@ -140,14 +142,21 @@ function createSharedStationMaterials(
 
 function createSingleStation(
   station: IStationSpec,
+  alignment: TrackAlignment,
   lineId: 'M1' | 'M2',
   mats: ISharedStationMats,
   maxAnisotropy: number,
   disposables: Array<{ dispose(): void }>,
 ): THREE.Group {
   const group = new THREE.Group();
+  const frame = alignment.sample(station.distanceM);
+  group.position.set(frame.x, frame.y, frame.z);
+  group.rotation.set(0, frame.yaw, 0);
+
+  // Build station geometry in local straight/level frame with stop point at local z = 0
+  const localStation: IStationSpec = { ...station, distanceM: 0 };
   const hallLength = station.platformLengthM + 18;
-  const centerZ = -(station.distanceM - 36);
+  const centerZ = 36;
   const layout = getStationPlatformLayout(station);
 
   const wallTex = createStationWallTexture(station.accentHex, maxAnisotropy, station.wallBaseHex);
@@ -170,7 +179,7 @@ function createSingleStation(
 
   buildStationHallShell(
     group,
-    station,
+    localStation,
     layout,
     centerZ,
     hallLength,
@@ -180,6 +189,6 @@ function createSingleStation(
     mats,
     disposables,
   );
-  addPlatformFurniture(group, station, layout, centerZ, mats, disposables);
+  addPlatformFurniture(group, localStation, layout, centerZ, mats, disposables);
   return group;
 }

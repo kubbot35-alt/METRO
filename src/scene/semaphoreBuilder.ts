@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { TrackAlignment } from '../domain/trackAlignment';
 import type { ISemaphoreState, SignalAspect } from '../domain/types';
 
 export interface ISemaphoreRig {
@@ -54,6 +55,7 @@ function aspectColor(aspect: SignalAspect): number {
 
 export function buildTunnelSemaphores(
   scene: THREE.Scene,
+  alignment: TrackAlignment,
   initialSignals: readonly ISemaphoreState[],
 ): ISemaphoreRig {
   const disposables: Array<{ dispose(): void }> = [];
@@ -76,6 +78,7 @@ export function buildTunnelSemaphores(
   const visuals: ISemaphoreVisual[] = initialSignals.map((sig) =>
     createSingleSemaphore(
       root,
+      alignment,
       sig,
       { postGeo, baseGeo, headGeo, visorGeo, lensGeo, haloGeo },
       { postMat, headMat, glowTex },
@@ -111,13 +114,17 @@ interface ISemaphoreBaseMats {
 
 function createSingleSemaphore(
   root: THREE.Group,
+  alignment: TrackAlignment,
   sig: ISemaphoreState,
   geos: ISemaphoreGeos,
   mats: ISemaphoreBaseMats,
   disposables: Array<{ dispose(): void }>,
 ): ISemaphoreVisual {
   const group = new THREE.Group();
-  group.position.set(2.02, 0, -sig.distanceM);
+  const frame = alignment.sample(sig.distanceM);
+  const pt = alignment.toWorldPoint(sig.distanceM, 2.02, 0, false);
+  group.position.set(pt.x, pt.y, pt.z);
+  group.rotation.set(0, frame.yaw, 0);
 
   const base = new THREE.Mesh(geos.baseGeo, mats.postMat);
   base.position.y = 0.06;

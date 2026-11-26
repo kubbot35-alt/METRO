@@ -87,11 +87,13 @@ export const LINE_M2_SPEED_ZONES: readonly ISpeedLimitZone[] = buildSpeedZones(L
 export const METRO_LINE_M1: IMetroLineSpec = {
   id: 'M1',
   name: 'Linia M1',
-  routeLabel: 'Kabaty — Centrum',
+  routeLabel: 'STP Kabaty — Centrum',
   destinationLed: 'MŁOCINY',
   oppositeDestinationLed: 'KABATY',
   colorHex: 0x2563eb,
   cssColor: '#2563eb',
+  hasSurfaceStart: true,
+  tunnelPortalDistanceM: 300,
   stations: LINE_M1_STATIONS,
   speedZones: LINE_M1_SPEED_ZONES,
 };
@@ -104,6 +106,8 @@ export const METRO_LINE_M2: IMetroLineSpec = {
   oppositeDestinationLed: 'BEMOWO',
   colorHex: 0xdc2626,
   cssColor: '#dc2626',
+  hasSurfaceStart: false,
+  tunnelPortalDistanceM: null,
   stations: LINE_M2_STATIONS,
   speedZones: LINE_M2_SPEED_ZONES,
 };
