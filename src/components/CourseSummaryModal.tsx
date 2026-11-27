@@ -6,6 +6,7 @@ import type {
   IDriverProfileStats,
   ISimulationSnapshot,
 } from '../domain/types';
+import { TachographChart } from './TachographChart';
 
 interface ICourseSummaryModalProps {
   readonly snapshot: ISimulationSnapshot;
@@ -49,13 +50,13 @@ export function CourseSummaryModal({
       : null;
 
   return (
-    <div className="fixed inset-0 z-30 bg-[#07090e]/85 flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-30 bg-[#07090e]/85 flex items-center justify-center p-3 sm:p-4">
       <div
         role="dialog"
         aria-modal="true"
         aria-labelledby="course-summary-title"
         data-testid="course-summary-modal"
-        className="w-full max-w-lg bg-[#111620] border border-slate-700 rounded-lg p-6 shadow-2xl"
+        className="w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-[#111620] border border-slate-700 rounded-lg p-4 sm:p-6 shadow-2xl"
       >
         {snapshot.gameMode === 'academy' && snapshot.academy?.completed && (
           <div
@@ -140,6 +141,8 @@ export function CourseSummaryModal({
           />
           <SummaryTile label="Czas kursu" value={formatDuration(snapshot.elapsedTimeSec)} />
         </div>
+
+        <TachographChart tachograph={snapshot.tachograph} />
 
         {xpReward && rankProgress && (
           <div

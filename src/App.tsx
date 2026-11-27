@@ -9,7 +9,9 @@ import { CustomLineBuilderModal } from './components/CustomLineBuilderModal';
 import { DriverProfileModal } from './components/DriverProfileModal';
 import { FpsCounterBadge } from './components/FpsCounterBadge';
 import { GamepadToast } from './components/GamepadToast';
+import { MobileTouchControls } from './components/MobileTouchControls';
 import { PhotoModeOverlay } from './components/PhotoModeOverlay';
+import { PortraitHintBanner } from './components/PortraitHintBanner';
 import { SettingsModal } from './components/SettingsModal';
 import { StatusModal } from './components/StatusModal';
 import { TitleOverlay } from './components/TitleOverlay';
@@ -78,6 +80,14 @@ export default function App() {
       data-academy-step={snapshot.academy?.currentStep ?? 0}
       data-academy-done={snapshot.academy?.completed ? '1' : '0'}
       data-gamepad={game.gamepadStatus.connected ? '1' : '0'}
+      data-touch-controls={game.touchControlsActive ? '1' : '0'}
+      data-ghost-delta={
+        game.ghostDelta?.hasSplitComparison
+          ? `${game.ghostDelta.scoreDelta}:${game.ghostDelta.timeDeltaSec}`
+          : game.ghostDelta
+            ? `target:${game.ghostDelta.ghostBestScore}`
+            : 'none'
+      }
     >
       <div
         ref={mountRef}
@@ -126,10 +136,15 @@ export default function App() {
         />
       )}
 
+      {game.showPortraitHint && !game.photoModeActive && (
+        <PortraitHintBanner onDismiss={game.dismissPortraitHint} />
+      )}
+
       {snapshot.phase !== 'title' && !game.photoModeActive && (
         <>
           <TopHudBar
             snapshot={snapshot}
+            ghostDelta={game.ghostDelta}
             muted={game.muted}
             onToggleMute={game.toggleMute}
             onCycleCamera={game.cycleCamera}
@@ -146,8 +161,23 @@ export default function App() {
               gamepadConnected={game.gamepadStatus.connected}
             />
           )}
+          {game.touchControlsActive && snapshot.phase === 'playing' && (
+            <MobileTouchControls
+              snapshot={snapshot}
+              onLeverChange={game.setManualLeverAxis}
+              onToggleDoorsLeft={game.toggleDoorsLeft}
+              onToggleDoorsRight={game.toggleDoorsRight}
+              onAcknowledgeCzuwak={game.acknowledgeCzuwak}
+              onAcknowledgeRadio={game.acknowledgeRadio}
+              onEmergencyBrake={game.triggerEmergencyBrake}
+              onCycleCamera={game.cycleCamera}
+              onToggleHeadlights={game.toggleHeadlights}
+              onHornChange={game.setHornActive}
+            />
+          )}
           <CabDashboardHud
             snapshot={snapshot}
+            compactTouchMode={game.touchControlsActive}
             onToggleDoorsLeft={game.toggleDoorsLeft}
             onToggleDoorsRight={game.toggleDoorsRight}
             onToggleHeadlights={game.toggleHeadlights}

@@ -1,7 +1,12 @@
 import { useState } from 'react';
 import { GAMEPAD_BUTTON_MAPPINGS } from '../domain/gamepadMapping';
 import { GRAPHICS_QUALITY_PRESETS } from '../domain/settingsService';
-import type { GraphicsQualityId, IGamepadStatus, IGameSettings } from '../domain/types';
+import type {
+  GraphicsQualityId,
+  IGamepadStatus,
+  IGameSettings,
+  TouchControlsMode,
+} from '../domain/types';
 
 interface ISettingsModalProps {
   readonly settings: IGameSettings;
@@ -245,6 +250,44 @@ function GeneralSettingsTab({
           >
             {settings.showFps ? 'WŁĄCZONY' : 'WYŁĄCZONY'}
           </button>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-2.5 border-t border-slate-800/90">
+          <div>
+            <p className="text-xs font-medium text-slate-200">
+              Sterowanie dotykowe (Telefony / Tablety)
+            </p>
+            <p className="text-[11px] text-slate-400">
+              Pionowy suwak nastawnika i ergonomiczny panel przycisków na ekranie
+            </p>
+          </div>
+          <div className="flex items-center gap-1 shrink-0" role="group" aria-label="Sterowanie dotykowe">
+            {(
+              [
+                { id: 'auto', label: 'Auto' },
+                { id: 'on', label: 'Wł.' },
+                { id: 'off', label: 'Wył.' },
+              ] as const
+            ).map((opt) => {
+              const selected = settings.touchControlsMode === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  data-testid={`select-touch-${opt.id}`}
+                  aria-pressed={selected}
+                  onClick={() => onUpdate({ touchControlsMode: opt.id as TouchControlsMode })}
+                  className={`px-3 py-1.5 rounded-md border text-xs font-mono-tabular font-bold cursor-pointer transition-colors ${
+                    selected
+                      ? 'bg-amber-500/25 border-amber-400 text-amber-200'
+                      : 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
       </section>
     </div>

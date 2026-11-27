@@ -9,6 +9,7 @@ import { SpeedometerGauge } from './SpeedometerGauge';
 
 interface ICabDashboardHudProps {
   readonly snapshot: ISimulationSnapshot;
+  readonly compactTouchMode?: boolean;
   readonly onToggleDoorsLeft: () => void;
   readonly onToggleDoorsRight: () => void;
   readonly onToggleHeadlights: () => void;
@@ -23,6 +24,7 @@ interface ICabDashboardHudProps {
 
 export function CabDashboardHud({
   snapshot,
+  compactTouchMode = false,
   onToggleDoorsLeft,
   onToggleDoorsRight,
   onToggleHeadlights,
@@ -63,6 +65,90 @@ export function CabDashboardHud({
     ? snapshot.academy.highlightTarget
     : null;
   const highlightRing = 'ring-2 ring-cyan-300 shadow-[0_0_16px_rgba(34,211,238,0.85)] animate-pulse';
+
+  if (compactTouchMode) {
+    const aspect = snapshot.nextSignal?.signal.aspect;
+    const signalDot =
+      aspect === 'red' ? 'bg-red-500' : aspect === 'yellow' ? 'bg-amber-400' : 'bg-emerald-400';
+    const gradePct = snapshot.trackProfile.gradePercent;
+    const gradeText =
+      Math.abs(gradePct) < 0.15
+        ? '0.0% →'
+        : gradePct > 0
+          ? `+${gradePct.toFixed(1)}% ↗`
+          : `${gradePct.toFixed(1)}% ↘`;
+
+    return (
+      <div className="fixed bottom-0 inset-x-0 z-10 pointer-events-none flex justify-center px-2 pb-1.5">
+        <section
+          aria-label="Kompaktowy pulpit maszynisty"
+          data-testid="compact-touch-hud"
+          data-theme={theme}
+          className={`pointer-events-auto w-full max-w-[780px] ${panelClasses} border rounded-lg px-2.5 py-1.5 shadow-2xl flex items-center justify-between gap-2.5`}
+        >
+          <div className="flex items-baseline gap-1.5 shrink-0">
+            <span
+              className={`font-mono-tabular text-2xl font-bold leading-none ${
+                snapshot.isOverspeeding ? 'text-red-400' : 'text-slate-50'
+              }`}
+            >
+              {Math.round(kinematics.speedKmh)}
+            </span>
+            <div className="flex flex-col leading-tight text-[9.5px] font-mono-tabular">
+              <span className={snapshot.trackProfile.inCurveLimitZone ? 'text-amber-300 font-bold' : 'text-slate-400'}>
+                LIM {Math.round(snapshot.speedLimitKmh)}
+              </span>
+              <span className="text-slate-300">{gradeText}</span>
+            </div>
+          </div>
+
+          <div className={`border-l ${dividerClass} pl-2 flex items-center gap-1.5 shrink-0`}>
+            <span className={`w-3 h-3 rounded-full ${signalDot} shrink-0`} aria-hidden="true" />
+            <div className="flex flex-col leading-tight text-[9.5px] font-mono-tabular">
+              <span className="text-slate-200 font-bold">
+                {snapshot.nextSignal ? `${Math.max(0, Math.round(snapshot.nextSignal.distanceAheadM))}m` : 'KONIEC'}
+              </span>
+              <span className={snapshot.atpActive ? 'text-red-300 font-bold' : 'text-slate-400'}>
+                {snapshot.atpActive ? 'ATP!' : aspect === 'red' ? 'STÓJ' : aspect === 'yellow' ? 'UWAGA' : 'WOLNA'}
+              </span>
+            </div>
+          </div>
+
+          <div className={`flex-1 min-w-0 border-l ${dividerClass} pl-2 flex flex-col gap-0.5`}>
+            <div className="flex items-center justify-between gap-1.5 min-w-0">
+              <span className="font-display text-xs sm:text-sm font-semibold text-amber-300 truncate">
+                {currentStation.station.code} · {currentStation.station.name}
+              </span>
+              <span className="font-mono-tabular text-xs font-bold text-slate-50 whitespace-nowrap shrink-0">
+                {distM >= 0 ? `${distM} m` : `+${Math.abs(distM)} m`}
+              </span>
+              <span
+                className={`px-1 py-0.5 rounded text-[9px] font-mono-tabular font-bold whitespace-nowrap shrink-0 border ${
+                  currentStation.inStopZone
+                    ? 'bg-emerald-500/25 border-emerald-400 text-emerald-200'
+                    : 'bg-slate-800 border-slate-700 text-slate-300'
+                }`}
+              >
+                {isLeftPlatform ? '◀ L' : 'P ▶'}
+              </span>
+            </div>
+            {doorState === 'open' ? (
+              <div className="w-full h-1.5 bg-slate-800 rounded overflow-hidden">
+                <div
+                  className={`h-full transition-transform origin-left ${
+                    doorFault.phase !== 'none' ? 'bg-amber-400' : 'bg-emerald-500'
+                  }`}
+                  style={{ transform: `scaleX(${boardingPct / 100})` }}
+                />
+              </div>
+            ) : (
+              <StopApproachBar distanceToTargetM={currentStation.distanceToTargetM} compact />
+            )}
+          </div>
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed bottom-0 inset-x-0 z-10 pointer-events-none flex justify-center px-2.5 pb-2">
@@ -430,12 +516,18 @@ export function CabDashboardHud({
   );
 }
 
-function StopApproachBar({ distanceToTargetM }: { readonly distanceToTargetM: number }) {
+function StopApproachBar({
+  distanceToTargetM,
+  compact = false,
+}: {
+  readonly distanceToTargetM: number;
+  readonly compact?: boolean;
+}) {
   const clamped = Math.max(-20, Math.min(120, distanceToTargetM));
   const progressRatio = 1 - (clamped + 20) / 140;
   return (
     <div className="flex flex-col gap-1">
-      <div className="relative w-full h-2 bg-slate-800 rounded overflow-hidden">
+      <div className={`relative w-full ${compact ? 'h-1.5' : 'h-2'} bg-slate-800 rounded overflow-hidden`}>
         <div
           className="absolute top-0 bottom-0 bg-emerald-500/40 border-x border-emerald-400"
           style={{ left: '75.7%', width: '20%' }}
@@ -445,9 +537,11 @@ function StopApproachBar({ distanceToTargetM }: { readonly distanceToTargetM: nu
           style={{ left: `${Math.max(0, Math.min(98, progressRatio * 100))}%` }}
         />
       </div>
-      <span className="text-[10px] font-mono-tabular text-slate-400 whitespace-nowrap">
-        W/S Moc · Spacja Hamulec · Cel: STOP
-      </span>
+      {!compact && (
+        <span className="text-[10px] font-mono-tabular text-slate-400 whitespace-nowrap">
+          W/S Moc · Spacja Hamulec · Cel: STOP
+        </span>
+      )}
     </div>
   );
 }

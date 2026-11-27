@@ -10,8 +10,18 @@ import {
   type ICustomLineService,
 } from '../domain/customLines';
 import { DriverProfileService, type IDriverProfileService } from '../domain/driverProfile';
+import {
+  computeGhostDelta,
+  GhostRecordStorageService,
+  type IGhostRecordService,
+} from '../domain/ghostDelta';
 import { LeaderboardService, type ILeaderboardService } from '../domain/leaderboard';
 import { MetroSimulationEngine } from '../domain/metroSimulation';
+import {
+  detectTouchDevice,
+  resolveTouchControlsActive,
+  shouldShowPortraitHint,
+} from '../domain/mobileTouch';
 import { PhotoCameraController } from '../domain/photoMode';
 import { MetroScoringRules } from '../domain/scoringRules';
 import { SettingsStorageService, type ISettingsService } from '../domain/settingsService';
@@ -28,7 +38,9 @@ import type {
   IDriverProfileStats,
   IGamepadStatus,
   IGameSettings,
+  IGhostDeltaSnapshot,
   ILeaderboardEntry,
+  ILineGhostRecord,
   IMetroLineSpec,
   IMetroSimulation,
   IPhotoCameraState,
@@ -76,6 +88,10 @@ export interface IMetroGameController {
   readonly photoSavedNotice: boolean;
   readonly gamepadStatus: IGamepadStatus;
   readonly gamepadToast: IGamepadToastState | null;
+  readonly touchControlsActive: boolean;
+  readonly showPortraitHint: boolean;
+  readonly ghostDelta: IGhostDeltaSnapshot | null;
+  dismissPortraitHint: () => void;
   selectMetroLine: (lineId: MetroLineId) => void;
   selectGameMode: (mode: GameModeId) => void;
   selectChallenge: (challengeId: ChallengeId) => void;
@@ -140,6 +156,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
   const settingsServiceRef = useRef<ISettingsService | null>(null);
   const customLineServiceRef = useRef<ICustomLineService | null>(null);
   const driverProfileServiceRef = useRef<IDriverProfileService | null>(null);
+  const ghostRecordServiceRef = useRef<IGhostRecordService | null>(null);
   const rendererRef = useRef<IMetroSceneRenderer | null>(null);
   const audioRef = useRef<IAudioEngine | null>(null);
   const speechRef = useRef<ISpeechAnnouncer | null>(null);
@@ -174,6 +191,9 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
   }
   if (!driverProfileServiceRef.current) {
     driverProfileServiceRef.current = new DriverProfileService();
+  }
+  if (!ghostRecordServiceRef.current) {
+    ghostRecordServiceRef.current = new GhostRecordStorageService();
   }
   if (!simRef.current) {
     const initialSim = new MetroSimulationEngine(new MetroTrainPhysics(), new MetroScoringRules());
@@ -224,6 +244,69 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     supportsVibration: false,
   });
   const [gamepadToast, setGamepadToast] = useState<IGamepadToastState | null>(null);
+  const [isTouchHardware, setIsTouchHardware] = useState<boolean>(() =>
+    detectTouchDevice({
+      maxTouchPoints: typeof navigator !== 'undefined' ? navigator.maxTouchPoints ?? 0 : 0,
+      hasCoarsePointer:
+        typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+          ? window.matchMedia('(pointer: coarse)').matches
+          : false,
+      hasTouchStartEvent: typeof window !== 'undefined' && 'ontouchstart' in window,
+    }),
+  );
+  const [viewportSize, setViewportSize] = useState<{ readonly w: number; readonly h: number }>(() => ({
+    w: typeof window !== 'undefined' ? window.innerWidth : 1280,
+    h: typeof window !== 'undefined' ? window.innerHeight : 720,
+  }));
+  const [portraitDismissed, setPortraitDismissed] = useState<boolean>(false);
+  const [activeGhostRecord, setActiveGhostRecord] = useState<ILineGhostRecord | null>(() =>
+    ghostRecordServiceRef.current!.getRecordForLine(simRef.current!.getSnapshot().line.id),
+  );
+
+  useEffect(() => {
+    const onResize = (): void => {
+      setViewportSize({ w: window.innerWidth, h: window.innerHeight });
+      setIsTouchHardware(
+        detectTouchDevice({
+          maxTouchPoints: navigator.maxTouchPoints ?? 0,
+          hasCoarsePointer:
+            typeof window.matchMedia === 'function'
+              ? window.matchMedia('(pointer: coarse)').matches
+              : false,
+          hasTouchStartEvent: 'ontouchstart' in window,
+        }),
+      );
+    };
+    window.addEventListener('resize', onResize);
+    window.addEventListener('orientationchange', onResize);
+    return () => {
+      window.removeEventListener('resize', onResize);
+      window.removeEventListener('orientationchange', onResize);
+    };
+  }, []);
+
+  useEffect(() => {
+    setActiveGhostRecord(ghostRecordServiceRef.current!.getRecordForLine(snapshot.line.id));
+  }, [snapshot.line.id]);
+
+  const touchControlsActive = resolveTouchControlsActive(
+    settings.touchControlsMode,
+    isTouchHardware,
+  );
+  const showPortraitHint = shouldShowPortraitHint(
+    viewportSize.w,
+    viewportSize.h,
+    isTouchHardware || touchControlsActive || viewportSize.w <= 640,
+    portraitDismissed,
+  );
+  const dismissPortraitHint = useCallback((): void => {
+    setPortraitDismissed(true);
+  }, []);
+
+  const ghostDelta =
+    snapshot.gameMode === 'duty' || snapshot.gameMode === 'challenge'
+      ? computeGhostDelta(snapshot.stationSplits, activeGhostRecord)
+      : null;
 
   useEffect(() => {
     document.body.dataset.modalOpen =
@@ -244,6 +327,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     const next = sim.getSnapshot();
     document.body.dataset.state = next.phase;
     setSnapshot(next);
+    setActiveGhostRecord(ghostRecordServiceRef.current!.getRecordForLine(next.line.id));
     if (rendererRef.current) {
       rendererRef.current.update(next, 0);
       rendererRef.current.render();
@@ -932,6 +1016,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     let lastTimeOfDayId = simRef.current!.getSnapshot().timeOfDay.id;
     let lastAcademyStep = simRef.current!.getSnapshot().academy?.currentStep ?? 0;
     let lastAcademyHighlight = simRef.current!.getSnapshot().academy?.highlightTarget ?? null;
+    let lastSplitsCount = simRef.current!.getSnapshot().stationSplits.length;
 
     const tick = (): void => {
       if (!active) {
@@ -1074,6 +1159,8 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
 
       if (snap.phase === 'gameover' && !recordedGameOverRef.current) {
         recordedGameOverRef.current = true;
+        const ghostRes = ghostRecordServiceRef.current!.recordIfBest(snap);
+        setActiveGhostRecord(ghostRes.record);
         const careerRes = driverProfileServiceRef.current!.recordCompletedCourse(snap);
         setDriverProfile(careerRes.profile);
         setLastCourseXpReward(careerRes.reward);
@@ -1165,7 +1252,8 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         snap.trainModel.id !== lastTrainModelId ||
         snap.timeOfDay.id !== lastTimeOfDayId ||
         academyStep !== lastAcademyStep ||
-        academyHighlight !== lastAcademyHighlight;
+        academyHighlight !== lastAcademyHighlight ||
+        snap.stationSplits.length !== lastSplitsCount;
       if (discreteChanged || now - lastHudSync >= HUD_SYNC_INTERVAL_MS) {
         lastHudSync = now;
         lastPhase = snap.phase;
@@ -1188,6 +1276,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         lastTimeOfDayId = snap.timeOfDay.id;
         lastAcademyStep = academyStep;
         lastAcademyHighlight = academyHighlight;
+        lastSplitsCount = snap.stationSplits.length;
         document.body.dataset.state = snap.phase;
         setSnapshot(snap);
       }
@@ -1248,6 +1337,10 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     photoSavedNotice,
     gamepadStatus,
     gamepadToast,
+    touchControlsActive,
+    showPortraitHint,
+    ghostDelta,
+    dismissPortraitHint,
     selectMetroLine,
     selectGameMode,
     selectChallenge,

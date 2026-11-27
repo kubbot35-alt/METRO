@@ -1,10 +1,12 @@
-import type { FeedbackTone, ISimulationSnapshot } from '../domain/types';
+import type { FeedbackTone, IGhostDeltaSnapshot, ISimulationSnapshot } from '../domain/types';
+import { GhostDeltaBadge } from './GhostDeltaBadge';
 import { MetroLedDisplay } from './MetroLedDisplay';
 import { RouteLineStrip } from './RouteLineStrip';
 import { SandboxControlsBar } from './SandboxControlsBar';
 
 interface ITopHudBarProps {
   readonly snapshot: ISimulationSnapshot;
+  readonly ghostDelta: IGhostDeltaSnapshot | null;
   readonly muted: boolean;
   readonly onToggleMute: () => void;
   readonly onCycleCamera: () => void;
@@ -31,6 +33,7 @@ function getFeedbackColor(tone: FeedbackTone): string {
 
 export function TopHudBar({
   snapshot,
+  ghostDelta,
   muted,
   onToggleMute,
   onCycleCamera,
@@ -52,37 +55,37 @@ export function TopHudBar({
       : 'bg-[#10141c]/90 border-slate-700/75';
 
   return (
-    <div className="fixed top-0 inset-x-0 z-10 pointer-events-none px-4 pt-3 flex items-start justify-between gap-3">
+    <div className="fixed top-0 inset-x-0 z-10 pointer-events-none px-2 sm:px-4 pt-2 sm:pt-3 flex items-start justify-between gap-2 sm:gap-3">
       <div className="flex flex-col items-start shrink-0">
-      <div className={`${barClasses} border rounded-md px-3 py-2 flex items-center gap-3`}>
+      <div className={`${barClasses} border rounded-md px-2 sm:px-3 py-1.5 sm:py-2 flex items-center gap-2 sm:gap-3`}>
         <div className="flex flex-col leading-tight">
-          <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
+          <span className="text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
             Punkty
           </span>
-          <span className="font-mono-tabular text-xl font-bold text-slate-50">
+          <span className="font-mono-tabular text-base sm:text-xl font-bold text-slate-50">
             {Math.round(snapshot.score)}
           </span>
         </div>
-        <div className="h-7 w-px bg-slate-700/80" aria-hidden="true" />
+        <div className="h-6 sm:h-7 w-px bg-slate-700/80" aria-hidden="true" />
         <div className="flex flex-col leading-tight">
-          <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
+          <span className="text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
             Stacja
           </span>
-          <span className="font-mono-tabular text-base font-semibold text-amber-300">
+          <span className="font-mono-tabular text-sm sm:text-base font-semibold text-amber-300">
             {snapshot.currentStation.stationIndex + 1} / {snapshot.totalStations}
           </span>
         </div>
-        <div className="h-7 w-px bg-slate-700/80" aria-hidden="true" />
+        <div className="h-6 sm:h-7 w-px bg-slate-700/80" aria-hidden="true" />
         <div className="flex flex-col leading-tight" data-testid="passengers-counter">
-          <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
-            Pasażerowie
+          <span className="text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
+            Pasaż.
           </span>
-          <span className="font-mono-tabular text-base font-semibold text-emerald-300">
+          <span className="font-mono-tabular text-sm sm:text-base font-semibold text-emerald-300">
             {snapshot.passengersCarried}
           </span>
         </div>
-        <div className="h-7 w-px bg-slate-700/80 hidden sm:block" aria-hidden="true" />
-        <div className="hidden sm:flex flex-col leading-tight">
+        <div className="h-7 w-px bg-slate-700/80 hidden lg:block" aria-hidden="true" />
+        <div className="hidden lg:flex flex-col leading-tight">
           <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
             Skład
           </span>
@@ -91,6 +94,7 @@ export function TopHudBar({
           </span>
         </div>
       </div>
+      <GhostDeltaBadge delta={ghostDelta} />
       {snapshot.gameMode === 'sandbox' && (
         <SandboxControlsBar
           nextSignalAspect={snapshot.nextSignal?.signal.aspect}
@@ -183,7 +187,7 @@ export function TopHudBar({
         )}
       </div>
 
-      <div className="pointer-events-auto flex items-center gap-1.5 shrink-0">
+      <div className="pointer-events-auto flex items-center gap-1 sm:gap-1.5 shrink-0">
         <button
           type="button"
           tabIndex={-1}
@@ -194,7 +198,7 @@ export function TopHudBar({
             e.currentTarget.blur();
             onToggleHelp();
           }}
-          className="w-10 h-10 rounded-md bg-[#10141c]/90 hover:bg-slate-800 border border-slate-700/80 flex items-center justify-center text-amber-300 font-mono-tabular font-bold text-base cursor-pointer"
+          className="w-8 h-8 sm:w-10 sm:h-10 rounded-md bg-[#10141c]/90 hover:bg-slate-800 border border-slate-700/80 flex items-center justify-center text-amber-300 font-mono-tabular font-bold text-sm sm:text-base cursor-pointer"
         >
           ?
         </button>
@@ -209,13 +213,13 @@ export function TopHudBar({
             e.currentTarget.blur();
             onCycleCamera();
           }}
-          className="h-10 px-2.5 rounded-md bg-[#10141c]/90 hover:bg-slate-800 border border-slate-700/80 flex items-center gap-1.5 text-slate-200 cursor-pointer text-xs font-mono-tabular font-semibold"
+          className="h-8 sm:h-10 px-2 sm:px-2.5 rounded-md bg-[#10141c]/90 hover:bg-slate-800 border border-slate-700/80 flex items-center gap-1.5 text-slate-200 cursor-pointer text-xs font-mono-tabular font-semibold"
         >
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M23 7l-7 5 7 5V7z" />
             <rect x="1" y="5" width="15" height="14" rx="2" />
           </svg>
-          <span>[V]</span>
+          <span className="hidden sm:inline">[V]</span>
         </button>
 
         <button
@@ -227,9 +231,9 @@ export function TopHudBar({
             e.currentTarget.blur();
             onToggleMute();
           }}
-          className="w-10 h-10 rounded-md bg-[#10141c]/90 hover:bg-slate-800 border border-slate-700/80 flex items-center justify-center text-slate-200 cursor-pointer"
+          className="w-8 h-8 sm:w-10 sm:h-10 rounded-md bg-[#10141c]/90 hover:bg-slate-800 border border-slate-700/80 flex items-center justify-center text-slate-200 cursor-pointer"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M11 5L6 9H2v6h4l5 4V5z" />
             {muted ? (
               <path d="M23 9l-6 6M17 9l6 6" />
@@ -248,9 +252,9 @@ export function TopHudBar({
             e.currentTarget.blur();
             onPause();
           }}
-          className="w-10 h-10 rounded-md bg-[#10141c]/90 hover:bg-slate-800 border border-slate-700/80 flex items-center justify-center text-slate-200 cursor-pointer"
+          className="w-8 h-8 sm:w-10 sm:h-10 rounded-md bg-[#10141c]/90 hover:bg-slate-800 border border-slate-700/80 flex items-center justify-center text-slate-200 cursor-pointer"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <rect x="6" y="4" width="4" height="16" />
             <rect x="14" y="4" width="4" height="16" />
           </svg>
@@ -265,9 +269,9 @@ export function TopHudBar({
             e.currentTarget.blur();
             onRestart();
           }}
-          className="w-10 h-10 rounded-md bg-[#10141c]/90 hover:bg-slate-800 border border-slate-700/80 flex items-center justify-center text-slate-200 cursor-pointer"
+          className="w-8 h-8 sm:w-10 sm:h-10 rounded-md bg-[#10141c]/90 hover:bg-slate-800 border border-slate-700/80 flex items-center justify-center text-slate-200 cursor-pointer"
         >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M3 12a9 9 0 109-9 9.75 9.75 0 00-6.74 2.74L3 8" />
             <path d="M3 3v5h5" />
           </svg>

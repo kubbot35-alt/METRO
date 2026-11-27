@@ -12,6 +12,7 @@ import { evaluateChallengeOutcome, getChallengeSpec } from './challengeCatalog';
 import { FeedbackTracker, type IFeedbackTracker } from './feedbackTracker';
 import { MetroIncidentSystem, type IIncidentController } from './incidentSystem';
 import { DispatcherRadioSystem, type IRadioController } from './radioSystem';
+import { TachographRecorder, type ITachographRecorder } from './tachographSystem';
 import { MetroWeatherSystem, type IWeatherController } from './weatherSystem';
 import {
   BOARDING_DURATION_SEC,
@@ -54,6 +55,7 @@ import type {
   IChallengeOutcome,
   IChallengeSpec,
   IControlInput,
+  IGhostStationSplit,
   IMetroLineSpec,
   IMetroSimulation,
   IScoringEvaluator,
@@ -89,6 +91,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
   private readonly radio: IRadioController;
   private readonly weather: IWeatherController;
   private readonly academy: IAcademyController;
+  private readonly tachograph: ITachographRecorder;
   private line: IMetroLineSpec = METRO_LINE_M1;
   private stations: readonly IStationSpec[];
   private speedZones: readonly ISpeedLimitZone[];
@@ -132,6 +135,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
   private leverTarget = 0;
   private passengersCarried = 0;
   private currentStationBoardedCount = 0;
+  private stationSplits: IGhostStationSplit[] = [];
 
   public constructor(
     physics: ITrainPhysicsModel,
@@ -147,6 +151,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     radio: IRadioController = new DispatcherRadioSystem(stations),
     weather: IWeatherController = new MetroWeatherSystem(),
     academy: IAcademyController = new AcademyController(),
+    tachograph: ITachographRecorder = new TachographRecorder(),
   ) {
     this.physics = physics;
     this.scoring = scoring;
@@ -161,6 +166,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.radio = radio;
     this.weather = weather;
     this.academy = academy;
+    this.tachograph = tachograph;
     this.traffic.setStations?.(stations);
     this.alignment = getLineTrackAlignment(this.line.id, stations);
     this.physics.setConfig?.(this.trainModel.physics);
@@ -307,6 +313,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.cameraNotice = null;
     this.passengersCarried = 0;
     this.currentStationBoardedCount = 0;
+    this.stationSplits = [];
     this.challengeOutcome = null;
     this.feedback.reset();
     this.signals.reset();
@@ -317,6 +324,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.radio.reset();
     this.weather.reset();
     this.academy.reset();
+    this.tachograph.reset();
     this.applyActiveModeOverrides();
   }
 
@@ -413,9 +421,22 @@ export class MetroSimulationEngine implements IMetroSimulation {
         this.feedback.push(stepLabel, 50, 'success');
       }
       if (academyRes.academyFinishedNow) {
+        this.tachograph.recordFinalSample(
+          this.elapsedTimeSec,
+          this.kinematics.positionM,
+          this.kinematics.speedKmh,
+          this.computeEffectiveSpeedLimit(),
+        );
         this.phase = 'gameover';
       }
     }
+
+    this.tachograph.recordStep(
+      this.elapsedTimeSec,
+      this.kinematics.positionM,
+      this.kinematics.speedKmh,
+      this.computeEffectiveSpeedLimit(),
+    );
 
     return {
       hornActive: input.hornActive,
@@ -531,6 +552,8 @@ export class MetroSimulationEngine implements IMetroSimulation {
       elapsedTimeSec: this.elapsedTimeSec,
       feedback: this.feedback.getCurrent(),
       hornActive: this.hornActive,
+      tachograph: this.tachograph.getSnapshot(),
+      stationSplits: this.stationSplits.slice(),
     };
   }
 
@@ -644,6 +667,12 @@ export class MetroSimulationEngine implements IMetroSimulation {
       } else {
         this.atpActive = true;
         this.redSignalViolations += 1;
+        this.tachograph.recordViolation(
+          this.elapsedTimeSec,
+          this.kinematics.positionM,
+          this.kinematics.speedKmh,
+          'red_signal',
+        );
         this.kinematics = { ...this.kinematics, emergencyBrake: true, throttle: 0 };
         this.applyPenalty(
           this.scoring.getRedSignalPenalty(),
@@ -688,6 +717,12 @@ export class MetroSimulationEngine implements IMetroSimulation {
         this.feedback.push('Akademia: Czas czuwaka minął — spróbuj ponownie [C]', 0, 'warning');
       } else {
         this.czuwakViolations += 1;
+        this.tachograph.recordViolation(
+          this.elapsedTimeSec,
+          this.kinematics.positionM,
+          this.kinematics.speedKmh,
+          'czuwak',
+        );
         this.kinematics = { ...this.kinematics, emergencyBrake: true, throttle: 0 };
         this.applyPenalty(
           this.scoring.getCzuwakPenalty(),
@@ -823,9 +858,29 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.openDoorSide = null;
     if (this.boardingCompleted) {
       this.stationsServed += 1;
+      this.recordCurrentStationTelemetry();
       this.advanceToNextStation();
     }
     return 'closed';
+  }
+
+  private recordCurrentStationTelemetry(): void {
+    const station = this.stations[this.stationIndex];
+    if (!station) {
+      return;
+    }
+    this.tachograph.recordStationStop(
+      this.elapsedTimeSec,
+      this.kinematics.positionM,
+      station.code,
+      station.name,
+    );
+    this.stationSplits.push({
+      stationIndex: this.stationIndex,
+      stationCode: station.code,
+      elapsedTimeSec: Number(this.elapsedTimeSec.toFixed(1)),
+      score: Math.round(this.score),
+    });
   }
 
   private awardStationStop(progress: IStationProgress): void {
@@ -923,6 +978,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
       if (this.kinematics.positionM >= station.distanceM + 18) {
         this.stationsServed += 1;
         this.score += 100;
+        this.recordCurrentStationTelemetry();
         this.feedback.push(`Przejazd techniczny przez stację ${station.name}`, 100, 'success');
         this.advanceToNextStation();
       }
@@ -956,6 +1012,12 @@ export class MetroSimulationEngine implements IMetroSimulation {
           czuwakViolations: this.czuwakViolations,
         });
       }
+      this.tachograph.recordFinalSample(
+        this.elapsedTimeSec,
+        this.kinematics.positionM,
+        this.kinematics.speedKmh,
+        this.computeEffectiveSpeedLimit(),
+      );
       this.phase = 'gameover';
       return;
     }
@@ -975,6 +1037,12 @@ export class MetroSimulationEngine implements IMetroSimulation {
     if (this.overspeedCooldownSec <= 0) {
       this.overspeedCooldownSec = OVERSPEED_INTERVAL_SEC;
       this.overspeedViolations += 1;
+      this.tachograph.recordViolation(
+        this.elapsedTimeSec,
+        this.kinematics.positionM,
+        this.kinematics.speedKmh,
+        'overspeed',
+      );
       this.applyPenalty(this.scoring.getOverspeedPenalty(), `Przekroczenie limitu (${limit} km/h)`, 'danger');
       return true;
     }

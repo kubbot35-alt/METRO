@@ -107,6 +107,8 @@ export interface IWeatherState {
   readonly wheelSlipActive: boolean;
 }
 
+export type TouchControlsMode = 'auto' | 'on' | 'off';
+
 export interface IGameSettings {
   readonly masterVolume: number;
   readonly trainVolume: number;
@@ -115,6 +117,66 @@ export interface IGameSettings {
   readonly cabFovDeg: number;
   readonly showFps: boolean;
   readonly gamepadVibration: boolean;
+  readonly touchControlsMode: TouchControlsMode;
+}
+
+export type TachographViolationKind = 'overspeed' | 'red_signal' | 'czuwak';
+
+export interface ITachographSample {
+  readonly timeSec: number;
+  readonly distanceM: number;
+  readonly speedKmh: number;
+  readonly speedLimitKmh: number;
+}
+
+export interface ITachographStationMark {
+  readonly timeSec: number;
+  readonly distanceM: number;
+  readonly stationCode: string;
+  readonly stationName: string;
+}
+
+export interface ITachographViolationMark {
+  readonly timeSec: number;
+  readonly distanceM: number;
+  readonly speedKmh: number;
+  readonly kind: TachographViolationKind;
+}
+
+export interface ITachographSnapshot {
+  readonly samples: readonly ITachographSample[];
+  readonly stationMarks: readonly ITachographStationMark[];
+  readonly violationMarks: readonly ITachographViolationMark[];
+  readonly maxSpeedKmh: number;
+  readonly totalDurationSec: number;
+  readonly totalDistanceM: number;
+}
+
+export interface IGhostStationSplit {
+  readonly stationIndex: number;
+  readonly stationCode: string;
+  readonly elapsedTimeSec: number;
+  readonly score: number;
+}
+
+export interface ILineGhostRecord {
+  readonly lineId: MetroLineId;
+  readonly finalScore: number;
+  readonly totalTimeSec: number;
+  readonly recordedAtIso: string;
+  readonly splits: readonly IGhostStationSplit[];
+}
+
+export interface IGhostDeltaSnapshot {
+  readonly lineId: MetroLineId;
+  readonly ghostBestScore: number;
+  readonly ghostTotalTimeSec: number;
+  readonly hasSplitComparison: boolean;
+  readonly lastStationCode: string | null;
+  readonly scoreDelta: number;
+  readonly timeDeltaSec: number;
+  readonly isScoreAhead: boolean;
+  readonly isTimeAhead: boolean;
 }
 
 export type AcademyStepNumber = 1 | 2 | 3 | 4 | 5;
@@ -651,6 +713,8 @@ export interface ISimulationSnapshot {
   readonly elapsedTimeSec: number;
   readonly feedback: IFeedbackMessage | null;
   readonly hornActive: boolean;
+  readonly tachograph: ITachographSnapshot;
+  readonly stationSplits: readonly IGhostStationSplit[];
 }
 
 export interface IMetroSimulation {

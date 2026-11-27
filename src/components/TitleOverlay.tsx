@@ -120,7 +120,7 @@ export function TitleOverlay({
     <div className="fixed inset-0 z-20 pointer-events-none flex flex-col justify-between p-4 md:p-5 bg-gradient-to-r from-[#06090f]/94 via-[#06090f]/78 to-[#06090f]/45 overflow-y-auto">
       <div className="w-full max-w-6xl mx-auto my-auto pointer-events-auto grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] gap-5 items-start">
         <div className="min-w-0">
-          <div className="flex items-center justify-between gap-2 mb-2.5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 mb-2.5">
             <div className="flex items-center gap-3 min-w-0">
               <svg width="42" height="42" viewBox="0 0 56 56" fill="none" aria-hidden="true" className="shrink-0">
                 <rect x="2" y="2" width="52" height="52" rx="10" fill="#111620" stroke="#e2e8f0" strokeWidth="2.5" />
@@ -141,7 +141,7 @@ export function TitleOverlay({
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5 shrink-0">
+            <div className="flex flex-wrap items-center gap-1.5 shrink-0">
               <button
                 type="button"
                 data-testid="title-profile-btn"

@@ -103,12 +103,14 @@ describe('Akademia Maszynisty (5-step interactive tutorial)', () => {
     assert.equal(snap.academy?.highlightTarget, 'signal');
 
     // Step 3: pass yellow (220 m), stop cleanly before red (430 m), wait for green
-    for (let i = 0; i < 650 && sim.getSnapshot().academy?.currentStep === 3; i += 1) {
+    for (let i = 0; i < 1200 && sim.getSnapshot().academy?.currentStep === 3; i += 1) {
       const s = sim.getSnapshot();
       const pos = s.kinematics.positionM;
       const spd = s.kinematics.speedKmh;
-      if (pos < 350) {
-        sim.step(makeInput({ throttleUp: spd < 26, serviceBrake: spd > 28 }), 0.05);
+      if (pos < 210) {
+        sim.step(makeInput({ throttleUp: spd < 48, serviceBrake: spd > 52 }), 0.05);
+      } else if (pos < 375) {
+        sim.step(makeInput({ throttleUp: spd < 27, serviceBrake: spd > 29 }), 0.05);
       } else {
         sim.step(makeInput({ serviceBrake: spd > 0.1 }), 0.05);
       }
@@ -142,11 +144,11 @@ describe('Akademia Maszynisty (5-step interactive tutorial)', () => {
         break;
       }
       if (dist > 60) {
-        sim.step(makeInput({ throttleUp: spd < 38 }), 0.05);
-      } else if (dist > 14) {
-        sim.step(makeInput({ throttleUp: spd < 12, serviceBrake: spd > 16 }), 0.05);
+        sim.step(makeInput({ manualLeverAxis: spd < 38 ? 0.65 : 0 }), 0.05);
+      } else if (dist > 6) {
+        sim.step(makeInput({ manualLeverAxis: spd < 12 ? 0.25 : spd > 15 ? -0.45 : 0 }), 0.05);
       } else {
-        sim.step(makeInput({ serviceBrake: spd > 0.05 }), 0.05);
+        sim.step(makeInput({ manualLeverAxis: spd > 0.05 ? -0.8 : 0 }), 0.05);
       }
     }
     snap = sim.getSnapshot();

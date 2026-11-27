@@ -2,6 +2,7 @@ import type {
   GraphicsQualityId,
   IGameSettings,
   IGraphicsQualityPreset,
+  TouchControlsMode,
 } from './types';
 
 export interface ISettingsStorage {
@@ -25,6 +26,7 @@ export const DEFAULT_GAME_SETTINGS: IGameSettings = {
   cabFovDeg: 64,
   showFps: false,
   gamepadVibration: true,
+  touchControlsMode: 'auto',
 };
 
 export const GRAPHICS_QUALITY_PRESETS: readonly IGraphicsQualityPreset[] = [
@@ -78,6 +80,13 @@ function parseGraphicsQuality(value: unknown): GraphicsQualityId {
   return DEFAULT_GAME_SETTINGS.graphicsQuality;
 }
 
+function parseTouchControlsMode(value: unknown): TouchControlsMode {
+  if (value === 'auto' || value === 'on' || value === 'off') {
+    return value;
+  }
+  return DEFAULT_GAME_SETTINGS.touchControlsMode;
+}
+
 export function sanitizeGameSettings(raw: unknown): IGameSettings {
   if (!raw || typeof raw !== 'object') {
     return { ...DEFAULT_GAME_SETTINGS };
@@ -94,6 +103,7 @@ export function sanitizeGameSettings(raw: unknown): IGameSettings {
       typeof obj.gamepadVibration === 'boolean'
         ? obj.gamepadVibration
         : DEFAULT_GAME_SETTINGS.gamepadVibration,
+    touchControlsMode: parseTouchControlsMode(obj.touchControlsMode),
   };
 }
 
