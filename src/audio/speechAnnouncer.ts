@@ -1,5 +1,7 @@
 import type { LanguageId } from '../domain/types';
 
+export type SpeechStyle = 'standard' | 'pa';
+
 export interface ISpeechAnnouncer {
   announce(
     id: number,
@@ -7,6 +9,7 @@ export interface ISpeechAnnouncer {
     muted: boolean,
     volume?: number,
     language?: LanguageId,
+    style?: SpeechStyle,
   ): boolean;
   isPolishVoiceAvailable(): boolean;
   isVoiceAvailable?(language: LanguageId): boolean;
@@ -50,8 +53,9 @@ export class WebSpeechAnnouncer implements ISpeechAnnouncer {
     muted: boolean,
     volume = 0.92,
     language: LanguageId = 'pl',
+    style: SpeechStyle = 'standard',
   ): boolean {
-    const key = `${id}:${language}`;
+    const key = `${id}:${language}:${style}`;
     if (key === this.lastSpokenKey) {
       return this.isVoiceAvailable(language) && !muted && volume > 0.01;
     }
@@ -72,8 +76,8 @@ export class WebSpeechAnnouncer implements ISpeechAnnouncer {
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = language === 'en' ? (voice.lang || 'en-US') : 'pl-PL';
       utterance.voice = voice;
-      utterance.rate = language === 'en' ? 0.96 : 0.98;
-      utterance.pitch = 1.0;
+      utterance.rate = style === 'pa' ? 0.93 : language === 'en' ? 0.96 : 0.98;
+      utterance.pitch = style === 'pa' ? 0.94 : 1.0;
       utterance.volume = clampedVol;
       this.synth.speak(utterance);
       return true;

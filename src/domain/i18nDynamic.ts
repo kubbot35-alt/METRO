@@ -190,6 +190,18 @@ const FEEDBACK_EXACT_EN: ReadonlyArray<readonly [string, string]> = [
   ['Reflektory wyłączone', 'Headlights OFF'],
   ['Lampka kabiny: WŁ.', 'Cab light: ON'],
   ['Lampka kabiny: WYŁ.', 'Cab light: OFF'],
+  ['Zbyt ostre hamowanie!', 'Harsh braking!'],
+  ['Hamowanie awaryjne — gwałtowne szarpnięcie!', 'Emergency brake — violent jolt!'],
+  ['Gwałtowne szarpnięcie nastawnikiem!', 'Abrupt controller jerk!'],
+  ['Zbyt szybki wjazd w zakręt!', 'Too fast entering curve!'],
+  ['Interkom PA: szybsza wymiana pasażerów (-1,5 s) i ochrona drzwi', 'PA Intercom: faster boarding (-1.5 s) & door protection'],
+  ['Interkom PA: komunikat drzwiowy — mniejsze ryzyko awarii drzwi', 'PA Intercom: door warning — reduced door fault risk'],
+  ['Interkom PA: pasażerowie uspokojeni (+5% komfortu)', 'PA Intercom: passengers reassured (+5% comfort)'],
+  ['Interkom PA: ostrzeżenie na deszczu (+4% komfortu)', 'PA Intercom: rain safety notice (+4% comfort)'],
+  ['Interkom PA: nadano komunikat w wagonach', 'PA Intercom: announcement broadcast in cars'],
+  ['Tor odstawczy: jedź powoli (max 20 km/h) przed kozioł oporowy', 'Turnaround siding: proceed slowly (max 20 km/h) to buffer stop'],
+  ['Zderzenie z kozłem oporowym! Hamulec awaryjny', 'Buffer stop impact! Emergency brake engaged'],
+  ['Zmieniono kabinę — wjedź na peron kursu powrotnego', 'Cab switched — pull into the return platform'],
 ];
 
 export function localizeFeedbackText(lang: LanguageId, textPl: string): string {
@@ -200,6 +212,9 @@ export function localizeFeedbackText(lang: LanguageId, textPl: string): string {
     if (textPl === pl) {
       return en;
     }
+  }
+  if (textPl.startsWith('Bonus za płynną jazdę (komfort ')) {
+    return textPl.replace('Bonus za płynną jazdę (komfort ', 'Smooth ride bonus (comfort ');
   }
   if (textPl.startsWith('Akademia: Krok ')) {
     const match = textPl.match(/(\d)\/5/);

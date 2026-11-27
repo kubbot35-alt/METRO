@@ -38,7 +38,7 @@ const TRACK_CHUNK_LENGTH_M = 600;
 
 function computeRouteLengthM(stations: readonly IStationSpec[]): number {
   const lastStationM = stations[stations.length - 1]?.distanceM ?? 3000;
-  return lastStationM + 240;
+  return lastStationM + 270;
 }
 
 export function buildMetroTunnel(

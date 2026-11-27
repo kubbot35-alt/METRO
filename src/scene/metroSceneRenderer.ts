@@ -45,6 +45,7 @@ import { buildMetroConsist, type ITrainConsistRig } from './trainMeshBuilder';
 import { DEFAULT_SCENE_CULL_RANGE_M } from '../domain/routeVariant';
 import { buildMetroTunnel, type IMetroTunnelRig } from './tunnelBuilder';
 import { buildTunnelEffectsRig, type ITunnelEffectsRig } from './tunnelEffectsBuilder';
+import { buildTurnaroundSidingRig, type ITurnaroundSidingRig } from './turnaroundSidingBuilder';
 import type { IMetroSceneRenderer, IPhotoAnchorPose, ISceneResources } from './types';
 
 const _bgColor = new THREE.Color();
@@ -113,6 +114,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
   private rainRig: IRainSystemRig | null = null;
   private tunnelEffectsRig: ITunnelEffectsRig | null = null;
   private nightCrewRig: INightCrewRig | null = null;
+  private turnaroundSidingRig: ITurnaroundSidingRig | null = null;
   private liveMirrorSystem: ILiveMirrorSystem | null = null;
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointerNdc = new THREE.Vector2();
@@ -278,6 +280,10 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.trackworkRig?.sync(snapshot.trackworkZones, this.alignment, dtSec);
     this.tunnelEffectsRig?.update(snapshot, this.alignment, dtSec);
     this.nightCrewRig?.sync(snapshot, this.alignment, dtSec);
+    this.turnaroundSidingRig?.update(
+      snapshot.elapsedTimeSec,
+      snapshot.turnaround.phase !== 'inactive',
+    );
     this.updateStationLights(snapshot.currentStation.station);
     this.updateSemaphoreVisuals(snapshot);
     this.updateCabIndicators(snapshot);
@@ -499,6 +505,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.rainRig?.dispose();
     this.tunnelEffectsRig?.dispose();
     this.nightCrewRig?.dispose();
+    this.turnaroundSidingRig?.dispose();
     this.liveMirrorSystem?.dispose();
     this.playerTrainRig?.dispose();
     this.passengerInteriorRig?.dispose();
@@ -596,6 +603,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.rainRig = buildRainSystem(scene);
     this.tunnelEffectsRig = buildTunnelEffectsRig(scene);
     this.nightCrewRig = buildNightCrewRig(scene);
+    this.turnaroundSidingRig = buildTurnaroundSidingRig(scene, this.alignment, LINE_M1_STATIONS, maxAniso);
     this.passengerRig = buildStationPassengers(scene, this.alignment, LINE_M1_STATIONS);
     this.trackworkRig = buildTrackworkRig(scene, maxAniso);
     const initialSignals = SEMAPHORE_DISTANCES_M.map((distanceM, idx) => ({
@@ -646,6 +654,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.tunnelRig?.dispose();
     this.stationsRig?.dispose();
     this.surfaceDepotRig?.dispose();
+    this.turnaroundSidingRig?.dispose();
     this.passengerRig?.dispose();
     this.semaphoreRig?.dispose();
 
@@ -655,6 +664,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.tunnelRig.updateCulling(posM, DEFAULT_SCENE_CULL_RANGE_M);
     this.stationsRig.updateCulling(posM, DEFAULT_SCENE_CULL_RANGE_M);
     this.surfaceDepotRig = buildSurfaceDepot(this.scene, this.alignment, this.maxAniso);
+    this.turnaroundSidingRig = buildTurnaroundSidingRig(this.scene, this.alignment, stations, this.maxAniso);
     this.passengerRig = buildStationPassengers(this.scene, this.alignment, stations);
     this.semaphoreRig = buildTunnelSemaphores(this.scene, this.alignment, snapshot.signals);
     const badge = line.badgeCode ?? line.id;

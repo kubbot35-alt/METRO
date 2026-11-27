@@ -606,6 +606,66 @@ export interface ICzuwakState {
   readonly maxWindowSec: number;
 }
 
+export type ComfortEventKind = 'harsh_brake' | 'emergency_brake' | 'lever_jerk' | 'fast_curve';
+
+export interface IPassengerComfortState {
+  readonly currentPercent: number;
+  readonly averagePercent: number;
+  readonly longitudinalG: number;
+  readonly lateralG: number;
+  readonly totalG: number;
+  readonly smoothDrivingActive: boolean;
+  readonly harshEventsCount: number;
+  readonly endBonusPoints: number;
+}
+
+export type PaAnnouncementId = 'stand_clear_doors' | 'tunnel_stop_apology' | 'wet_rails_caution';
+
+export interface IPaAnnouncementSpec {
+  readonly id: PaAnnouncementId;
+  readonly shortTitlePl: string;
+  readonly shortTitleEn: string;
+  readonly textPl: string;
+  readonly textEn: string;
+  readonly effectHintPl: string;
+  readonly effectHintEn: string;
+  readonly cooldownSec: number;
+}
+
+export interface IPaActiveMessage {
+  readonly id: number;
+  readonly specId: PaAnnouncementId;
+  readonly textPl: string;
+  readonly textEn: string;
+  readonly remainingSec: number;
+}
+
+export interface IPaIntercomState {
+  readonly activeMessage: IPaActiveMessage | null;
+  readonly cooldownRemainingSec: number;
+  readonly announcementsUsedCount: number;
+  readonly doorFaultProtectionActive: boolean;
+}
+
+export type TurnaroundPhase =
+  | 'inactive'
+  | 'entering_siding'
+  | 'ready_to_switch'
+  | 'switching_cab';
+
+export interface ITurnaroundState {
+  readonly phase: TurnaroundPhase;
+  readonly canEnterSiding: boolean;
+  readonly sidingStartM: number;
+  readonly bufferStopM: number;
+  readonly distanceToBufferM: number;
+  readonly inStopZone: boolean;
+  readonly maxSidingSpeedKmh: number;
+  readonly switchProgress: number;
+  readonly legsCompleted: number;
+  readonly cumulativeDistanceM: number;
+}
+
 export interface IControlInput {
   readonly throttleUp: boolean;
   readonly throttleDown: boolean;
@@ -719,6 +779,8 @@ export interface IAudioEvents {
   readonly highBeamDimBonusChime?: boolean;
   readonly nightCrewClearedChime?: boolean;
   readonly nightCrewViolationBuzz?: boolean;
+  readonly paAnnouncementTriggered?: boolean;
+  readonly cabSwitchChime?: boolean;
 }
 
 export interface ISimulationSnapshot {
@@ -754,6 +816,9 @@ export interface ISimulationSnapshot {
   readonly cabLightOn: boolean;
   readonly lightingEffects: ILightingAndSparksState;
   readonly nightInspection: INightInspectionState;
+  readonly comfort: IPassengerComfortState;
+  readonly paIntercom: IPaIntercomState;
+  readonly turnaround: ITurnaroundState;
   readonly leverTarget: number;
   readonly passengersCarried: number;
   readonly currentStationBoardedCount: number;
@@ -803,6 +868,10 @@ export interface IMetroSimulation {
   toggleAto?(): boolean;
   toggleCabLight?(): boolean;
   cycleHeadlightMode?(): HeadlightMode;
+  triggerPaAnnouncement?(id: PaAnnouncementId): { readonly accepted: boolean; readonly announcementId: number; readonly specId: PaAnnouncementId };
+  enterTurnaroundSiding?(): boolean;
+  beginCabSwitch?(): boolean;
+  completeCabSwitch?(reversedLine: IMetroLineSpec): boolean;
   start(): void;
   pause(): void;
   resume(): void;

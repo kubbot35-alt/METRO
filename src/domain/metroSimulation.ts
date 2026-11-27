@@ -15,6 +15,7 @@ import {
   type IAtoController,
 } from './atoSystem';
 import { evaluateChallengeOutcome, getChallengeSpec } from './challengeCatalog';
+import { PassengerComfortSystem, type IPassengerComfortController } from './comfortSystem';
 import { FeedbackTracker, type IFeedbackTracker } from './feedbackTracker';
 import { MetroIncidentSystem, type IIncidentController } from './incidentSystem';
 import {
@@ -25,8 +26,14 @@ import {
   NightInspectionSystem,
   type INightInspectionController,
 } from './nightInspectionSystem';
+import { PaIntercomSystem, type IPaIntercomController } from './paIntercomSystem';
 import { DispatcherRadioSystem, type IRadioController } from './radioSystem';
 import { TachographRecorder, type ITachographRecorder } from './tachographSystem';
+import {
+  TerminusTurnaroundSystem,
+  TURNAROUND_SPEED_LIMIT_KMH,
+  type ITurnaroundController,
+} from './turnaroundSystem';
 import { MetroWeatherSystem, type IWeatherController } from './weatherSystem';
 import {
   BOARDING_DURATION_SEC,
@@ -85,6 +92,7 @@ import type {
   ITrainModelSpec,
   ITrainPhysicsModel,
   MetroLineId,
+  PaAnnouncementId,
   TimeOfDayId,
   TrainModelId,
   WeatherModeId,
@@ -111,6 +119,9 @@ export class MetroSimulationEngine implements IMetroSimulation {
   private readonly ato: IAtoController;
   private readonly lighting: ILightingAndSparksController;
   private readonly nightInspection: INightInspectionController;
+  private readonly comfort: IPassengerComfortController;
+  private readonly paIntercom: IPaIntercomController;
+  private readonly turnaround: ITurnaroundController;
   private line: IMetroLineSpec = METRO_LINE_M1;
   private stations: readonly IStationSpec[];
   private speedZones: readonly ISpeedLimitZone[];
@@ -147,6 +158,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
   private bestStopErrorM: number | null = null;
   private totalStopErrorM = 0;
   private elapsedTimeSec = 0;
+  private legElapsedTimeSec = 0;
   private overspeedCooldownSec = 0;
   private lastJointIndex = 0;
   private hornActive = false;
@@ -156,6 +168,9 @@ export class MetroSimulationEngine implements IMetroSimulation {
   private passengersCarried = 0;
   private currentStationBoardedCount = 0;
   private stationSplits: IGhostStationSplit[] = [];
+  private pendingPaAudio = false;
+  private pendingCabSwitchChime = false;
+  private activeScheduleStartClockSec: number | null = null;
 
   public constructor(
     physics: ITrainPhysicsModel,
@@ -175,6 +190,9 @@ export class MetroSimulationEngine implements IMetroSimulation {
     ato: IAtoController = new MetroAtoController(),
     lighting: ILightingAndSparksController = new LightingAndSparksSystem(),
     nightInspection: INightInspectionController = new NightInspectionSystem(stations),
+    comfort: IPassengerComfortController = new PassengerComfortSystem(),
+    paIntercom: IPaIntercomController = new PaIntercomSystem(),
+    turnaround: ITurnaroundController = new TerminusTurnaroundSystem(),
   ) {
     this.physics = physics;
     this.scoring = scoring;
@@ -193,7 +211,11 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.ato = ato;
     this.lighting = lighting;
     this.nightInspection = nightInspection;
+    this.comfort = comfort;
+    this.paIntercom = paIntercom;
+    this.turnaround = turnaround;
     this.traffic.setStations?.(stations);
+    this.turnaround.setStations(stations);
     this.alignment = getLineTrackAlignment(this.line.id, stations);
     this.physics.setConfig?.(this.trainModel.physics);
   }
@@ -218,6 +240,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.traffic.setStations?.(nextLine.stations);
     this.radio.setStations(nextLine.stations);
     this.nightInspection.setStations(nextLine.stations);
+    this.turnaround.setStations(nextLine.stations);
     this.announcements.reset();
     this.applyActiveModeOverrides();
   }
@@ -290,6 +313,118 @@ export class MetroSimulationEngine implements IMetroSimulation {
     const next = this.lighting.toggleCabLight();
     this.feedback.push(next ? 'Lampka kabiny: WŁ.' : 'Lampka kabiny: WYŁ.', 0, 'neutral');
     return next;
+  }
+
+  public triggerPaAnnouncement(id: PaAnnouncementId): {
+    readonly accepted: boolean;
+    readonly announcementId: number;
+    readonly specId: PaAnnouncementId;
+  } {
+    const result = this.paIntercom.trigger(id, {
+      doorState: this.doorState,
+      boardingCompleted: this.boardingCompleted,
+      timeOfDayId: this.timeOfDay.id,
+      speedKmh: this.kinematics.speedKmh,
+      nextSignal: this.buildNextSignalProgress(),
+      weatherMode: this.weather.getState().mode,
+      stationIndex: this.stationIndex,
+    });
+    if (!result.accepted) {
+      return { accepted: false, announcementId: 0, specId: id };
+    }
+    if (result.boardingSpeedupSec > 0 && this.doorState === 'open' && !this.boardingCompleted) {
+      const dur = this.getActiveBoardingDurationSec();
+      this.boardingTimerSec = Math.min(dur, this.boardingTimerSec + result.boardingSpeedupSec);
+    }
+    if (result.comfortBonus > 0) {
+      this.comfort.applyBoost(result.comfortBonus);
+    }
+    if (result.effectFeedbackPl) {
+      this.feedback.push(result.effectFeedbackPl, 0, result.effectTone);
+    }
+    this.pendingPaAudio = true;
+    return { accepted: true, announcementId: result.announcementId, specId: result.spec.id };
+  }
+
+  public enterTurnaroundSiding(): boolean {
+    if (!this.turnaround.enterSiding()) {
+      return false;
+    }
+    this.phase = 'playing';
+    this.atoEnabled = false;
+    this.atoStatus = 'off';
+    this.atpActive = false;
+    this.doorState = 'closed';
+    this.openDoorSide = null;
+    this.kinematics = {
+      ...this.kinematics,
+      emergencyBrake: false,
+      serviceBrake: 0,
+      throttle: 0,
+    };
+    this.feedback.push('Tor odstawczy: jedź powoli (max 20 km/h) przed kozioł oporowy', 0, 'neutral');
+    return true;
+  }
+
+  public beginCabSwitch(): boolean {
+    if (!this.turnaround.beginCabSwitch()) {
+      return false;
+    }
+    this.kinematics = {
+      ...this.kinematics,
+      speedMs: 0,
+      speedKmh: 0,
+      throttle: 0,
+      serviceBrake: 1,
+      emergencyBrake: false,
+      netAccelerationMs2: 0,
+    };
+    this.pendingCabSwitchChime = true;
+    return true;
+  }
+
+  public completeCabSwitch(reversedLine: IMetroLineSpec): boolean {
+    const prevClockSec = this.schedule.getSnapshot(
+      this.stationIndex,
+      this.kinematics.positionM,
+      this.legElapsedTimeSec,
+    ).currentClockSec;
+    this.turnaround.finishLegSwap(this.kinematics.positionM);
+    this.activeScheduleStartClockSec = prevClockSec;
+    this.legElapsedTimeSec = 0;
+    this.line = reversedLine;
+    this.stations = reversedLine.stations;
+    this.speedZones = reversedLine.speedZones;
+    this.alignment = getLineTrackAlignment(reversedLine.id, reversedLine.stations, {
+      hasSurfaceStart: false,
+      tunnelPortalDistanceM: null,
+      alignmentIntensity: reversedLine.alignmentIntensity,
+    });
+    this.stationIndex = 0;
+    this.kinematics = createInitialKinematics();
+    this.doorState = 'closed';
+    this.openDoorSide = null;
+    this.boardingTimerSec = 0;
+    this.boardingCompleted = false;
+    this.stopAwarded = false;
+    this.currentStationBoardedCount = 0;
+    this.lastJointIndex = 0;
+    this.atpActive = false;
+    this.activeCautionLimitKmh = null;
+    this.stationSplits = [];
+    this.signals.setDistances?.(buildSemaphoreDistances(reversedLine.stations));
+    this.schedule.setStations?.(reversedLine.stations);
+    this.schedule.configure?.(prevClockSec, this.getActiveBoardingDurationSec());
+    this.incidents.setStations?.(reversedLine.stations);
+    this.traffic.setStations?.(reversedLine.stations);
+    this.radio.setStations(reversedLine.stations);
+    this.nightInspection.setStations(reversedLine.stations);
+    this.turnaround.setStations(reversedLine.stations);
+    this.announcements.reset();
+    this.applyActiveModeOverrides();
+    this.phase = 'playing';
+    this.feedback.push('Zmieniono kabinę — wjedź na peron kursu powrotnego', 0, 'success');
+    return true;
   }
 
   public setChallenge(challengeId: ChallengeId): void {
@@ -398,6 +533,8 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.bestStopErrorM = null;
     this.totalStopErrorM = 0;
     this.elapsedTimeSec = 0;
+    this.legElapsedTimeSec = 0;
+    this.activeScheduleStartClockSec = null;
     this.overspeedCooldownSec = 0;
     this.lastJointIndex = 0;
     this.hornActive = false;
@@ -412,6 +549,8 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.passengersCarried = 0;
     this.currentStationBoardedCount = 0;
     this.stationSplits = [];
+    this.pendingPaAudio = false;
+    this.pendingCabSwitchChime = false;
     this.challengeOutcome = null;
     this.feedback.reset();
     this.signals.reset();
@@ -425,6 +564,9 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.tachograph.reset();
     this.ato.reset();
     this.nightInspection.reset();
+    this.comfort.reset();
+    this.paIntercom.reset();
+    this.turnaround.reset();
     this.applyActiveModeOverrides();
   }
 
@@ -434,6 +576,24 @@ export class MetroSimulationEngine implements IMetroSimulation {
       return this.idleAudioEvents();
     }
     this.elapsedTimeSec += dt;
+    this.legElapsedTimeSec += dt;
+    this.paIntercom.step(dt);
+    const paAudioNow = this.pendingPaAudio;
+    const cabSwitchChimeNow = this.pendingCabSwitchChime;
+    this.pendingPaAudio = false;
+    this.pendingCabSwitchChime = false;
+
+    const preTurnaround = this.turnaround.getState(this.kinematics.positionM);
+    if (preTurnaround.phase === 'switching_cab') {
+      this.turnaround.step(this.kinematics.positionM, 0, dt);
+      this.feedback.tick(dt);
+      return {
+        ...this.idleAudioEvents(),
+        paAnnouncementTriggered: paAudioNow,
+        cabSwitchChime: cabSwitchChimeNow,
+      };
+    }
+
     if (input.toggleAtoPressed) {
       this.toggleAto();
     }
@@ -456,11 +616,47 @@ export class MetroSimulationEngine implements IMetroSimulation {
     );
     const emergencyTriggered = this.advancePhysics(effectiveInput, dt, weatherRes.brakeGripMultiplier);
     this.leverTarget = this.computeLeverTarget(effectiveInput);
+    const turnaroundStep = this.turnaround.step(
+      this.kinematics.positionM,
+      this.kinematics.speedKmh,
+      dt,
+    );
+    if (turnaroundStep.clampedPositionM !== null) {
+      this.kinematics = {
+        ...this.kinematics,
+        positionM: turnaroundStep.clampedPositionM,
+        speedMs: 0,
+        speedKmh: 0,
+        throttle: 0,
+        emergencyBrake: turnaroundStep.bufferCollision || this.kinematics.emergencyBrake,
+      };
+      if (turnaroundStep.bufferCollision) {
+        this.applyPenalty(-50, 'Zderzenie z kozłem oporowym! Hamulec awaryjny', 'danger');
+      }
+    }
+
+    const inTurnaroundSiding = this.turnaround.getState(this.kinematics.positionM).phase !== 'inactive';
     const atpTriggered = this.evaluateSignals(prevPosM, dt);
     const incRes = this.evaluateIncidents(Boolean(effectiveInput.acknowledgeCzuwakPressed), dt);
     const radioRes = this.evaluateRadio(Boolean(effectiveInput.acknowledgeRadioPressed), dt);
     const trafficRes = this.traffic.step(this.kinematics.positionM, dt);
     const postSample = this.alignment.sample(this.kinematics.positionM);
+    const comfortProgress = this.buildStationProgress();
+    const comfortRes = this.comfort.step({
+      dtSec: dt,
+      speedKmh: this.kinematics.speedKmh,
+      netAccelerationMs2: this.kinematics.netAccelerationMs2,
+      leverTarget: this.leverTarget,
+      emergencyBrake: this.kinematics.emergencyBrake,
+      curvatureRadPerM: postSample.curvatureRadPerM,
+      curveLimitKmh: this.alignment.getCurveSpeedLimitAt(this.kinematics.positionM),
+      distanceToStationM: comfortProgress.distanceToTargetM,
+      doorsOpen: this.doorState === 'open',
+    });
+    if (comfortRes.event && !(emergencyTriggered && comfortRes.event.kind === 'emergency_brake')) {
+      this.feedback.push(comfortRes.event.messagePl, 0, 'warning');
+    }
+
     const lightRes = this.lighting.step({
       playerPositionM: this.kinematics.positionM,
       speedKmh: this.kinematics.speedKmh,
@@ -483,12 +679,16 @@ export class MetroSimulationEngine implements IMetroSimulation {
     const brakeStopHiss = this.checkBrakeStopHiss(prevSpeedKmh);
     const overspeedWarning = this.evaluateOverspeed(dt);
     const prevStationsServed = this.stationsServed;
-    const doorRes = this.handleDoorToggle(effectiveInput, incRes.doorFaultResolvedClose);
+    const doorRes = inTurnaroundSiding
+      ? { toggledTo: null, faultBeep: false }
+      : this.handleDoorToggle(effectiveInput, incRes.doorFaultResolvedClose);
     const stationServedNow = this.stationsServed > prevStationsServed;
-    const boardingCompleteChime = this.updateBoarding(dt);
-    this.checkStationOvershoot();
+    const boardingCompleteChime = inTurnaroundSiding ? false : this.updateBoarding(dt);
+    if (!inTurnaroundSiding) {
+      this.checkStationOvershoot();
+    }
     const progress = this.buildStationProgress();
-    if (!this.shouldSkipPassengerStations()) {
+    if (!this.shouldSkipPassengerStations() && !inTurnaroundSiding) {
       this.announcements.update(
         progress.stationIndex,
         progress.station.name,
@@ -563,7 +763,10 @@ export class MetroSimulationEngine implements IMetroSimulation {
       doorToggledTo: doorRes.toggledTo,
       boardingCompleteChime,
       overspeedWarning,
-      emergencyBrakeTriggered: emergencyTriggered || (this.gameMode !== 'academy' && incRes.czuwakTimedOut),
+      emergencyBrakeTriggered:
+        emergencyTriggered ||
+        turnaroundStep.bufferCollision ||
+        (this.gameMode !== 'academy' && incRes.czuwakTimedOut),
       railJointPulse: this.checkRailJoint(),
       brakeStopHiss,
       atpTriggered: atpTriggered.violated,
@@ -580,6 +783,8 @@ export class MetroSimulationEngine implements IMetroSimulation {
       highBeamDimBonusChime: lightRes.dimCourtesyBonusAwarded,
       nightCrewClearedChime: nightRes.clearedNow,
       nightCrewViolationBuzz: nightRes.violatedNow,
+      paAnnouncementTriggered: paAudioNow,
+      cabSwitchChime: cabSwitchChimeNow,
     };
   }
 
@@ -653,12 +858,15 @@ export class MetroSimulationEngine implements IMetroSimulation {
       cabLightOn: this.lighting.getState().cabLightOn,
       lightingEffects: this.lighting.getState(),
       nightInspection: this.nightInspection.getState(),
+      comfort: this.comfort.getState(),
+      paIntercom: this.paIntercom.getState(),
+      turnaround: this.turnaround.getState(posM),
       leverTarget: this.leverTarget,
       passengersCarried: this.passengersCarried,
       currentStationBoardedCount: this.currentStationBoardedCount,
       effectiveWaitingPassengers,
       announcement: this.announcements.getCurrent(),
-      schedule: this.schedule.getSnapshot(this.stationIndex, posM, this.elapsedTimeSec),
+      schedule: this.schedule.getSnapshot(this.stationIndex, posM, this.legElapsedTimeSec),
       trackworkZones: this.incidents.getTrackworkZones(),
       activeTrackworkZone: this.incidents.getActiveTrackworkZone(posM),
       upcomingTrackworkDistanceM: this.incidents.getUpcomingTrackworkDistance(posM),
@@ -721,7 +929,10 @@ export class MetroSimulationEngine implements IMetroSimulation {
       this.timeOfDay.trafficSpawnMinSec,
       this.timeOfDay.trafficSpawnMaxSec,
     );
-    this.schedule.configure?.(this.timeOfDay.startClockSec, this.timeOfDay.boardingDurationSec);
+    this.schedule.configure?.(
+      this.activeScheduleStartClockSec ?? this.timeOfDay.startClockSec,
+      this.timeOfDay.boardingDurationSec,
+    );
     this.incidents.setEnabled?.(this.gameMode !== 'sandbox');
     this.incidents.configureOverrides?.({
       doorFaultProbability: isNightService ? 0 : challenge?.doorFaultProbability ?? null,
@@ -981,6 +1192,9 @@ export class MetroSimulationEngine implements IMetroSimulation {
 
   private computeEffectiveSpeedLimit(): number {
     const posM = this.kinematics.positionM;
+    if (this.turnaround.getState(posM).phase !== 'inactive') {
+      return TURNAROUND_SPEED_LIMIT_KMH;
+    }
     let limit = getSpeedLimitAt(posM, this.speedZones);
     const curveLimit = this.alignment.getCurveSpeedLimitAt(posM);
     if (curveLimit !== null) {
@@ -1076,7 +1290,8 @@ export class MetroSimulationEngine implements IMetroSimulation {
     }
 
     if (this.boardingCompleted) {
-      const attempt = this.incidents.attemptDoorClose(this.stationIndex);
+      const faultScale = this.paIntercom.isDoorFaultProtected(this.stationIndex) ? 0.35 : 1.0;
+      const attempt = this.incidents.attemptDoorClose(this.stationIndex, faultScale);
       const closeKey = this.openDoorSide === 'right' ? 'E' : 'Q';
       if (attempt.faultTriggered) {
         this.feedback.push(`Awaria drzwi – powtórz zamykanie [${closeKey}]`, 0, 'warning');
@@ -1140,7 +1355,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     }
     const deviationSec = this.schedule.recordStationArrival(
       progress.stationIndex,
-      this.elapsedTimeSec,
+      this.legElapsedTimeSec,
     );
     const punctuality = this.scoring.evaluatePunctuality(deviationSec);
     const combinedPoints = evaluation.points + punctuality.points;
@@ -1241,9 +1456,28 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.stopAwarded = false;
     this.currentStationBoardedCount = 0;
     if (this.stationIndex + 1 >= this.stations.length) {
+      const comfortBonus = this.comfort.computeEndBonus(this.isFreeRideMode());
+      if (comfortBonus > 0) {
+        this.score += comfortBonus;
+        this.feedback.push(
+          `Bonus za płynną jazdę (komfort ${this.comfort.getState().averagePercent}%)`,
+          comfortBonus,
+          'success',
+        );
+      }
+      const canTurnaround =
+        this.gameMode !== 'academy' &&
+        !this.shouldSkipPassengerStations() &&
+        this.stations.length >= 2 &&
+        this.kinematics.positionM <= (this.stations[this.stations.length - 1]?.distanceM ?? 0) + 35;
+      this.turnaround.setCanEnterSiding(canTurnaround);
       const challenge = this.getActiveChallenge();
       if (challenge) {
-        const sched = this.schedule.getSnapshot(this.stationIndex, this.kinematics.positionM, this.elapsedTimeSec);
+        const sched = this.schedule.getSnapshot(
+          this.stationIndex,
+          this.kinematics.positionM,
+          this.legElapsedTimeSec,
+        );
         const nightState = this.nightInspection.getState();
         this.challengeOutcome = evaluateChallengeOutcome({
           challenge,
@@ -1381,6 +1615,8 @@ export class MetroSimulationEngine implements IMetroSimulation {
       highBeamDimBonusChime: false,
       nightCrewClearedChime: false,
       nightCrewViolationBuzz: false,
+      paAnnouncementTriggered: false,
+      cabSwitchChime: false,
     };
   }
 }

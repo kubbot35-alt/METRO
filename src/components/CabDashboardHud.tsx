@@ -3,6 +3,7 @@ import { localizeAtoStatus } from '../domain/i18nDynamic';
 import { getStationPlatformSide } from '../domain/trackGeometry';
 import type { ISimulationSnapshot } from '../domain/types';
 import { useI18n } from '../i18n/LanguageContext';
+import { ComfortGaugeWidget } from './ComfortGaugeWidget';
 import { CzuwakIndicator } from './CzuwakIndicator';
 import { MasterControllerSlider } from './MasterControllerSlider';
 import { RadioDispatchModule } from './RadioDispatchModule';
@@ -13,6 +14,8 @@ import { SpeedometerGauge } from './SpeedometerGauge';
 interface ICabDashboardHudProps {
   readonly snapshot: ISimulationSnapshot;
   readonly compactTouchMode?: boolean;
+  readonly paPanelOpen?: boolean;
+  readonly onTogglePaPanel?: () => void;
   readonly onToggleDoorsLeft: () => void;
   readonly onToggleDoorsRight: () => void;
   readonly onToggleHeadlights: () => void;
@@ -30,6 +33,8 @@ interface ICabDashboardHudProps {
 export function CabDashboardHud({
   snapshot,
   compactTouchMode = false,
+  paPanelOpen = false,
+  onTogglePaPanel,
   onToggleDoorsLeft,
   onToggleDoorsRight,
   onToggleHeadlights,
@@ -138,6 +143,28 @@ export function CabDashboardHud({
             </span>
           )}
 
+          <div className={`border-l ${dividerClass} pl-2 flex items-center gap-1.5 shrink-0`}>
+            <ComfortGaugeWidget comfort={snapshot.comfort} compact />
+            {onTogglePaPanel && (
+              <button
+                type="button"
+                data-testid="compact-pa-toggle"
+                aria-pressed={paPanelOpen}
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onTogglePaPanel();
+                }}
+                className={`px-1.5 py-1 rounded text-[9.5px] font-mono-tabular font-bold border cursor-pointer ${
+                  paPanelOpen
+                    ? 'bg-cyan-500/30 border-cyan-300 text-cyan-100'
+                    : 'bg-slate-800 border-slate-600 text-cyan-200'
+                }`}
+              >
+                PA
+              </button>
+            )}
+          </div>
+
           <div className={`flex-1 min-w-0 border-l ${dividerClass} pl-2 flex flex-col gap-0.5`}>
             <div className="flex items-center justify-between gap-1.5 min-w-0">
               <span className="font-display text-xs sm:text-sm font-semibold text-amber-300 truncate">
@@ -175,11 +202,11 @@ export function CabDashboardHud({
   }
 
   return (
-    <div className="fixed bottom-0 inset-x-0 z-10 pointer-events-none flex justify-center px-2.5 pb-2">
+    <div className="fixed bottom-0 inset-x-0 z-10 pointer-events-none flex justify-center px-2 pb-2">
       <section
         aria-label={tr('Pulpit maszynisty', 'Driver dashboard')}
         data-theme={theme}
-        className={`pointer-events-auto w-full max-w-[1416px] ${panelClasses} border rounded-t-xl rounded-b-md px-3 py-2 shadow-2xl grid grid-cols-1 lg:grid-cols-[auto_auto_auto_minmax(224px,1fr)_auto_auto] items-center gap-2.5`}
+        className={`pointer-events-auto w-full max-w-[1416px] ${panelClasses} border rounded-t-xl rounded-b-md px-2.5 py-2 shadow-2xl grid grid-cols-1 lg:grid-cols-[auto_auto_auto_minmax(196px,1fr)_auto_auto] items-center gap-2`}
       >
         <SpeedometerGauge
           speedKmh={kinematics.speedKmh}
@@ -314,10 +341,12 @@ export function CabDashboardHud({
           ) : (
             <StopApproachBar distanceToTargetM={currentStation.distanceToTargetM} />
           )}
+
+          <ComfortGaugeWidget comfort={snapshot.comfort} />
         </div>
 
-        <div className={`border-l ${dividerClass} pl-2.5 flex flex-col gap-1.5 min-w-[186px]`}>
-          <div className="flex items-center justify-between text-xs font-mono-tabular">
+        <div className={`border-l ${dividerClass} pl-2 flex flex-col gap-1.5 min-w-[152px]`}>
+          <div className="flex items-center justify-between text-xs font-mono-tabular gap-2">
             <span className="text-slate-400 uppercase">{tr('Drzwi L / P', 'Doors L / R')}</span>
             <span
               className={
@@ -348,7 +377,7 @@ export function CabDashboardHud({
                 e.currentTarget.blur();
                 onToggleDoorsLeft();
               }}
-              className={`px-2 py-1.5 rounded text-[11px] font-mono-tabular font-bold whitespace-nowrap transition-colors border ${
+              className={`px-1.5 py-1.5 rounded text-[10.5px] font-mono-tabular font-bold whitespace-nowrap transition-colors border ${
                 leftActive && doorFault.phase === 'awaiting-retry'
                   ? 'bg-amber-500 border-amber-300 text-slate-950 cursor-pointer'
                   : leftActive
@@ -360,7 +389,7 @@ export function CabDashboardHud({
                         : 'bg-slate-900 border-slate-800 text-slate-500 cursor-not-allowed'
               } ${academyHighlight === 'doors-left' ? highlightRing : ''}`}
             >
-              {tr('◀ DRZWI L [Q]', '◀ DOORS L [Q]')}
+              {tr('◀ LEWE [Q]', '◀ LEFT [Q]')}
             </button>
             <button
               type="button"
@@ -372,7 +401,7 @@ export function CabDashboardHud({
                 e.currentTarget.blur();
                 onToggleDoorsRight();
               }}
-              className={`px-2 py-1.5 rounded text-[11px] font-mono-tabular font-bold whitespace-nowrap transition-colors border ${
+              className={`px-1.5 py-1.5 rounded text-[10.5px] font-mono-tabular font-bold whitespace-nowrap transition-colors border ${
                 rightActive && doorFault.phase === 'awaiting-retry'
                   ? 'bg-amber-500 border-amber-300 text-slate-950 cursor-pointer'
                   : rightActive
@@ -384,23 +413,23 @@ export function CabDashboardHud({
                         : 'bg-slate-900 border-slate-800 text-slate-500 cursor-not-allowed'
               } ${academyHighlight === 'doors-right' ? highlightRing : ''}`}
             >
-              {tr('DRZWI P [E] ▶', 'DOORS R [E] ▶')}
+              {tr('PRAWE [E] ▶', 'RIGHT [E] ▶')}
             </button>
           </div>
-          <span className="text-[10px] text-slate-400 font-mono-tabular">
+          <span className="text-[9.5px] text-slate-400 font-mono-tabular whitespace-nowrap">
             {snapshot.nightInspection.active
-              ? tr('Nocny serwis · Ekipy ≤ 20 km/h + [H]', 'Night service · Crews ≤ 20 km/h + [H]')
+              ? tr('Nocny serwis · Ekipy ≤ 20 + [H]', 'Night service · Crews ≤ 20 + [H]')
               : snapshot.challenge?.skipStations
                 ? tr('Przejazd techniczny — bez postojów', 'Technical run — non-stop')
                 : doorFault.phase === 'resetting'
                   ? `${tr('Reset drzwi', 'Door reset')}: ${doorFault.remainingSec.toFixed(1)} s`
                   : snapshot.gameMode === 'sandbox'
                     ? tr('Q Lewe · E Prawe · O Auto', 'Q Left · E Right · O Auto')
-                    : tr('0 km/h · Otwórz po stronie peronu', '0 km/h · Open platform side')}
+                    : tr('0 km/h · Strona peronu', '0 km/h · Platform side')}
           </span>
         </div>
 
-        <div className={`border-l ${dividerClass} pl-2.5 flex items-center gap-2.5 min-w-[356px]`}>
+        <div className={`border-l ${dividerClass} pl-2 flex items-center gap-2 min-w-0`}>
           <MasterControllerSlider
             leverTarget={snapshot.leverTarget}
             emergencyBrake={kinematics.emergencyBrake}
@@ -409,10 +438,10 @@ export function CabDashboardHud({
             onLeverChange={onLeverChange}
           />
 
-          <div className="flex-1 flex flex-col gap-1.5 min-w-[322px]">
-            <div className="flex items-center justify-between text-xs font-mono-tabular gap-2">
-              <div className="flex items-center gap-1.5">
-                <span className="text-slate-400 uppercase">{tr('Nastawnik', 'Controller')}</span>
+          <div className="flex-1 flex flex-col gap-1.5 min-w-[294px]">
+            <div className="flex items-center justify-between text-[11px] font-mono-tabular gap-1.5">
+              <div className="flex items-center gap-1">
+                <span className="text-slate-400 uppercase hidden xl:inline">{tr('Nastawnik', 'Controller')}</span>
                 <button
                   type="button"
                   data-testid="cab-light-toggle"
@@ -436,6 +465,35 @@ export function CabDashboardHud({
                   />
                   <span>{tr('Kabina [K]', 'Cab [K]')}</span>
                 </button>
+                {onTogglePaPanel && (
+                  <button
+                    type="button"
+                    data-testid="pa-intercom-toggle"
+                    aria-pressed={paPanelOpen}
+                    title={tr('Interkom PA — komunikaty dla pasażerów [I]', 'PA Intercom — passenger announcements [I]')}
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onTogglePaPanel();
+                    }}
+                    className={`px-1.5 py-0.5 rounded text-[9.5px] font-mono-tabular font-bold whitespace-nowrap cursor-pointer flex items-center gap-1 border ${
+                      paPanelOpen || snapshot.paIntercom.activeMessage
+                        ? 'bg-cyan-500/30 border-cyan-300 text-cyan-100 hover:bg-cyan-500/40'
+                        : 'bg-slate-900 border-slate-700 text-cyan-300 hover:bg-slate-800 hover:border-cyan-500/60'
+                    }`}
+                  >
+                    <span
+                      className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                        snapshot.paIntercom.activeMessage
+                          ? 'bg-cyan-300 animate-pulse'
+                          : paPanelOpen
+                            ? 'bg-cyan-300'
+                            : 'bg-slate-600'
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <span>PA [I]</span>
+                  </button>
+                )}
                 {snapshot.challenge && snapshot.challenge.tractionMultiplier < 1 && (
                   <span className="px-1 py-0.5 rounded bg-amber-500/20 border border-amber-400/60 text-amber-300 text-[9px] font-bold">
                     {tr('MOC', 'PWR')} {Math.round(snapshot.challenge.tractionMultiplier * 100)}%

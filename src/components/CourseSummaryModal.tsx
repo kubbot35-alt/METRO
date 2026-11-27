@@ -20,6 +20,7 @@ interface ICourseSummaryModalProps {
   readonly isNewRecord: boolean;
   readonly xpReward?: ICourseXpReward | null;
   readonly driverProfile?: IDriverProfileStats;
+  readonly onEnterTurnaroundSiding?: () => void;
   readonly onRestart: () => void;
   readonly onTitle: () => void;
 }
@@ -43,6 +44,7 @@ export function CourseSummaryModal({
   isNewRecord,
   xpReward,
   driverProfile,
+  onEnterTurnaroundSiding,
   onRestart,
   onTitle,
 }: ICourseSummaryModalProps) {
@@ -171,7 +173,7 @@ export function CourseSummaryModal({
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-6">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-6">
           <SummaryTile
             label={tr('Łączny wynik', 'Total Score')}
             value={`${Math.round(snapshot.score)} ${tr('pkt', 'pts')}`}
@@ -194,6 +196,16 @@ export function CourseSummaryModal({
           )}
           <SummaryTile label={tr('Śr. punktualność', 'Avg. Punctuality')} value={punctualityText} />
           <SummaryTile
+            testId="summary-comfort-tile"
+            label={tr('Śr. komfort', 'Avg. Comfort')}
+            value={`${snapshot.comfort.averagePercent}%`}
+            sub={
+              snapshot.comfort.endBonusPoints > 0
+                ? tr(`Bonus +${snapshot.comfort.endBonusPoints} pkt`, `Bonus +${snapshot.comfort.endBonusPoints} pts`)
+                : tr(`Szarpnięcia: ${snapshot.comfort.harshEventsCount}`, `Harsh events: ${snapshot.comfort.harshEventsCount}`)
+            }
+          />
+          <SummaryTile
             label={tr('Obsłużone stacje', 'Stations Served')}
             value={`${snapshot.stationsServed} / ${snapshot.totalStations}`}
           />
@@ -203,6 +215,11 @@ export function CourseSummaryModal({
             sub={`V:${snapshot.overspeedViolations} · S:${snapshot.redSignalViolations} · C:${snapshot.czuwakViolations}`}
           />
           <SummaryTile label={tr('Czas kursu', 'Run Time')} value={formatDuration(snapshot.elapsedTimeSec)} />
+          <SummaryTile
+            label={tr('Odcinki / PA', 'Legs / PA')}
+            value={tr(`Kurs #${snapshot.turnaround.legsCompleted + 1}`, `Leg #${snapshot.turnaround.legsCompleted + 1}`)}
+            sub={tr(`Interkom PA: ${snapshot.paIntercom.announcementsUsedCount}`, `PA used: ${snapshot.paIntercom.announcementsUsedCount}`)}
+          />
         </div>
 
         <TachographChart tachograph={snapshot.tachograph} />
@@ -259,6 +276,17 @@ export function CourseSummaryModal({
           </div>
         )}
 
+        {snapshot.turnaround.canEnterSiding && onEnterTurnaroundSiding && (
+          <button
+            type="button"
+            data-testid="enter-turnaround-btn"
+            onClick={onEnterTurnaroundSiding}
+            className="w-full mb-2.5 py-2.5 px-4 bg-cyan-500 hover:bg-cyan-400 text-slate-950 font-display font-bold rounded-md cursor-pointer shadow-lg flex items-center justify-center gap-2"
+          >
+            <span>{tr('Jedź na tor odstawczy (Kurs powrotny)', 'Drive to Turnaround Siding (Return Trip)')}</span>
+          </button>
+        )}
+
         <div className="flex flex-col sm:flex-row gap-2.5">
           <button
             type="button"
@@ -285,13 +313,15 @@ function SummaryTile({
   label,
   value,
   sub,
+  testId,
 }: {
   readonly label: string;
   readonly value: string;
   readonly sub?: string;
+  readonly testId?: string;
 }) {
   return (
-    <div className="bg-[#0a0d13] border border-slate-800 rounded-md px-3 py-2.5">
+    <div data-testid={testId} className="bg-[#0a0d13] border border-slate-800 rounded-md px-3 py-2.5">
       <div className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
         {label}
       </div>

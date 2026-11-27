@@ -23,12 +23,14 @@ import {
   resolveTouchControlsActive,
   shouldShowPortraitHint,
 } from '../domain/mobileTouch';
+import { getPaAnnouncementSpec } from '../domain/paIntercomSystem';
 import { PhotoCameraController } from '../domain/photoMode';
 import { getMetroLineSpec, METRO_LINE_M1 } from '../domain/routeData';
 import { compileRouteVariant } from '../domain/routeVariant';
 import { MetroScoringRules } from '../domain/scoringRules';
 import { SettingsStorageService, type ISettingsService } from '../domain/settingsService';
 import { MetroTrainPhysics } from '../domain/trainPhysics';
+import { buildReturnLegLineSpec } from '../domain/turnaroundSystem';
 import type {
   CctvPreviewChannel,
   ChallengeId,
@@ -53,6 +55,7 @@ import type {
   ISimulationSnapshot,
   LanguageId,
   MetroLineId,
+  PaAnnouncementId,
   PhotoFilterId,
   RouteDirection,
   TimeOfDayId,
@@ -103,6 +106,12 @@ export interface IMetroGameController {
   readonly ghostDelta: IGhostDeltaSnapshot | null;
   readonly cctvPreviewOpen: boolean;
   readonly cctvChannel: CctvPreviewChannel;
+  readonly paPanelOpen: boolean;
+  togglePaPanel: () => void;
+  closePaPanel: () => void;
+  triggerPaAnnouncement: (id: PaAnnouncementId) => void;
+  enterTurnaroundSiding: () => void;
+  triggerCabSwitch: () => void;
   toggleCctvPreview: () => void;
   closeCctvPreview: () => void;
   selectCctvChannel: (channel: CctvPreviewChannel) => void;
@@ -295,6 +304,9 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
   const cctvPreviewOpenRef = useRef<boolean>(false);
   const cctvChannelRef = useRef<CctvPreviewChannel>('auto');
   const cctvCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [paPanelOpen, setPaPanelOpen] = useState<boolean>(false);
+  const paPanelOpenRef = useRef<boolean>(false);
+  const cabSwitchAppliedRef = useRef<boolean>(false);
 
   const syncCctvToRenderer = useCallback(
     (open: boolean, channel: CctvPreviewChannel, canvas: HTMLCanvasElement | null): void => {
@@ -349,6 +361,21 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     },
     [syncCctvToRenderer],
   );
+
+  const togglePaPanel = useCallback((): void => {
+    const snap = simRef.current?.getSnapshot();
+    if (!snap || snap.phase !== 'playing') {
+      return;
+    }
+    const next = !paPanelOpenRef.current;
+    paPanelOpenRef.current = next;
+    setPaPanelOpen(next);
+  }, []);
+
+  const closePaPanel = useCallback((): void => {
+    paPanelOpenRef.current = false;
+    setPaPanelOpen(false);
+  }, []);
 
   useEffect(() => {
     const onResize = (): void => {
@@ -865,6 +892,65 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     inputRef.current?.setVirtualLeverAxis(axis);
   }, []);
 
+  const triggerPaAnnouncement = useCallback(
+    (id: PaAnnouncementId): void => {
+      const sim = simRef.current;
+      if (!sim) {
+        return;
+      }
+      audioRef.current?.unlock();
+      const res = sim.triggerPaAnnouncement?.(id);
+      if (res?.accepted) {
+        const activeLang = settingsRef.current.language;
+        const spec = getPaAnnouncementSpec(res.specId);
+        const speechVol = settingsRef.current.masterVolume * settingsRef.current.voiceVolume;
+        speechRef.current?.announce(
+          20000 + res.announcementId,
+          activeLang === 'en' ? spec.textEn : spec.textPl,
+          audioRef.current?.isMuted() ?? false,
+          speechVol,
+          activeLang,
+          'pa',
+        );
+      }
+      syncNow();
+    },
+    [syncNow],
+  );
+
+  const enterTurnaroundSiding = useCallback((): void => {
+    const sim = simRef.current;
+    if (!sim) {
+      return;
+    }
+    audioRef.current?.unlock();
+    inputRef.current?.clearHeld();
+    paPanelOpenRef.current = false;
+    setPaPanelOpen(false);
+    cabSwitchAppliedRef.current = false;
+    if (sim.enterTurnaroundSiding?.()) {
+      recordedGameOverRef.current = false;
+      setIsNewRecord(false);
+      setLastCourseXpReward(null);
+      syncNow();
+    }
+  }, [syncNow]);
+
+  const triggerCabSwitch = useCallback((): void => {
+    const sim = simRef.current;
+    if (!sim) {
+      return;
+    }
+    audioRef.current?.unlock();
+    inputRef.current?.clearHeld();
+    cabSwitchAppliedRef.current = false;
+    if (sim.beginCabSwitch?.()) {
+      paPanelOpenRef.current = false;
+      setPaPanelOpen(false);
+      syncNow();
+    }
+  }, [syncNow]);
+
   const renderCurrentPhotoFrame = useCallback((nextPose: IPhotoCameraState): void => {
     const snap = simRef.current?.getSnapshot();
     const renderer = rendererRef.current;
@@ -1100,6 +1186,10 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         exitPhotoMode();
         return;
       }
+      if (paPanelOpenRef.current) {
+        closePaPanel();
+        return;
+      }
       if (settingsOpenRef.current) {
         closeSettings();
         return;
@@ -1149,6 +1239,8 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
       onHelpToggle: () => toggleHelp(),
       onPhotoModeToggle: () => togglePhotoMode(),
       onCctvPreviewToggle: () => toggleCctvPreview(),
+      onPaPanelToggle: () => togglePaPanel(),
+      onSwitchCabRequested: () => triggerCabSwitch(),
       onPauseToggle: handlePauseToggle,
       onMuteToggle: () => toggleMute(),
       onRestartRequested: () => {
@@ -1194,6 +1286,9 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     let lastSplitsCount = simRef.current!.getSnapshot().stationSplits.length;
     let lastAtoEnabled = simRef.current!.getSnapshot().atoEnabled;
     let lastAtoStatus = simRef.current!.getSnapshot().atoStatus;
+    let lastComfortPct = simRef.current!.getSnapshot().comfort.currentPercent;
+    let lastPaMessageId = simRef.current!.getSnapshot().paIntercom.activeMessage?.id ?? -1;
+    let lastTurnaroundPhase = simRef.current!.getSnapshot().turnaround.phase;
 
     const tick = (): void => {
       if (!active) {
@@ -1322,10 +1417,32 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
             Boolean(latestAudio.nightCrewClearedChime) || Boolean(nextAudio.nightCrewClearedChime),
           nightCrewViolationBuzz:
             Boolean(latestAudio.nightCrewViolationBuzz) || Boolean(nextAudio.nightCrewViolationBuzz),
+          paAnnouncementTriggered:
+            Boolean(latestAudio.paAnnouncementTriggered) || Boolean(nextAudio.paAnnouncementTriggered),
+          cabSwitchChime:
+            Boolean(latestAudio.cabSwitchChime) || Boolean(nextAudio.cabSwitchChime),
         };
         remaining -= subDt;
       }
-      const snap = sim.getSnapshot();
+      let snap = sim.getSnapshot();
+
+      if (snap.turnaround.phase === 'switching_cab') {
+        if (snap.turnaround.switchProgress >= 0.48 && !cabSwitchAppliedRef.current) {
+          cabSwitchAppliedRef.current = true;
+          const { spec, nextDirection } = buildReturnLegLineSpec(
+            baseLineRef.current,
+            routeDirectionRef.current,
+          );
+          routeDirectionRef.current = nextDirection;
+          startStationIndexRef.current = 0;
+          setRouteDirection(nextDirection);
+          setStartStationIndex(0);
+          sim.completeCabSwitch?.(spec);
+          snap = sim.getSnapshot();
+        }
+      } else if (cabSwitchAppliedRef.current) {
+        cabSwitchAppliedRef.current = false;
+      }
 
       if (latestAudio.academyStepCompleted) {
         audio.playAchievementChime();
@@ -1425,6 +1542,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
       const academyStep = snap.academy?.currentStep ?? 0;
       const academyHighlight = snap.academy?.highlightTarget ?? null;
       const nightApproachId = snap.nightInspection.activeApproachCrew?.id ?? -1;
+      const paMsgId = snap.paIntercom.activeMessage?.id ?? -1;
       const discreteChanged =
         snap.phase !== lastPhase ||
         snap.score !== lastScore ||
@@ -1453,7 +1571,10 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         academyHighlight !== lastAcademyHighlight ||
         snap.stationSplits.length !== lastSplitsCount ||
         snap.atoEnabled !== lastAtoEnabled ||
-        snap.atoStatus !== lastAtoStatus;
+        snap.atoStatus !== lastAtoStatus ||
+        snap.comfort.currentPercent !== lastComfortPct ||
+        paMsgId !== lastPaMessageId ||
+        snap.turnaround.phase !== lastTurnaroundPhase;
       if (discreteChanged || now - lastHudSync >= HUD_SYNC_INTERVAL_MS) {
         lastHudSync = now;
         lastPhase = snap.phase;
@@ -1484,6 +1605,9 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         lastSplitsCount = snap.stationSplits.length;
         lastAtoEnabled = snap.atoEnabled;
         lastAtoStatus = snap.atoStatus;
+        lastComfortPct = snap.comfort.currentPercent;
+        lastPaMessageId = paMsgId;
+        lastTurnaroundPhase = snap.turnaround.phase;
         document.body.dataset.state = snap.phase;
         setSnapshot(snap);
       }
@@ -1507,6 +1631,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     };
   }, [
     closeHelp,
+    closePaPanel,
     closeSettings,
     exitPhotoMode,
     handle3dMonitorClick,
@@ -1518,7 +1643,9 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     toggleCctvPreview,
     toggleHelp,
     toggleMute,
+    togglePaPanel,
     togglePhotoMode,
+    triggerCabSwitch,
   ]);
 
   return {
@@ -1554,6 +1681,12 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     ghostDelta,
     cctvPreviewOpen,
     cctvChannel,
+    paPanelOpen,
+    togglePaPanel,
+    closePaPanel,
+    triggerPaAnnouncement,
+    enterTurnaroundSiding,
+    triggerCabSwitch,
     toggleCctvPreview,
     closeCctvPreview,
     selectCctvChannel,

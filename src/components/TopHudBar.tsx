@@ -113,6 +113,14 @@ export function TopHudBar({
               : snapshot.timeOfDay.id === 'night_service'
                 ? tr('Nocny Serwis', 'Night Service')
                 : tr('Wieczór', 'Evening')}
+            {snapshot.turnaround.legsCompleted > 0 && (
+              <span
+                data-testid="return-leg-badge"
+                className="ml-1.5 px-1.5 py-0.5 rounded bg-cyan-500/20 border border-cyan-400/70 text-cyan-200 text-[10px] font-bold"
+              >
+                {tr(`Kurs #${snapshot.turnaround.legsCompleted + 1}`, `Leg #${snapshot.turnaround.legsCompleted + 1}`)}
+              </span>
+            )}
           </span>
         </div>
       </div>
@@ -178,6 +186,20 @@ export function TopHudBar({
           lineId={snapshot.line.badgeCode ?? snapshot.line.id}
           lineCssColor={snapshot.line.cssColor}
         />
+        {snapshot.paIntercom.activeMessage && (
+          <div
+            role="status"
+            data-testid="pa-broadcast-banner"
+            className="w-full max-w-[560px] px-3.5 py-1.5 rounded-md border border-cyan-400/80 bg-[#081a28]/95 text-cyan-100 text-xs font-mono-tabular shadow-xl flex items-center gap-2"
+          >
+            <span className="px-1.5 py-0.5 rounded bg-cyan-500/25 border border-cyan-300/70 text-cyan-200 text-[10px] font-bold uppercase shrink-0">
+              PA
+            </span>
+            <span className="truncate font-medium">
+              „{lang === 'en' ? snapshot.paIntercom.activeMessage.textEn : snapshot.paIntercom.activeMessage.textPl}”
+            </span>
+          </div>
+        )}
         {radio.active && (
           <div
             role="alert"

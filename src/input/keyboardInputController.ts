@@ -253,6 +253,14 @@ export class KeyboardInputController implements IInputController {
       } else {
         this.callbacks?.onCctvPreviewToggle?.();
       }
+    } else if (code === 'KeyI') {
+      if (!isTitle && !isModalOpen) {
+        this.callbacks?.onPaPanelToggle?.();
+      }
+    } else if (code === 'KeyT') {
+      if (!isTitle && !isModalOpen) {
+        this.callbacks?.onSwitchCabRequested?.();
+      }
     } else if (code === 'KeyU') {
       this.callbacks?.onMuteToggle();
     }

@@ -40,7 +40,7 @@ export interface IIncidentController {
     ackCzuwakPressed: boolean,
     dtSec: number,
   ): IIncidentStepResult;
-  attemptDoorClose(stationIndex: number): IDoorCloseAttemptResult;
+  attemptDoorClose(stationIndex: number, faultProbabilityScale?: number): IDoorCloseAttemptResult;
   getTrackworkZones(): readonly ITrackworkZone[];
   getActiveTrackworkZone(positionM: number): ITrackworkZone | null;
   getUpcomingTrackworkDistance(positionM: number): number | null;
@@ -154,7 +154,10 @@ export class MetroIncidentSystem implements IIncidentController {
     };
   }
 
-  public attemptDoorClose(stationIndex: number): IDoorCloseAttemptResult {
+  public attemptDoorClose(
+    stationIndex: number,
+    faultProbabilityScale = 1.0,
+  ): IDoorCloseAttemptResult {
     if (!this.enabled) {
       return { allowedToCloseNow: true, faultTriggered: false, retryStarted: false };
     }
@@ -166,7 +169,8 @@ export class MetroIncidentSystem implements IIncidentController {
     if (this.doorFaultPhase === 'resetting') {
       return { allowedToCloseNow: false, faultTriggered: false, retryStarted: false };
     }
-    if (!this.faultedStationIndices.has(stationIndex) && this.rng() < this.doorFaultProb) {
+    const effectiveProb = this.doorFaultProb * Math.max(0, Math.min(1, faultProbabilityScale));
+    if (!this.faultedStationIndices.has(stationIndex) && this.rng() < effectiveProb) {
       this.faultedStationIndices.add(stationIndex);
       this.doorFaultPhase = 'awaiting-retry';
       this.doorFaultRemainingSec = DOOR_FAULT_RESET_SEC;

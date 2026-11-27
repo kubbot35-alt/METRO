@@ -11,12 +11,14 @@ import { DriverProfileModal } from './components/DriverProfileModal';
 import { FpsCounterBadge } from './components/FpsCounterBadge';
 import { GamepadToast } from './components/GamepadToast';
 import { MobileTouchControls } from './components/MobileTouchControls';
+import { PaIntercomPanel } from './components/PaIntercomPanel';
 import { PhotoModeOverlay } from './components/PhotoModeOverlay';
 import { PortraitHintBanner } from './components/PortraitHintBanner';
 import { SettingsModal } from './components/SettingsModal';
 import { StatusModal } from './components/StatusModal';
 import { TitleOverlay } from './components/TitleOverlay';
 import { TopHudBar } from './components/TopHudBar';
+import { TurnaroundOverlay } from './components/TurnaroundOverlay';
 import { getRankForXp } from './domain/driverProfile';
 import { getPhotoFilterSpec } from './domain/photoMode';
 import { formatClockTime, formatDeviationTime } from './domain/scheduleSystem';
@@ -98,6 +100,12 @@ export default function App() {
       data-live-mirrors={game.settings.liveMirrorsEnabled ? '1' : '0'}
       data-cctv-open={game.cctvPreviewOpen ? '1' : '0'}
       data-cctv-channel={game.cctvChannel}
+      data-comfort={snapshot.comfort.currentPercent}
+      data-gforce={snapshot.comfort.totalG.toFixed(2)}
+      data-pa-open={game.paPanelOpen ? '1' : '0'}
+      data-pa-used={snapshot.paIntercom.announcementsUsedCount}
+      data-turnaround={snapshot.turnaround.phase}
+      data-legs={snapshot.turnaround.legsCompleted}
       data-ghost-delta={
         game.ghostDelta?.hasSplitComparison
           ? `${game.ghostDelta.scoreDelta}:${game.ghostDelta.timeDeltaSec}`
@@ -213,9 +221,23 @@ export default function App() {
               onHornChange={game.setHornActive}
             />
           )}
+          {game.paPanelOpen && snapshot.phase === 'playing' && (
+            <PaIntercomPanel
+              snapshot={snapshot}
+              onTriggerAnnouncement={game.triggerPaAnnouncement}
+              onClose={game.closePaPanel}
+            />
+          )}
+          <TurnaroundOverlay
+            turnaround={snapshot.turnaround}
+            speedKmh={snapshot.kinematics.speedKmh}
+            onSwitchCab={game.triggerCabSwitch}
+          />
           <CabDashboardHud
             snapshot={snapshot}
             compactTouchMode={game.touchControlsActive}
+            paPanelOpen={game.paPanelOpen}
+            onTogglePaPanel={game.togglePaPanel}
             onToggleDoorsLeft={game.toggleDoorsLeft}
             onToggleDoorsRight={game.toggleDoorsRight}
             onToggleHeadlights={game.toggleHeadlights}
@@ -264,6 +286,7 @@ export default function App() {
           isNewRecord={game.isNewRecord}
           xpReward={game.lastCourseXpReward}
           driverProfile={game.driverProfile}
+          onEnterTurnaroundSiding={game.enterTurnaroundSiding}
           onRestart={game.restartGame}
           onTitle={game.returnToTitle}
         />

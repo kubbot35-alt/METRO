@@ -206,6 +206,12 @@ export class MetroAudioEngine implements IAudioEngine {
       this.playTone(220, 0.18, 0.18, 'sawtooth', 0.0);
       this.playTone(185, 0.26, 0.18, 'sawtooth', 0.18);
     }
+    if (events.paAnnouncementTriggered) {
+      this.playPaIntercomChime();
+    }
+    if (events.cabSwitchChime) {
+      this.playCabSwitchChime();
+    }
   }
 
   private playDoorClosingBeeps(): void {
@@ -249,13 +255,51 @@ export class MetroAudioEngine implements IAudioEngine {
     this.playTone(185, 0.05, 0.065, 'sawtooth', 0.0, this.trainGain);
   }
 
+  private playPaIntercomChime(): void {
+    const target = this.voiceRadioGain ?? this.masterGain;
+    if (!this.ctx || !target) {
+      return;
+    }
+    const band = this.ctx.createBiquadFilter();
+    band.type = 'bandpass';
+    band.frequency.value = 1480;
+    band.Q.value = 1.25;
+
+    const echoDelay = this.ctx.createDelay(0.4);
+    echoDelay.delayTime.value = 0.14;
+    const echoFeedback = this.ctx.createGain();
+    echoFeedback.gain.value = 0.34;
+
+    const paOut = this.ctx.createGain();
+    paOut.gain.value = 0.95;
+
+    band.connect(paOut);
+    band.connect(echoDelay);
+    echoDelay.connect(echoFeedback);
+    echoFeedback.connect(echoDelay);
+    echoDelay.connect(paOut);
+    paOut.connect(target);
+
+    this.playNoiseBurst(0.04, 1800, 0.06, 0.0, paOut);
+    this.playTone(587.33, 0.13, 0.15, 'triangle', 0.02, band);
+    this.playTone(739.99, 0.14, 0.15, 'triangle', 0.15, band);
+    this.playTone(880.0, 0.24, 0.16, 'sine', 0.28, band);
+  }
+
+  private playCabSwitchChime(): void {
+    const bus = this.trainGain ?? this.masterGain;
+    this.playNoiseBurst(0.07, 920, 0.09, 0.0, bus);
+    this.playTone(440, 0.12, 0.12, 'triangle', 0.06, bus);
+    this.playTone(659.25, 0.2, 0.13, 'sine', 0.18, bus);
+  }
+
   private playTone(
     freq: number,
     durationSec: number,
     volume: number,
     type: OscillatorType,
     delaySec = 0,
-    destination: GainNode | null = null,
+    destination: AudioNode | null = null,
   ): void {
     const target = destination ?? this.trainGain ?? this.masterGain;
     if (!this.ctx || !target) {
@@ -279,7 +323,7 @@ export class MetroAudioEngine implements IAudioEngine {
     cutoffHz: number,
     volume: number,
     delaySec = 0,
-    destination: GainNode | null = null,
+    destination: AudioNode | null = null,
   ): void {
     const target = destination ?? this.trainGain ?? this.masterGain;
     if (!this.ctx || !target) {

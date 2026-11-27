@@ -152,7 +152,8 @@ export function calculateCourseXp(
   snapshot: ISimulationSnapshot,
   currentXp: number,
 ): ICourseXpReward {
-  const routeKm = Math.max(0.4, snapshot.kinematics.positionM / 1000);
+  const totalDistM = (snapshot.turnaround?.cumulativeDistanceM ?? 0) + snapshot.kinematics.positionM;
+  const routeKm = Math.max(0.4, totalDistM / 1000);
   const isAcademyCompleted =
     snapshot.gameMode === 'academy' && snapshot.academy?.completed === true;
   const baseXp = isAcademyCompleted ? 250 : 80;

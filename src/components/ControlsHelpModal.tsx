@@ -80,6 +80,18 @@ const SHORTCUTS: readonly IShortcutEntry[] = [
     actionEn: 'Confirm dispatcher radio message (+40 pts)',
   },
   {
+    keyPl: 'I',
+    keyEn: 'I',
+    actionPl: 'Interkom PA — ręczne komunikaty maszynisty dla pasażerów',
+    actionEn: 'PA Intercom — manual driver announcements to passengers',
+  },
+  {
+    keyPl: 'T',
+    keyEn: 'T',
+    actionPl: 'Zmiana kabiny na torze odstawczym (ciągły kurs powrotny)',
+    actionEn: 'Switch cab on turnaround siding (continuous return trip)',
+  },
+  {
     keyPl: 'X',
     keyEn: 'X',
     actionPl: 'Wycieraczki przedniej szyby (włącz / wyłącz)',
