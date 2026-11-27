@@ -1,4 +1,6 @@
 import type {
+  CctvPreviewChannel,
+  DoorSide,
   IGameSettings,
   IPhotoCameraState,
   ISimulationSnapshot,
@@ -22,6 +24,12 @@ export interface ISceneResources {
 export interface IMetroSceneRenderer {
   mount(container: HTMLElement): void;
   applySettings?(settings: IGameSettings): void;
+  setCctvPreviewState?(
+    open: boolean,
+    channel: CctvPreviewChannel,
+    canvas: HTMLCanvasElement | null,
+  ): void;
+  setOnCctvMonitorClick?(callback: ((side: DoorSide) => void) | null): void;
   update(snapshot: ISimulationSnapshot, dtSec: number): void;
   getPhotoAnchorPose?(snapshot: ISimulationSnapshot): IPhotoAnchorPose | null;
   setPhotoModePose?(

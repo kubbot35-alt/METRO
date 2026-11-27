@@ -6,10 +6,13 @@ import {
   normalizedValueToNeedleZ,
 } from './seria81Textures';
 
+import { addSeria81CabWingMirrors, type ICabMirrorHardware } from './cabMirrorAttachments';
+
 export interface ISeria81CabInterior {
   readonly group: THREE.Group;
   readonly leverPivot: THREE.Group;
   readonly wiperPivot: THREE.Group;
+  readonly mirrorHardware: ICabMirrorHardware;
   update(snapshot: ISimulationSnapshot, dtSec: number): void;
   dispose(): void;
 }
@@ -61,6 +64,7 @@ export function buildSeria81CabInterior(maxAnisotropy: number): ISeria81CabInter
   addToggleSwitchBanks(group, deskGreyMat, steelTrimMat, disposables);
   const leverPivot = addHeavyMetalController(group, deskGreyMat, steelTrimMat, disposables);
   const { pivotL: wiperLeftPivot, pivotR: wiperPivot } = addDualRetroWipers(group, gasketMat, disposables);
+  const mirrorHardware = addSeria81CabWingMirrors(group, steelTrimMat, gasketMat, disposables);
   addWarmGaugeLighting(group);
 
   let smoothedSpeed = 0;
@@ -70,6 +74,7 @@ export function buildSeria81CabInterior(maxAnisotropy: number): ISeria81CabInter
     group,
     leverPivot,
     wiperPivot,
+    mirrorHardware,
     update: (snapshot: ISimulationSnapshot, dtSec: number): void => {
       const safeDt = Math.max(dtSec, 0.016);
       smoothedSpeed = THREE.MathUtils.damp(smoothedSpeed, snapshot.kinematics.speedKmh, 9, safeDt);

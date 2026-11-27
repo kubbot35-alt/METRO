@@ -1,20 +1,24 @@
 import * as THREE from 'three';
+import { DEFAULT_SCENE_CULL_RANGE_M, isWithinCullingRange } from '../domain/routeVariant';
 import type { TrackAlignment } from '../domain/trackAlignment';
 import type { ISemaphoreState, SignalAspect } from '../domain/types';
 
 export interface ISemaphoreRig {
-  sync(signals: readonly ISemaphoreState[]): void;
+  sync(signals: readonly ISemaphoreState[], playerPosM?: number): void;
   dispose(): void;
 }
 
 interface ISemaphoreVisual {
   readonly id: number;
+  readonly distanceM: number;
+  readonly group: THREE.Group;
   readonly redMat: THREE.MeshStandardMaterial;
   readonly yellowMat: THREE.MeshStandardMaterial;
   readonly greenMat: THREE.MeshStandardMaterial;
   readonly haloMesh: THREE.Mesh;
   readonly haloMat: THREE.MeshBasicMaterial;
   lastAspect: SignalAspect | null;
+  visible: boolean;
 }
 
 const OFF_INTENSITY = 0.04;
@@ -87,13 +91,14 @@ export function buildTunnelSemaphores(
   );
 
   const rig: ISemaphoreRig = {
-    sync: (signals: readonly ISemaphoreState[]): void => syncSemaphoreVisuals(visuals, signals),
+    sync: (signals: readonly ISemaphoreState[], playerPosM?: number): void =>
+      syncSemaphoreVisuals(visuals, signals, playerPosM),
     dispose: (): void => {
       scene.remove(root);
       disposables.forEach((d) => d.dispose());
     },
   };
-  rig.sync(initialSignals);
+  rig.sync(initialSignals, 0);
   return rig;
 }
 
@@ -165,7 +170,18 @@ function createSingleSemaphore(
   haloMesh.position.set(0, LENS_Y.green, 0.28);
   group.add(base, post, head, haloMesh);
   root.add(group);
-  return { id: sig.id, redMat, yellowMat, greenMat, haloMesh, haloMat, lastAspect: null };
+  return {
+    id: sig.id,
+    distanceM: sig.distanceM,
+    group,
+    redMat,
+    yellowMat,
+    greenMat,
+    haloMesh,
+    haloMat,
+    lastAspect: null,
+    visible: true,
+  };
 }
 
 function createLensMaterial(hex: number): THREE.MeshStandardMaterial {
@@ -182,9 +198,20 @@ function createLensMaterial(hex: number): THREE.MeshStandardMaterial {
 function syncSemaphoreVisuals(
   visuals: readonly ISemaphoreVisual[],
   signals: readonly ISemaphoreState[],
+  playerPosM?: number,
 ): void {
   for (let i = 0; i < visuals.length; i += 1) {
     const vis = visuals[i];
+    if (playerPosM !== undefined) {
+      const nextVis = isWithinCullingRange(vis.distanceM, playerPosM, DEFAULT_SCENE_CULL_RANGE_M);
+      if (vis.visible !== nextVis) {
+        vis.visible = nextVis;
+        vis.group.visible = nextVis;
+      }
+      if (!nextVis) {
+        continue;
+      }
+    }
     const sig = signals[i];
     if (!sig || vis.lastAspect === sig.aspect) {
       continue;

@@ -248,6 +248,12 @@ export class KeyboardInputController implements IInputController {
     } else if (code === 'KeyP' || code === 'Escape') {
       this.callbacks?.onPauseToggle();
     } else if (code === 'KeyM') {
+      if (shiftKey || isTitle || isModalOpen) {
+        this.callbacks?.onMuteToggle();
+      } else {
+        this.callbacks?.onCctvPreviewToggle?.();
+      }
+    } else if (code === 'KeyU') {
       this.callbacks?.onMuteToggle();
     }
   }

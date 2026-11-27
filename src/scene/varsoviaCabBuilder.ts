@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import type { ISimulationSnapshot } from '../domain/types';
+import { getStationPlatformSide } from '../domain/trackGeometry';
+import { addModernCabCctvMonitors } from './cabMirrorAttachments';
 import type { IInspiroCabInterior } from './inspiroCabBuilder';
 import { createVarsoviaCabScreens } from './varsoviaTextures';
 
@@ -47,14 +49,24 @@ export function buildVarsoviaCabInterior(maxAnisotropy: number): IInspiroCabInte
   );
   const leverPivot = addPrecisionMasterLever(group, matteGraphite, brushedSteel, lamps.ambientLedMat, disposables);
   const wiperPivot = addVarsoviaCabWiper(group, disposables);
+  const mirrorHardware = addModernCabCctvMonitors(
+    group,
+    glossyBezel,
+    { offsetX: 0.74, posY: 0.37, posZ: -0.93, pitchRad: 0.14, yawRad: 0.28, width: 0.225, height: 0.142 },
+    disposables,
+  );
   addAmbientCabLighting(group);
 
   return {
     group,
     leverPivot,
     wiperPivot,
+    mirrorHardware,
     update: (snapshot: ISimulationSnapshot, dtSec: number): void => {
       screens.update(snapshot, dtSec);
+      const platformSide = getStationPlatformSide(snapshot.currentStation.station);
+      const nearStation = Math.abs(snapshot.currentStation.distanceToTargetM) < 95;
+      mirrorHardware.setActivePlatformSide(platformSide, nearStation);
       lamps.doorMat.emissiveIntensity = snapshot.doorState === 'open' ? 3.0 : 0.45;
       const warnActive = snapshot.isOverspeeding || snapshot.kinematics.emergencyBrake || snapshot.atpActive;
       lamps.warnMat.emissiveIntensity = warnActive ? 3.8 : 0.18;

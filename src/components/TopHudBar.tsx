@@ -12,7 +12,9 @@ interface ITopHudBarProps {
   readonly snapshot: ISimulationSnapshot;
   readonly ghostDelta: IGhostDeltaSnapshot | null;
   readonly muted: boolean;
+  readonly cctvPreviewOpen: boolean;
   readonly onToggleMute: () => void;
+  readonly onToggleCctvPreview: () => void;
   readonly onCycleCamera: () => void;
   readonly onToggleHelp: () => void;
   readonly onPause: () => void;
@@ -39,7 +41,9 @@ export function TopHudBar({
   snapshot,
   ghostDelta,
   muted,
+  cctvPreviewOpen,
   onToggleMute,
+  onToggleCctvPreview,
   onCycleCamera,
   onToggleHelp,
   onPause,
@@ -307,6 +311,27 @@ export function TopHudBar({
         <button
           type="button"
           tabIndex={-1}
+          data-testid="cctv-toggle-btn"
+          aria-pressed={cctvPreviewOpen}
+          aria-label={tr('Powiększony podgląd CCTV [M]', 'Enlarged CCTV monitor [M]')}
+          title={tr('Powiększony podgląd CCTV [M]', 'Enlarged CCTV monitor [M]')}
+          onClick={(e) => {
+            e.currentTarget.blur();
+            onToggleCctvPreview();
+          }}
+          className={`h-8 sm:h-10 px-2 sm:px-2.5 rounded-md border flex items-center gap-1.5 cursor-pointer text-xs font-mono-tabular font-semibold transition-colors ${
+            cctvPreviewOpen
+              ? 'bg-emerald-500/25 border-emerald-400 text-emerald-200'
+              : 'bg-[#10141c]/90 hover:bg-slate-800 border-slate-700/80 text-slate-200'
+          }`}
+        >
+          <span>CCTV</span>
+          <span className="hidden sm:inline">[M]</span>
+        </button>
+
+        <button
+          type="button"
+          tabIndex={-1}
           data-testid="camera-cycle-btn"
           aria-label={tr('Zmień kamerę [V]', 'Cycle camera [V]')}
           title={tr('Zmień kamerę [V]', 'Cycle camera [V]')}
@@ -326,8 +351,8 @@ export function TopHudBar({
         <button
           type="button"
           tabIndex={-1}
-          aria-label={muted ? tr('Włącz dźwięk [M]', 'Unmute audio [M]') : tr('Wycisz dźwięk [M]', 'Mute audio [M]')}
-          title={muted ? tr('Włącz dźwięk [M]', 'Unmute audio [M]') : tr('Wycisz dźwięk [M]', 'Mute audio [M]')}
+          aria-label={muted ? tr('Włącz dźwięk [Shift+M]', 'Unmute audio [Shift+M]') : tr('Wycisz dźwięk [Shift+M]', 'Mute audio [Shift+M]')}
+          title={muted ? tr('Włącz dźwięk [Shift+M]', 'Unmute audio [Shift+M]') : tr('Wycisz dźwięk [Shift+M]', 'Mute audio [Shift+M]')}
           onClick={(e) => {
             e.currentTarget.blur();
             onToggleMute();

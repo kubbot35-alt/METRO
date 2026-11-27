@@ -9,10 +9,13 @@ import {
   getStationPlatformLayout,
   getStationPlatformSide,
 } from '../domain/trackGeometry';
+import { getMirrorUpdateInterval, resolveStationCameraMode } from '../domain/mirrorCctvSystem';
 import { getPhotoFilterSpec } from '../domain/photoMode';
 import { DEFAULT_GAME_SETTINGS, getGraphicsQualityPreset } from '../domain/settingsService';
 import { getTrainModelSpec, SERIA_81_SPEC, SIEMENS_INSPIRO_SPEC } from '../domain/trainCatalog';
 import type {
+  CctvPreviewChannel,
+  DoorSide,
   IGameSettings,
   IPhotoCameraState,
   ISimulationSnapshot,
@@ -26,6 +29,7 @@ import type {
 } from '../domain/types';
 import { buildMetroCabRig, type ICabRig } from './cabBuilder';
 import { MetroCabMotionController, type ICabMotionController } from './cabMotionController';
+import { LiveMirrorSystem, type ILiveMirrorSystem } from './liveMirrorSystem';
 import { buildNightCrewRig, type INightCrewRig } from './nightCrewBuilder';
 import {
   buildPassengerInteriorRig,
@@ -38,7 +42,8 @@ import { buildMetroStations, type IMetroStationsRig } from './stationBuilder';
 import { buildSurfaceDepot, type ISurfaceDepotRig } from './surfaceDepotBuilder';
 import { buildTrackworkRig, type ITrackworkRig } from './trackworkBuilder';
 import { buildMetroConsist, type ITrainConsistRig } from './trainMeshBuilder';
-import { buildMetroTunnel } from './tunnelBuilder';
+import { DEFAULT_SCENE_CULL_RANGE_M } from '../domain/routeVariant';
+import { buildMetroTunnel, type IMetroTunnelRig } from './tunnelBuilder';
 import { buildTunnelEffectsRig, type ITunnelEffectsRig } from './tunnelEffectsBuilder';
 import type { IMetroSceneRenderer, IPhotoAnchorPose, ISceneResources } from './types';
 
@@ -103,10 +108,21 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
   private interiorSideBlend = 1;
   private trackworkRig: ITrackworkRig | null = null;
   private surfaceDepotRig: ISurfaceDepotRig | null = null;
+  private tunnelRig: IMetroTunnelRig | null = null;
   private stationsRig: IMetroStationsRig | null = null;
   private rainRig: IRainSystemRig | null = null;
   private tunnelEffectsRig: ITunnelEffectsRig | null = null;
   private nightCrewRig: INightCrewRig | null = null;
+  private liveMirrorSystem: ILiveMirrorSystem | null = null;
+  private readonly raycaster = new THREE.Raycaster();
+  private readonly pointerNdc = new THREE.Vector2();
+  private onCctvMonitorClick: ((side: DoorSide) => void) | null = null;
+  private pipOpen = false;
+  private pipChannel: CctvPreviewChannel = 'auto';
+  private pipCanvas: HTMLCanvasElement | null = null;
+  private lastSnapshot: ISimulationSnapshot | null = null;
+  private lastDtSec = 0.016;
+  private usingLiveMirrorTextures: boolean | null = null;
   private settings: IGameSettings = DEFAULT_GAME_SETTINGS;
   private passengerDensity = 1.0;
   private fogDensityScale = 1.0;
@@ -140,6 +156,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
 
     this.renderer = this.createRenderer(width, height);
     container.appendChild(this.renderer.domElement);
+    this.renderer.domElement.addEventListener('pointerdown', this.handleCanvasPointerDown);
     this.setupEnvironment(this.renderer, this.scene);
     this.setupLights(this.scene);
     this.setupWorldAndCab(this.renderer, this.scene, this.camera);
@@ -160,6 +177,8 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.rainRig?.setDensity(preset.rainDensity);
     this.tunnelEffectsRig?.setQuality(settings.graphicsQuality);
     this.nightCrewRig?.setQuality(settings.graphicsQuality);
+    this.syncMirrorTextureBinding();
+    this.liveMirrorSystem?.markDirty();
     if (this.camera) {
       this.camera.far = preset.drawDistanceM;
       this.camera.updateProjectionMatrix();
@@ -172,10 +191,30 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     }
   }
 
+  public setCctvPreviewState(
+    open: boolean,
+    channel: CctvPreviewChannel,
+    canvas: HTMLCanvasElement | null,
+  ): void {
+    const changed = this.pipOpen !== open || this.pipChannel !== channel || this.pipCanvas !== canvas;
+    this.pipOpen = open;
+    this.pipChannel = channel;
+    this.pipCanvas = canvas;
+    if (changed) {
+      this.liveMirrorSystem?.markDirty();
+    }
+  }
+
+  public setOnCctvMonitorClick(callback: ((side: DoorSide) => void) | null): void {
+    this.onCctvMonitorClick = callback;
+  }
+
   public update(snapshot: ISimulationSnapshot, dtSec: number): void {
     if (!this.camera || !this.headlight || !this.headlightTarget || !this.cabRig) {
       return;
     }
+    this.lastSnapshot = snapshot;
+    this.lastDtSec = dtSec;
     const posM = snapshot.kinematics.positionM;
     const state = this.motion.step(snapshot, dtSec);
     this.syncMetroLine(snapshot);
@@ -232,6 +271,8 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
       this.cabRig.leverPivot.rotation.x = state.leverAngleRad;
     }
     this.cabRig.update?.(snapshot, dtSec);
+    this.tunnelRig?.updateCulling(posM, DEFAULT_SCENE_CULL_RANGE_M);
+    this.stationsRig?.updateCulling(posM, DEFAULT_SCENE_CULL_RANGE_M);
     this.stationsRig?.setNightServiceMode(snapshot.timeOfDay.id === 'night_service', dtSec);
     this.passengerRig?.sync(snapshot, dtSec, this.passengerDensity);
     this.trackworkRig?.sync(snapshot.trackworkZones, this.alignment, dtSec);
@@ -389,9 +430,31 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
   }
 
   public render(): void {
-    if (this.renderer && this.scene && this.camera) {
-      this.renderer.render(this.scene, this.camera);
+    if (!this.renderer || !this.scene || !this.camera) {
+      return;
     }
+    if (this.liveMirrorSystem && this.lastSnapshot && this.cabRig && this.playerTrainRig) {
+      this.liveMirrorSystem.renderIfDue({
+        renderer: this.renderer,
+        scene: this.scene,
+        snapshot: this.lastSnapshot,
+        alignment: this.alignment,
+        cabGroup: this.cabRig.group,
+        playerTrainGroup: this.playerTrainRig.group,
+        passengerInteriorGroup: this.passengerInteriorRig?.group ?? null,
+        updatePassengerInterior: this.passengerInteriorRig
+          ? (snap, dt) => this.passengerInteriorRig?.update(snap, dt)
+          : undefined,
+        cabFillLight: this.cabFillLight,
+        quality: this.settings.graphicsQuality,
+        liveMirrorsEnabled: this.settings.liveMirrorsEnabled,
+        pipOpen: this.pipOpen,
+        pipChannel: this.pipChannel,
+        pipCanvas: this.pipCanvas,
+        dtSec: this.lastDtSec,
+      });
+    }
+    this.renderer.render(this.scene, this.camera);
   }
 
   public isSoftwareRenderer(): boolean {
@@ -427,13 +490,16 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
   }
 
   public dispose(): void {
+    this.renderer?.domElement.removeEventListener('pointerdown', this.handleCanvasPointerDown);
     this.resizeObserver?.disconnect();
     this.worldResources.forEach((res) => res.dispose());
+    this.tunnelRig?.dispose();
     this.stationsRig?.dispose();
     this.surfaceDepotRig?.dispose();
     this.rainRig?.dispose();
     this.tunnelEffectsRig?.dispose();
     this.nightCrewRig?.dispose();
+    this.liveMirrorSystem?.dispose();
     this.playerTrainRig?.dispose();
     this.passengerInteriorRig?.dispose();
     this.oncomingTrainRig?.dispose();
@@ -516,9 +582,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
       tunnelPortalDistanceM: METRO_LINE_M1.tunnelPortalDistanceM,
       alignmentIntensity: METRO_LINE_M1.alignmentIntensity,
     });
-    this.worldResources.push(
-      buildMetroTunnel(scene, this.alignment, LINE_M1_STATIONS, LINE_M1_SPEED_ZONES, maxAniso),
-    );
+    this.tunnelRig = buildMetroTunnel(scene, this.alignment, LINE_M1_STATIONS, LINE_M1_SPEED_ZONES, maxAniso);
     this.stationsRig = buildMetroStations(
       scene,
       this.alignment,
@@ -526,6 +590,8 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
       maxAniso,
       METRO_LINE_M1,
     );
+    this.tunnelRig.updateCulling(0, DEFAULT_SCENE_CULL_RANGE_M);
+    this.stationsRig.updateCulling(0, DEFAULT_SCENE_CULL_RANGE_M);
     this.surfaceDepotRig = buildSurfaceDepot(scene, this.alignment, maxAniso);
     this.rainRig = buildRainSystem(scene);
     this.tunnelEffectsRig = buildTunnelEffectsRig(scene);
@@ -549,6 +615,9 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.oncomingTrainRig.group.rotation.y = Math.PI;
     this.oncomingTrainRig.group.visible = false;
     this.cabRig = buildMetroCabRig(maxAniso);
+    this.liveMirrorSystem = new LiveMirrorSystem();
+    this.usingLiveMirrorTextures = null;
+    this.syncMirrorTextureBinding();
     this.cabFillLight = new THREE.PointLight(0xcbd5e1, 0.65, 2.0, 2);
     this.cabFillLight.position.set(-0.22, 0.12, -0.58);
     camera.add(this.cabRig.group, this.cabFillLight);
@@ -560,7 +629,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
 
   private syncMetroLine(snapshot: ISimulationSnapshot): void {
     const { line, stations } = snapshot;
-    const sig = `${line.id}|${line.name}|${line.cssColor}|${line.hasSurfaceStart ? 1 : 0}|${line.alignmentIntensity ?? 'moderate'}|${stations
+    const sig = `${line.id}|${line.name}|${line.destinationLed}|${line.oppositeDestinationLed}|${line.direction ?? 'normal'}|${line.startStationIndex ?? 0}|${line.cssColor}|${line.hasSurfaceStart ? 1 : 0}|${line.alignmentIntensity ?? 'moderate'}|${stations
       .map((s) => `${s.name}@${s.distanceM}:${s.platformLayout ?? 'island'}:${s.accentHex}`)
       .join(',')}`;
     if (this.appliedLineSignature === sig || !this.scene) {
@@ -574,15 +643,17 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     });
     this.worldResources.forEach((res) => res.dispose());
     this.worldResources = [];
+    this.tunnelRig?.dispose();
     this.stationsRig?.dispose();
     this.surfaceDepotRig?.dispose();
     this.passengerRig?.dispose();
     this.semaphoreRig?.dispose();
 
-    this.worldResources.push(
-      buildMetroTunnel(this.scene, this.alignment, stations, line.speedZones, this.maxAniso),
-    );
+    this.tunnelRig = buildMetroTunnel(this.scene, this.alignment, stations, line.speedZones, this.maxAniso);
     this.stationsRig = buildMetroStations(this.scene, this.alignment, stations, this.maxAniso, line);
+    const posM = snapshot.kinematics.positionM;
+    this.tunnelRig.updateCulling(posM, DEFAULT_SCENE_CULL_RANGE_M);
+    this.stationsRig.updateCulling(posM, DEFAULT_SCENE_CULL_RANGE_M);
     this.surfaceDepotRig = buildSurfaceDepot(this.scene, this.alignment, this.maxAniso);
     this.passengerRig = buildStationPassengers(this.scene, this.alignment, stations);
     this.semaphoreRig = buildTunnelSemaphores(this.scene, this.alignment, snapshot.signals);
@@ -800,12 +871,102 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
       this.updateCameraFov(64, dtSec);
       return;
     }
+    if (snapshot.cameraMode === 'bogie') {
+      // Camera 5: Low trackside bogie camera beside front wheels, rails, turnouts & third-rail sparks
+      const platSide = getStationPlatformSide(snapshot.currentStation.station);
+      const safeSideSign = platSide === 'right' ? -1 : 1;
+      const eyePt = this.alignment.toWorldPoint(posM + 0.35, safeSideSign * 1.82, 0.72, false);
+      const lookPt = this.alignment.toWorldPoint(posM - 7.5, safeSideSign * 0.45, 0.58, false);
+      this.camera.position.set(eyePt.x, eyePt.y, eyePt.z);
+      this.camera.lookAt(lookPt.x, lookPt.y, lookPt.z);
+      this.updateCameraFov(66, dtSec);
+      return;
+    }
+    if (snapshot.cameraMode === 'station') {
+      // Camera 6: Overhead station platform camera tracking train; auto-switches to roof/nose cam in tunnel
+      const stationRes = resolveStationCameraMode(snapshot.stations, posM);
+      if (stationRes.mode === 'station-ceiling' && stationRes.station) {
+        const platSide = getStationPlatformSide(stationRes.station);
+        const sideSign = platSide === 'left' ? -1 : 1;
+        const camPos = this.alignment.toWorldPoint(
+          stationRes.station.distanceM - 22,
+          sideSign * 3.7,
+          4.35,
+          false,
+        );
+        const trainLook = this.alignment.toWorldPoint(posM - 6.5, 0, 1.85, false);
+        this.camera.position.set(camPos.x, camPos.y, camPos.z);
+        this.camera.lookAt(trainLook.x, trainLook.y, trainLook.z);
+        this.updateCameraFov(56, dtSec);
+        return;
+      }
+      const roofEye = this.alignment.toWorldPoint(posM + 1.1, 0, 3.88, false);
+      const roofLook = this.alignment.toWorldPoint(posM + 48, 0, 1.6, false);
+      this.camera.position.set(roofEye.x, roofEye.y, roofEye.z);
+      this.camera.lookAt(roofLook.x, roofLook.y, roofLook.z);
+      this.updateCameraFov(64, dtSec);
+      return;
+    }
     const extEye = this.alignment.toWorldPoint(posM - 78.0, -1.58, 3.45, false);
     const extLook = this.alignment.toWorldPoint(posM - 61.0, 0, 1.75, false);
     this.camera.position.set(extEye.x, extEye.y, extEye.z);
     this.camera.lookAt(extLook.x, extLook.y, extLook.z);
     this.updateCameraFov(62, dtSec);
   }
+
+  private syncMirrorTextureBinding(): void {
+    if (!this.cabRig || !this.liveMirrorSystem) {
+      return;
+    }
+    const shouldUseLive =
+      getMirrorUpdateInterval(this.settings.graphicsQuality, this.settings.liveMirrorsEnabled) > 0;
+    if (this.usingLiveMirrorTextures === shouldUseLive) {
+      return;
+    }
+    if (shouldUseLive) {
+      this.cabRig.setMirrorTextures?.(
+        this.liveMirrorSystem.leftLiveTexture,
+        this.liveMirrorSystem.rightLiveTexture,
+      );
+    } else {
+      this.cabRig.setMirrorTextures?.(
+        this.liveMirrorSystem.leftFallbackTexture,
+        this.liveMirrorSystem.rightFallbackTexture,
+      );
+    }
+    this.usingLiveMirrorTextures = shouldUseLive;
+  }
+
+  private readonly handleCanvasPointerDown = (event: PointerEvent): void => {
+    if (
+      !this.renderer ||
+      !this.camera ||
+      !this.cabRig ||
+      !this.onCctvMonitorClick ||
+      this.lastSnapshot?.cameraMode !== 'cab' ||
+      this.lastSnapshot.phase !== 'playing'
+    ) {
+      return;
+    }
+    const targets = this.cabRig.getActiveInteractiveMonitorMeshes?.() ?? [];
+    if (targets.length === 0) {
+      return;
+    }
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) {
+      return;
+    }
+    this.pointerNdc.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+    this.pointerNdc.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+    this.raycaster.setFromCamera(this.pointerNdc, this.camera);
+    const hits = this.raycaster.intersectObjects([...targets], false);
+    if (hits.length > 0) {
+      const ch = hits[0].object.userData.cctvChannel;
+      if (ch === 'left' || ch === 'right') {
+        this.onCctvMonitorClick(ch);
+      }
+    }
+  };
 
   private updateCameraFov(targetFov: number, dtSec: number): void {
     if (!this.camera) {
@@ -873,7 +1034,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
   }
 
   private updateSemaphoreVisuals(snapshot: ISimulationSnapshot): void {
-    this.semaphoreRig?.sync(snapshot.signals);
+    this.semaphoreRig?.sync(snapshot.signals, snapshot.kinematics.positionM);
     if (!this.signalLight) {
       return;
     }

@@ -12,13 +12,17 @@ export type TrainVisualTheme = 'retro' | 'modern' | 'varsovia';
 
 export type PhotoFilterId = 'normal' | 'cinematic' | 'vhs' | 'noir';
 
-export type CameraMode = 'cab' | 'mirror' | 'exterior' | 'interior';
+export type CameraMode = 'cab' | 'mirror' | 'exterior' | 'interior' | 'bogie' | 'station';
+
+export type CctvPreviewChannel = 'auto' | 'left' | 'right' | 'interior';
 
 export type TimeOfDayId = 'rush' | 'evening' | 'night_service';
 
 export type HeadlightMode = 'off' | 'low' | 'high';
 
 export type MetroLineId = string;
+
+export type RouteDirection = 'normal' | 'reverse';
 
 export type TrackAlignmentIntensity = 'flat' | 'moderate' | 'curvy';
 
@@ -166,6 +170,7 @@ export interface IGameSettings {
   readonly showFps: boolean;
   readonly gamepadVibration: boolean;
   readonly touchControlsMode: TouchControlsMode;
+  readonly liveMirrorsEnabled: boolean;
   readonly language: LanguageId;
 }
 
@@ -283,6 +288,7 @@ export interface IGraphicsQualityPreset {
   readonly rainDensity: number;
   readonly pixelRatioCap: number;
   readonly enableShadows: boolean;
+  readonly mirrorUpdateInterval: number;
 }
 
 export interface IAchievementRecord {
@@ -361,6 +367,9 @@ export interface IMetroLineSpec {
   readonly hasSurfaceStart: boolean;
   readonly tunnelPortalDistanceM: number | null;
   readonly alignmentIntensity?: TrackAlignmentIntensity;
+  readonly direction?: RouteDirection;
+  readonly startStationIndex?: number;
+  readonly fullStationCount?: number;
   readonly stations: readonly IStationSpec[];
   readonly speedZones: readonly ISpeedLimitZone[];
 }

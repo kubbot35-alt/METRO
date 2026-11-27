@@ -162,15 +162,15 @@ const RANK_EN: Record<DriverRankId, ILocalizedTitleDesc> = {
 const QUALITY_EN: Record<GraphicsQualityId, { readonly label: string; readonly description: string }> = {
   low: {
     label: 'Low',
-    description: 'Short tunnel draw distance, fewer passengers & rain, no shadows (max FPS).',
+    description: 'Short tunnel draw distance, fewer passengers, live mirrors off & no shadows (max FPS).',
   },
   medium: {
     label: 'Medium',
-    description: 'Balanced tunnel visibility, 75% passengers, moderate rain particles.',
+    description: 'Balanced tunnel visibility, 75% passengers, live mirrors/CCTV ~15 FPS.',
   },
   high: {
     label: 'High',
-    description: 'Full draw distance, full crowds, dense rain, shadows, and antialiasing.',
+    description: 'Full draw distance, full crowds, live mirrors/CCTV ~30 FPS, shadows & AA.',
   },
 };
 
@@ -194,6 +194,8 @@ const CAMERA_LABEL_EN: Record<CameraMode, string> = {
   mirror: 'Camera 2: Platform Mirror',
   exterior: 'Camera 3: Exterior Chase',
   interior: 'Camera 4: Passenger Interior',
+  bogie: 'Camera 5: Bogie / Track Cam',
+  station: 'Camera 6: Station Platform Cam',
 };
 
 const ACADEMY_STEP_EN: Record<

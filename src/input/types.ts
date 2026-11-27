@@ -4,6 +4,7 @@ export interface IInputActionCallbacks {
   readonly onStartRequested: () => void;
   readonly onPauseToggle: () => void;
   readonly onPhotoModeToggle?: () => void;
+  readonly onCctvPreviewToggle?: () => void;
   readonly onHelpToggle: () => void;
   readonly onMuteToggle: () => void;
   readonly onRestartRequested: () => void;

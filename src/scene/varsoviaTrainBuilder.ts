@@ -37,9 +37,25 @@ export function buildVarsoviaConsist(maxAnisotropy: number): IInspiroConsistBuil
   const doorPairs: IVarsoviaDoorPair[] = [];
   const axles: THREE.Mesh[] = [];
 
+  const camPodGeo = new THREE.BoxGeometry(0.105, 0.068, 0.23);
+  const camLensGeo = new THREE.CylinderGeometry(0.02, 0.02, 0.02, 10);
+  camLensGeo.rotateX(Math.PI / 2);
+  disposables.push(camPodGeo, camLensGeo);
+
   for (let i = 0; i < CAR_COUNT; i += 1) {
     const carZ = i * (VARSOVIA_CAR_LENGTH + VARSOVIA_CAR_GAP) + VARSOVIA_CAR_LENGTH * 0.5;
-    addVarsoviaCar(group, carZ, i === 0, i === CAR_COUNT - 1, mats, geos, doorPairs, axles);
+    addVarsoviaCar(
+      group,
+      carZ,
+      i === 0,
+      i === CAR_COUNT - 1,
+      mats,
+      geos,
+      doorPairs,
+      axles,
+      camPodGeo,
+      camLensGeo,
+    );
     if (i < CAR_COUNT - 1) {
       addArticulatedGangway(group, carZ + VARSOVIA_CAR_LENGTH * 0.5 + VARSOVIA_CAR_GAP * 0.5, mats, geos);
     }
@@ -86,6 +102,8 @@ function addVarsoviaCar(
   geos: IVarsoviaGeometries,
   doorPairs: IVarsoviaDoorPair[],
   axles: THREE.Mesh[],
+  camPodGeo: THREE.BoxGeometry,
+  camLensGeo: THREE.CylinderGeometry,
 ): void {
   const shell = new THREE.Mesh(geos.carShell, mats.whiteBody);
   shell.position.set(0, 0, centerZ);
@@ -112,10 +130,10 @@ function addVarsoviaCar(
   BOGIE_OFFSETS_Z.forEach((offset) => addVarsoviaBogie(root, centerZ + offset, mats, geos, axles));
 
   if (isFront) {
-    addVarsoviaNoseEnd(root, centerZ - VARSOVIA_CAR_LENGTH * 0.5, -1, true, mats, geos);
+    addVarsoviaNoseEnd(root, centerZ - VARSOVIA_CAR_LENGTH * 0.5, -1, true, mats, geos, camPodGeo, camLensGeo);
   }
   if (isRear) {
-    addVarsoviaNoseEnd(root, centerZ + VARSOVIA_CAR_LENGTH * 0.5, 1, false, mats, geos);
+    addVarsoviaNoseEnd(root, centerZ + VARSOVIA_CAR_LENGTH * 0.5, 1, false, mats, geos, camPodGeo, camLensGeo);
   }
 }
 
@@ -216,6 +234,8 @@ function addVarsoviaNoseEnd(
   isFront: boolean,
   mats: IVarsoviaMaterials,
   geos: IVarsoviaGeometries,
+  camPodGeo: THREE.BoxGeometry,
+  camLensGeo: THREE.CylinderGeometry,
 ): void {
   const endGroup = new THREE.Group();
   endGroup.position.set(0, 0, endZ);
@@ -264,6 +284,15 @@ function addVarsoviaNoseEnd(
   const rightPod = new THREE.Mesh(geos.smileSidePod, ledMat);
   rightPod.position.set(1.1, 1.72, -1.78);
   rightPod.rotation.set(0.22, -0.24, 0.36);
+
+  // Sleek aerodynamic exterior CCTV side-camera pods (no wing mirrors on flagship Varsovia)
+  ([-1, 1] as const).forEach((side) => {
+    const camPod = new THREE.Mesh(camPodGeo, mats.glossyBlackMask);
+    camPod.position.set(side * (VARSOVIA_CAR_WIDTH * 0.5 + 0.05), 2.7, -0.58);
+    const camLens = new THREE.Mesh(camLensGeo, mats.panoramicGlass);
+    camLens.position.set(side * (VARSOVIA_CAR_WIDTH * 0.5 + 0.06), 2.7, -0.46);
+    endGroup.add(camPod, camLens);
+  });
 
   endGroup.add(
     nose,

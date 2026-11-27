@@ -28,6 +28,7 @@ export const DEFAULT_GAME_SETTINGS: IGameSettings = {
   showFps: false,
   gamepadVibration: true,
   touchControlsMode: 'auto',
+  liveMirrorsEnabled: true,
   language: 'pl',
 };
 
@@ -35,32 +36,35 @@ export const GRAPHICS_QUALITY_PRESETS: readonly IGraphicsQualityPreset[] = [
   {
     id: 'low',
     label: 'Niska',
-    description: 'Krótki zasięg tunelu, mniej pasażerów i deszczu, bez cieni (maks. FPS).',
+    description: 'Krótki zasięg tunelu, mniej pasażerów, wyłączone lusterka na żywo i cienie (maks. FPS).',
     drawDistanceM: 185,
     passengerDensity: 0.4,
     rainDensity: 0.28,
     pixelRatioCap: 1.0,
     enableShadows: false,
+    mirrorUpdateInterval: 0,
   },
   {
     id: 'medium',
     label: 'Średnia',
-    description: 'Zbalansowany zasięg tunelu, 75% pasażerów, umiarkowany deszcz.',
+    description: 'Zbalansowany zasięg tunelu, 75% pasażerów, lusterka/CCTV ~15 FPS.',
     drawDistanceM: 285,
     passengerDensity: 0.75,
     rainDensity: 0.62,
     pixelRatioCap: 1.5,
     enableShadows: false,
+    mirrorUpdateInterval: 4,
   },
   {
     id: 'high',
     label: 'Wysoka',
-    description: 'Pełny zasięg widzenia, komplet pasażerów, gęsty deszcz, cienie i AA.',
+    description: 'Pełny zasięg, komplet pasażerów, lusterka/CCTV ~30 FPS, cienie i AA.',
     drawDistanceM: 420,
     passengerDensity: 1.0,
     rainDensity: 1.0,
     pixelRatioCap: 2.0,
     enableShadows: true,
+    mirrorUpdateInterval: 2,
   },
 ];
 
@@ -113,6 +117,10 @@ export function sanitizeGameSettings(raw: unknown): IGameSettings {
         ? obj.gamepadVibration
         : DEFAULT_GAME_SETTINGS.gamepadVibration,
     touchControlsMode: parseTouchControlsMode(obj.touchControlsMode),
+    liveMirrorsEnabled:
+      typeof obj.liveMirrorsEnabled === 'boolean'
+        ? obj.liveMirrorsEnabled
+        : DEFAULT_GAME_SETTINGS.liveMirrorsEnabled,
     language: parseLanguage(obj.language),
   };
 }

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { DEFAULT_SCENE_CULL_RANGE_M, isWithinCullingRange } from '../domain/routeVariant';
 import { computeEffectivePassengers } from '../domain/timeOfDayCatalog';
 import type { TrackAlignment } from '../domain/trackAlignment';
 import { getStationPlatformLayout } from '../domain/trackGeometry';
@@ -21,6 +22,8 @@ interface IPassengerUnit {
 
 interface IStationCrowd {
   readonly stationIndex: number;
+  readonly stationDistanceM: number;
+  readonly stationGroup: THREE.Group;
   readonly baseWaiting: number;
   readonly playerUnits: readonly IPassengerUnit[];
   readonly oppositeUnits: readonly IPassengerUnit[];
@@ -138,6 +141,8 @@ function createStationCrowd(
 
   return {
     stationIndex,
+    stationDistanceM: station.distanceM,
+    stationGroup,
     baseWaiting: station.waitingPassengers,
     playerUnits,
     oppositeUnits,
@@ -207,18 +212,14 @@ function syncCrowds(
   dtSec: number,
   densityMultiplier: number,
 ): void {
+  const playerPosM = snapshot.kinematics.positionM;
   if (
     snapshot.challenge?.skipStations ||
     snapshot.nightInspection.active ||
     snapshot.timeOfDay.passengerMultiplier <= 0
   ) {
     for (let i = 0; i < crowds.length; i += 1) {
-      crowds[i].playerUnits.forEach((u) => {
-        u.group.visible = false;
-      });
-      crowds[i].oppositeUnits.forEach((u) => {
-        u.group.visible = false;
-      });
+      crowds[i].stationGroup.visible = false;
     }
     return;
   }
@@ -226,11 +227,11 @@ function syncCrowds(
   const isFreshRun =
     snapshot.stationsServed === 0 &&
     snapshot.currentStation.stationIndex === 0 &&
-    snapshot.kinematics.positionM < 5 &&
+    playerPosM < 5 &&
     snapshot.doorState === 'closed';
 
   if (isFreshRun) {
-    resetAllCrowds(crowds, mult);
+    resetAllCrowds(crowds, mult, playerPosM);
     return;
   }
 
@@ -239,6 +240,13 @@ function syncCrowds(
 
   for (let i = 0; i < crowds.length; i += 1) {
     const crowd = crowds[i];
+    const inRange = isWithinCullingRange(crowd.stationDistanceM, playerPosM, DEFAULT_SCENE_CULL_RANGE_M);
+    if (crowd.stationGroup.visible !== inRange) {
+      crowd.stationGroup.visible = inRange;
+    }
+    if (!inRange) {
+      continue;
+    }
     if (crowd.stationIndex < activeIdx && !crowd.cleared) {
       crowd.cleared = true;
       crowd.playerUnits.forEach((u) => {
@@ -331,9 +339,15 @@ function updateUnitGroup(
   }
 }
 
-function resetAllCrowds(crowds: readonly IStationCrowd[], multiplier: number): void {
+function resetAllCrowds(
+  crowds: readonly IStationCrowd[],
+  multiplier: number,
+  playerPosM: number,
+): void {
   for (let i = 0; i < crowds.length; i += 1) {
     const crowd = crowds[i];
+    const inRange = isWithinCullingRange(crowd.stationDistanceM, playerPosM, DEFAULT_SCENE_CULL_RANGE_M);
+    crowd.stationGroup.visible = inRange;
     const activeCount = Math.min(
       crowd.playerUnits.length,
       computeEffectivePassengers(crowd.baseWaiting, multiplier),

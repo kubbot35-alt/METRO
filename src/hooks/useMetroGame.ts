@@ -24,11 +24,15 @@ import {
   shouldShowPortraitHint,
 } from '../domain/mobileTouch';
 import { PhotoCameraController } from '../domain/photoMode';
+import { getMetroLineSpec, METRO_LINE_M1 } from '../domain/routeData';
+import { compileRouteVariant } from '../domain/routeVariant';
 import { MetroScoringRules } from '../domain/scoringRules';
 import { SettingsStorageService, type ISettingsService } from '../domain/settingsService';
 import { MetroTrainPhysics } from '../domain/trainPhysics';
 import type {
+  CctvPreviewChannel,
   ChallengeId,
+  DoorSide,
   GameModeId,
   GamepadBrand,
   IAchievementRecord,
@@ -50,6 +54,7 @@ import type {
   LanguageId,
   MetroLineId,
   PhotoFilterId,
+  RouteDirection,
   TimeOfDayId,
   TrainModelId,
   WeatherModeId,
@@ -75,6 +80,9 @@ export interface IMetroGameController {
   readonly achievementsOpen: boolean;
   readonly profileOpen: boolean;
   readonly customLines: readonly ICustomLineDraft[];
+  readonly baseLineSpec: IMetroLineSpec;
+  readonly routeDirection: RouteDirection;
+  readonly startStationIndex: number;
   readonly lineBuilderDraft: ICustomLineDraft | null;
   readonly lineBuilderEditing: boolean;
   readonly driverProfile: IDriverProfileStats;
@@ -93,8 +101,16 @@ export interface IMetroGameController {
   readonly touchControlsActive: boolean;
   readonly showPortraitHint: boolean;
   readonly ghostDelta: IGhostDeltaSnapshot | null;
+  readonly cctvPreviewOpen: boolean;
+  readonly cctvChannel: CctvPreviewChannel;
+  toggleCctvPreview: () => void;
+  closeCctvPreview: () => void;
+  selectCctvChannel: (channel: CctvPreviewChannel) => void;
+  registerCctvCanvas: (canvas: HTMLCanvasElement | null) => void;
   dismissPortraitHint: () => void;
   selectMetroLine: (lineId: MetroLineId) => void;
+  selectRouteDirection: (direction: RouteDirection) => void;
+  selectStartStation: (startIndex: number) => void;
   selectGameMode: (mode: GameModeId) => void;
   selectChallenge: (challengeId: ChallengeId) => void;
   selectWeatherMode: (mode: WeatherModeId) => void;
@@ -217,6 +233,12 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     customLineServiceRef.current!.list(),
   );
   const customLinesRef = useRef<readonly ICustomLineDraft[]>(customLines);
+  const [baseLineSpec, setBaseLineSpec] = useState<IMetroLineSpec>(METRO_LINE_M1);
+  const baseLineRef = useRef<IMetroLineSpec>(METRO_LINE_M1);
+  const [routeDirection, setRouteDirection] = useState<RouteDirection>('normal');
+  const routeDirectionRef = useRef<RouteDirection>('normal');
+  const [startStationIndex, setStartStationIndex] = useState<number>(0);
+  const startStationIndexRef = useRef<number>(0);
   const [lineBuilderDraft, setLineBuilderDraft] = useState<ICustomLineDraft | null>(null);
   const [lineBuilderEditing, setLineBuilderEditing] = useState<boolean>(false);
   const [driverProfile, setDriverProfile] = useState<IDriverProfileStats>(() =>
@@ -267,6 +289,65 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
   const [portraitDismissed, setPortraitDismissed] = useState<boolean>(false);
   const [activeGhostRecord, setActiveGhostRecord] = useState<ILineGhostRecord | null>(() =>
     ghostRecordServiceRef.current!.getRecordForLine(simRef.current!.getSnapshot().line.id),
+  );
+  const [cctvPreviewOpen, setCctvPreviewOpen] = useState<boolean>(false);
+  const [cctvChannel, setCctvChannel] = useState<CctvPreviewChannel>('auto');
+  const cctvPreviewOpenRef = useRef<boolean>(false);
+  const cctvChannelRef = useRef<CctvPreviewChannel>('auto');
+  const cctvCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const syncCctvToRenderer = useCallback(
+    (open: boolean, channel: CctvPreviewChannel, canvas: HTMLCanvasElement | null): void => {
+      rendererRef.current?.setCctvPreviewState?.(open, channel, canvas);
+    },
+    [],
+  );
+
+  const toggleCctvPreview = useCallback((): void => {
+    const next = !cctvPreviewOpenRef.current;
+    cctvPreviewOpenRef.current = next;
+    setCctvPreviewOpen(next);
+    syncCctvToRenderer(next, cctvChannelRef.current, cctvCanvasRef.current);
+  }, [syncCctvToRenderer]);
+
+  const closeCctvPreview = useCallback((): void => {
+    cctvPreviewOpenRef.current = false;
+    setCctvPreviewOpen(false);
+    syncCctvToRenderer(false, cctvChannelRef.current, cctvCanvasRef.current);
+  }, [syncCctvToRenderer]);
+
+  const selectCctvChannel = useCallback(
+    (channel: CctvPreviewChannel): void => {
+      cctvChannelRef.current = channel;
+      setCctvChannel(channel);
+      syncCctvToRenderer(cctvPreviewOpenRef.current, channel, cctvCanvasRef.current);
+    },
+    [syncCctvToRenderer],
+  );
+
+  const registerCctvCanvas = useCallback(
+    (canvas: HTMLCanvasElement | null): void => {
+      cctvCanvasRef.current = canvas;
+      syncCctvToRenderer(cctvPreviewOpenRef.current, cctvChannelRef.current, canvas);
+    },
+    [syncCctvToRenderer],
+  );
+
+  const handle3dMonitorClick = useCallback(
+    (side: DoorSide): void => {
+      if (cctvPreviewOpenRef.current && cctvChannelRef.current === side) {
+        cctvPreviewOpenRef.current = false;
+        setCctvPreviewOpen(false);
+        syncCctvToRenderer(false, side, cctvCanvasRef.current);
+        return;
+      }
+      cctvPreviewOpenRef.current = true;
+      cctvChannelRef.current = side;
+      setCctvPreviewOpen(true);
+      setCctvChannel(side);
+      syncCctvToRenderer(true, side, cctvCanvasRef.current);
+    },
+    [syncCctvToRenderer],
   );
 
   useEffect(() => {
@@ -340,21 +421,46 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     }
   }, []);
 
-  const selectMetroLine = useCallback(
-    (lineId: MetroLineId): void => {
-      if (lineId === 'M1' || lineId === 'M2') {
-        simRef.current?.setMetroLine(lineId);
-      } else {
-        const custom = customLinesRef.current.find((item) => item.id === lineId);
-        if (custom) {
-          simRef.current?.setMetroLineSpec?.(compileCustomLineSpec(custom));
-        } else {
-          simRef.current?.setMetroLine('M1');
-        }
-      }
+  const applyRouteVariant = useCallback(
+    (baseLine: IMetroLineSpec, direction: RouteDirection, startIdx: number): void => {
+      const compiled = compileRouteVariant(baseLine, direction, startIdx);
+      baseLineRef.current = baseLine;
+      routeDirectionRef.current = direction;
+      startStationIndexRef.current = compiled.startStationIndex ?? 0;
+      setBaseLineSpec(baseLine);
+      setRouteDirection(direction);
+      setStartStationIndex(compiled.startStationIndex ?? 0);
+      simRef.current?.setMetroLineSpec?.(compiled);
       syncNow();
     },
     [syncNow],
+  );
+
+  const selectMetroLine = useCallback(
+    (lineId: MetroLineId): void => {
+      if (lineId === 'M1' || lineId === 'M2') {
+        applyRouteVariant(getMetroLineSpec(lineId), 'normal', 0);
+      } else {
+        const custom = customLinesRef.current.find((item) => item.id === lineId);
+        const base = custom ? compileCustomLineSpec(custom) : METRO_LINE_M1;
+        applyRouteVariant(base, 'normal', 0);
+      }
+    },
+    [applyRouteVariant],
+  );
+
+  const selectRouteDirection = useCallback(
+    (direction: RouteDirection): void => {
+      applyRouteVariant(baseLineRef.current, direction, 0);
+    },
+    [applyRouteVariant],
+  );
+
+  const selectStartStation = useCallback(
+    (startIdx: number): void => {
+      applyRouteVariant(baseLineRef.current, routeDirectionRef.current, startIdx);
+    },
+    [applyRouteVariant],
   );
 
   const selectGameMode = useCallback(
@@ -439,11 +545,10 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
       setLineBuilderEditing(false);
       const saved = updated.find((item) => item.id === draft.id) ?? updated[updated.length - 1];
       if (saved) {
-        simRef.current?.setMetroLineSpec?.(compileCustomLineSpec(saved));
-        syncNow();
+        applyRouteVariant(compileCustomLineSpec(saved), 'normal', 0);
       }
     },
-    [syncNow],
+    [applyRouteVariant],
   );
 
   const deleteCustomLine = useCallback(
@@ -451,12 +556,11 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
       const updated = customLineServiceRef.current!.remove(id);
       customLinesRef.current = updated;
       setCustomLines(updated);
-      if (simRef.current?.getSnapshot().line.id === id) {
-        simRef.current.setMetroLine('M1');
-        syncNow();
+      if (simRef.current?.getSnapshot().line.id === id || baseLineRef.current.id === id) {
+        applyRouteVariant(METRO_LINE_M1, 'normal', 0);
       }
     },
-    [syncNow],
+    [applyRouteVariant],
   );
 
   const openSettings = useCallback((): void => {
@@ -638,13 +742,19 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     setHelpOpen(false);
     settingsOpenRef.current = false;
     setSettingsOpen(false);
+    cctvPreviewOpenRef.current = false;
+    setCctvPreviewOpen(false);
+    syncCctvToRenderer(false, cctvChannelRef.current, null);
     const freshSim = new MetroSimulationEngine(new MetroTrainPhysics(), new MetroScoringRules());
-    if (restoredLine?.isCustom) {
+    if (restoredLine && restoredLine.id !== 'ACADEMY') {
       freshSim.setMetroLineSpec(restoredLine);
-    } else if (restoredLine && restoredLine.id !== 'ACADEMY') {
-      freshSim.setMetroLine(restoredLine.id);
     } else {
-      freshSim.setMetroLine('M1');
+      const fallback = compileRouteVariant(
+        baseLineRef.current,
+        routeDirectionRef.current,
+        startStationIndexRef.current,
+      );
+      freshSim.setMetroLineSpec(fallback);
     }
     freshSim.setChallenge?.(currentChallengeId);
     freshSim.setWeatherMode?.(currentWeatherMode);
@@ -1022,6 +1132,12 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     });
 
     sceneRenderer.applySettings?.(settingsRef.current);
+    sceneRenderer.setOnCctvMonitorClick?.(handle3dMonitorClick);
+    sceneRenderer.setCctvPreviewState?.(
+      cctvPreviewOpenRef.current,
+      cctvChannelRef.current,
+      cctvCanvasRef.current,
+    );
     audio.setAudioSettings?.(
       settingsRef.current.masterVolume,
       settingsRef.current.trainVolume,
@@ -1032,6 +1148,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
       onStartRequested: () => startGame(),
       onHelpToggle: () => toggleHelp(),
       onPhotoModeToggle: () => togglePhotoMode(),
+      onCctvPreviewToggle: () => toggleCctvPreview(),
       onPauseToggle: handlePauseToggle,
       onMuteToggle: () => toggleMute(),
       onRestartRequested: () => {
@@ -1392,11 +1509,13 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     closeHelp,
     closeSettings,
     exitPhotoMode,
+    handle3dMonitorClick,
     mountRef,
     pauseGame,
     restartGame,
     resumeGame,
     startGame,
+    toggleCctvPreview,
     toggleHelp,
     toggleMute,
     togglePhotoMode,
@@ -1412,6 +1531,9 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     achievementsOpen,
     profileOpen,
     customLines,
+    baseLineSpec,
+    routeDirection,
+    startStationIndex,
     lineBuilderDraft,
     lineBuilderEditing,
     driverProfile,
@@ -1430,8 +1552,16 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     touchControlsActive,
     showPortraitHint,
     ghostDelta,
+    cctvPreviewOpen,
+    cctvChannel,
+    toggleCctvPreview,
+    closeCctvPreview,
+    selectCctvChannel,
+    registerCctvCanvas,
     dismissPortraitHint,
     selectMetroLine,
+    selectRouteDirection,
+    selectStartStation,
     selectGameMode,
     selectChallenge,
     selectWeatherMode,

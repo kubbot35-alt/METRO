@@ -45,9 +45,25 @@ export function buildInspiroConsist(maxAnisotropy: number): IInspiroConsistBuild
   const doorPairs: ISlidingDoorPair[] = [];
   const axles: THREE.Mesh[] = [];
 
+  const camPodGeo = new THREE.BoxGeometry(0.11, 0.075, 0.22);
+  const camLensGeo = new THREE.CylinderGeometry(0.022, 0.022, 0.02, 10);
+  camLensGeo.rotateX(Math.PI / 2);
+  disposables.push(camPodGeo, camLensGeo);
+
   for (let i = 0; i < CAR_COUNT; i += 1) {
     const carZ = i * (INSPIRO_CAR_LENGTH + INSPIRO_CAR_GAP) + INSPIRO_CAR_LENGTH * 0.5;
-    addInspiroCar(group, carZ, i === 0, i === CAR_COUNT - 1, mats, geos, doorPairs, axles);
+    addInspiroCar(
+      group,
+      carZ,
+      i === 0,
+      i === CAR_COUNT - 1,
+      mats,
+      geos,
+      doorPairs,
+      axles,
+      camPodGeo,
+      camLensGeo,
+    );
     if (i < CAR_COUNT - 1) {
       addArticulatedBellows(group, carZ + INSPIRO_CAR_LENGTH * 0.5 + INSPIRO_CAR_GAP * 0.5, mats, geos);
     }
@@ -104,6 +120,8 @@ function addInspiroCar(
   geos: IInspiroGeometries,
   doorPairs: ISlidingDoorPair[],
   axles: THREE.Mesh[],
+  camPodGeo: THREE.BoxGeometry,
+  camLensGeo: THREE.CylinderGeometry,
 ): void {
   const shell = new THREE.Mesh(geos.carShell, mats.silverBody);
   shell.position.set(0, 0, centerZ);
@@ -125,10 +143,10 @@ function addInspiroCar(
   BOGIE_OFFSETS_Z.forEach((offset) => addBogie(root, centerZ + offset, mats, geos, axles));
 
   if (isFront) {
-    addInspiroAerodynamicEnd(root, centerZ - INSPIRO_CAR_LENGTH * 0.5, -1, true, mats, geos);
+    addInspiroAerodynamicEnd(root, centerZ - INSPIRO_CAR_LENGTH * 0.5, -1, true, mats, geos, camPodGeo, camLensGeo);
   }
   if (isRear) {
-    addInspiroAerodynamicEnd(root, centerZ + INSPIRO_CAR_LENGTH * 0.5, 1, false, mats, geos);
+    addInspiroAerodynamicEnd(root, centerZ + INSPIRO_CAR_LENGTH * 0.5, 1, false, mats, geos, camPodGeo, camLensGeo);
   }
 }
 
@@ -243,6 +261,8 @@ function addInspiroAerodynamicEnd(
   isFront: boolean,
   mats: IInspiroMaterials,
   geos: IInspiroGeometries,
+  camPodGeo: THREE.BoxGeometry,
+  camLensGeo: THREE.CylinderGeometry,
 ): void {
   const endGroup = new THREE.Group();
   endGroup.position.set(0, 0, endZ);
@@ -278,6 +298,15 @@ function addInspiroAerodynamicEnd(
   const lampR = new THREE.Mesh(geos.angledLamp, lampMat);
   lampR.position.set(0.92, 1.38, -1.73);
   lampR.rotation.set(0.12, -0.24, -0.24);
+
+  // Aerodynamic exterior CCTV side-camera pods (no wing mirrors on modern Inspiro)
+  ([-1, 1] as const).forEach((side) => {
+    const pod = new THREE.Mesh(camPodGeo, mats.blackRibbon);
+    pod.position.set(side * (INSPIRO_CAR_WIDTH * 0.5 + 0.05), 2.68, -0.52);
+    const lens = new THREE.Mesh(camLensGeo, mats.glassTint);
+    lens.position.set(side * (INSPIRO_CAR_WIDTH * 0.5 + 0.06), 2.68, -0.4);
+    endGroup.add(pod, lens);
+  });
 
   endGroup.add(nose, yellowApron, redSkirt, coupler, frame, glass, ledSign, wiper, lampL, lampR);
   root.add(endGroup);

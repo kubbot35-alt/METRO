@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { GAMEPAD_BUTTON_MAPPINGS } from '../domain/gamepadMapping';
 import { getLocalizedQuality } from '../domain/i18nCatalog';
 import { localizeGamepadAction } from '../domain/i18nDynamic';
+import { getMirrorPerformancePolicy } from '../domain/mirrorCctvSystem';
 import { GRAPHICS_QUALITY_PRESETS } from '../domain/settingsService';
 import type {
   GraphicsQualityId,
@@ -244,6 +245,43 @@ function GeneralSettingsTab({
               </button>
             );
           })}
+        </div>
+
+        <div className="flex items-center justify-between gap-3 pt-2.5 border-t border-slate-800/90">
+          <div>
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-medium text-slate-200">
+                {tr('Lusterka i kamery na żywo (CCTV)', 'Live Mirrors & Cameras (CCTV)')}
+              </p>
+              <span
+                data-testid="mirror-fps-policy-badge"
+                className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700 text-[10px] font-mono-tabular text-amber-300"
+              >
+                {getMirrorPerformancePolicy(settings.graphicsQuality, settings.liveMirrorsEnabled).approxFpsLabel}
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              {tr(
+                'Renderowanie w czasie rzeczywistym lusterek (Seria 81) i monitorów CCTV (Inspiro / Varsovia)',
+                'Real-time rendering for Seria 81 side mirrors and Inspiro / Varsovia cab CCTV monitors',
+              )}
+            </p>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={settings.liveMirrorsEnabled}
+            aria-label={tr('Lusterka i kamery na żywo', 'Live Mirrors & Cameras')}
+            data-testid="toggle-live-mirrors"
+            onClick={() => onUpdate({ liveMirrorsEnabled: !settings.liveMirrorsEnabled })}
+            className={`px-3 py-1.5 rounded-md border text-xs font-mono-tabular font-bold cursor-pointer transition-colors shrink-0 ${
+              settings.liveMirrorsEnabled
+                ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200'
+                : 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-800'
+            }`}
+          >
+            {settings.liveMirrorsEnabled ? tr('WŁ.', 'ON') : tr('WYŁ.', 'OFF')}
+          </button>
         </div>
       </section>
 

@@ -3,6 +3,7 @@ import { AcademyGuidePanel } from './components/AcademyGuidePanel';
 import { AchievementToast } from './components/AchievementToast';
 import { AchievementsModal } from './components/AchievementsModal';
 import { CabDashboardHud } from './components/CabDashboardHud';
+import { CctvPreviewOverlay } from './components/CctvPreviewOverlay';
 import { ControlsHelpModal } from './components/ControlsHelpModal';
 import { CourseSummaryModal } from './components/CourseSummaryModal';
 import { CustomLineBuilderModal } from './components/CustomLineBuilderModal';
@@ -64,6 +65,9 @@ export default function App() {
       data-grade={snapshot.driverGrade}
       data-train={snapshot.trainModel.id}
       data-line={snapshot.line.id}
+      data-direction={snapshot.line.direction ?? 'normal'}
+      data-start-station={snapshot.line.startStationIndex ?? 0}
+      data-total-stations={snapshot.totalStations}
       data-time-of-day={snapshot.timeOfDay.id}
       data-camera={snapshot.cameraMode}
       data-oncoming={snapshot.oncomingTrain.active ? '1' : '0'}
@@ -91,6 +95,9 @@ export default function App() {
       data-academy-done={snapshot.academy?.completed ? '1' : '0'}
       data-gamepad={game.gamepadStatus.connected ? '1' : '0'}
       data-touch-controls={game.touchControlsActive ? '1' : '0'}
+      data-live-mirrors={game.settings.liveMirrorsEnabled ? '1' : '0'}
+      data-cctv-open={game.cctvPreviewOpen ? '1' : '0'}
+      data-cctv-channel={game.cctvChannel}
       data-ghost-delta={
         game.ghostDelta?.hasSplitComparison
           ? `${game.ghostDelta.scoreDelta}:${game.ghostDelta.timeDeltaSec}`
@@ -117,6 +124,9 @@ export default function App() {
       {snapshot.phase === 'title' && (
         <TitleOverlay
           activeLine={snapshot.line}
+          baseLineSpec={game.baseLineSpec}
+          routeDirection={game.routeDirection}
+          startStationIndex={game.startStationIndex}
           customLines={game.customLines}
           driverProfile={game.driverProfile}
           gamepadStatus={game.gamepadStatus}
@@ -129,6 +139,8 @@ export default function App() {
           achievementsUnlocked={game.unlockedAchievements.length}
           achievementsTotal={game.achievementCatalog.length}
           onSelectLine={game.selectMetroLine}
+          onSelectRouteDirection={game.selectRouteDirection}
+          onSelectStartStation={game.selectStartStation}
           onOpenLineBuilder={() => game.openLineBuilder()}
           onEditCustomLine={(draft) => game.openLineBuilder(draft)}
           onDeleteCustomLine={game.deleteCustomLine}
@@ -157,7 +169,9 @@ export default function App() {
             snapshot={snapshot}
             ghostDelta={game.ghostDelta}
             muted={game.muted}
+            cctvPreviewOpen={game.cctvPreviewOpen}
             onToggleMute={game.toggleMute}
+            onToggleCctvPreview={game.toggleCctvPreview}
             onCycleCamera={game.cycleCamera}
             onToggleHelp={game.toggleHelp}
             onPause={game.pauseGame}
@@ -166,6 +180,17 @@ export default function App() {
             onSandboxSpawnTrain={game.triggerSandboxOncomingTrain}
             onSandboxCycleSignal={game.cycleSandboxNextSignal}
           />
+          {game.cctvPreviewOpen && (
+            <CctvPreviewOverlay
+              snapshot={snapshot}
+              channel={game.cctvChannel}
+              graphicsQuality={game.settings.graphicsQuality}
+              liveMirrorsEnabled={game.settings.liveMirrorsEnabled}
+              onSelectChannel={game.selectCctvChannel}
+              onCanvasRef={game.registerCctvCanvas}
+              onClose={game.closeCctvPreview}
+            />
+          )}
           {snapshot.gameMode === 'academy' && snapshot.academy && snapshot.phase === 'playing' && (
             <AcademyGuidePanel
               academy={snapshot.academy}

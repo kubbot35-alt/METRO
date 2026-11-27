@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { DEFAULT_SCENE_CULL_RANGE_M, isWithinCullingRange } from '../domain/routeVariant';
 import type { TrackAlignment } from '../domain/trackAlignment';
 import { getStationPlatformLayout } from '../domain/trackGeometry';
 import type { IMetroLineSpec, IStationSpec } from '../domain/types';
@@ -18,6 +19,13 @@ import type { ISceneResources } from './types';
 
 export interface IMetroStationsRig extends ISceneResources {
   setNightServiceMode(active: boolean, dtSec: number): void;
+  updateCulling(playerPosM: number, cullRangeM?: number): number;
+}
+
+interface IStationEntry {
+  readonly distanceM: number;
+  readonly group: THREE.Group;
+  visible: boolean;
 }
 
 interface ISharedStationMats extends IHallMaterials, IStationFurnitureMaterials {}
@@ -57,6 +65,7 @@ export function buildMetroStations(
     ...Object.values(sharedMats),
   );
 
+  const stationEntries: IStationEntry[] = [];
   const nightGroups: THREE.Group[] = [];
   const accentGlowMats: THREE.MeshStandardMaterial[] = [];
   const signMats: THREE.MeshStandardMaterial[] = [];
@@ -64,6 +73,7 @@ export function buildMetroStations(
   stations.forEach((station) => {
     const built = createSingleStation(station, alignment, lineBadge, sharedMats, maxAnisotropy, disposables);
     root.add(built.group);
+    stationEntries.push({ distanceM: station.distanceM, group: built.group, visible: true });
     nightGroups.push(built.nightGroup);
     accentGlowMats.push(built.accentGlowMat);
     signMats.push(built.signMat);
@@ -99,6 +109,21 @@ export function buildMetroStations(
         sharedMats.yellowBeacon.emissiveIntensity = 0.35 + pulse * 3.8;
         sharedMats.yellowBeaconHalo.opacity = 0.12 + pulse * 0.42;
       }
+    },
+    updateCulling: (playerPosM, cullRangeM = DEFAULT_SCENE_CULL_RANGE_M) => {
+      let visibleCount = 0;
+      for (let i = 0; i < stationEntries.length; i += 1) {
+        const entry = stationEntries[i];
+        const nextVis = isWithinCullingRange(entry.distanceM, playerPosM, cullRangeM);
+        if (entry.visible !== nextVis) {
+          entry.visible = nextVis;
+          entry.group.visible = nextVis;
+        }
+        if (nextVis) {
+          visibleCount += 1;
+        }
+      }
+      return visibleCount;
     },
     dispose: () => {
       scene.remove(root);

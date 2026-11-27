@@ -15,6 +15,8 @@ export interface ICabRig {
   readonly czuwakLampMat: THREE.MeshStandardMaterial;
   setTheme(theme: TrainVisualTheme): void;
   setLeverAngle?(angleRad: number): void;
+  setMirrorTextures?(leftTex: THREE.Texture, rightTex: THREE.Texture): void;
+  getActiveInteractiveMonitorMeshes?(): readonly THREE.Mesh[];
   update?(snapshot: ISimulationSnapshot, dtSec: number): void;
   dispose(): void;
 }
@@ -58,6 +60,20 @@ export function buildMetroCabRig(maxAnisotropy = 4): ICabRig {
       seria81Cab.leverPivot.rotation.x = angleRad;
       inspiroCab.leverPivot.rotation.x = angleRad;
       varsoviaCab.leverPivot.rotation.x = angleRad;
+    },
+    setMirrorTextures: (leftTex: THREE.Texture, rightTex: THREE.Texture): void => {
+      seria81Cab.mirrorHardware.setMirrorTextures(leftTex, rightTex);
+      inspiroCab.mirrorHardware.setMirrorTextures(leftTex, rightTex);
+      varsoviaCab.mirrorHardware.setMirrorTextures(leftTex, rightTex);
+    },
+    getActiveInteractiveMonitorMeshes: (): readonly THREE.Mesh[] => {
+      if (varsoviaCab.group.visible) {
+        return varsoviaCab.mirrorHardware.interactiveMeshes;
+      }
+      if (inspiroCab.group.visible) {
+        return inspiroCab.mirrorHardware.interactiveMeshes;
+      }
+      return seria81Cab.mirrorHardware.interactiveMeshes;
     },
     update: (snapshot: ISimulationSnapshot, dtSec: number): void => {
       if (varsoviaCab.group.visible) {

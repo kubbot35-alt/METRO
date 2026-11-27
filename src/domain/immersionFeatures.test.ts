@@ -21,15 +21,16 @@ function makeInput(overrides: Partial<IControlInput> = {}): IControlInput {
   };
 }
 
-test('Warsaw Metro M1 route has 12 real stations from Kabaty to Centrum and 24 semaphores', () => {
-  assert.equal(LINE_M1_STATIONS.length, 12);
+test('Warsaw Metro M1 route has 21 real stations from Kabaty to Młociny and 42 semaphores', () => {
+  assert.equal(LINE_M1_STATIONS.length, 21);
   assert.equal(LINE_M1_STATIONS[0].name, 'Kabaty');
   assert.equal(LINE_M1_STATIONS[1].name, 'Natolin');
   assert.equal(LINE_M1_STATIONS[11].name, 'Centrum');
-  assert.equal(LINE_M1_STATIONS[11].distanceM, 7200);
-  assert.equal(SEMAPHORE_DISTANCES_M.length, 24);
+  assert.equal(LINE_M1_STATIONS[20].name, 'Młociny');
+  assert.equal(LINE_M1_STATIONS[20].distanceM, 12600);
+  assert.equal(SEMAPHORE_DISTANCES_M.length, 42);
   for (const station of LINE_M1_STATIONS) {
-    assert.ok(station.waitingPassengers >= 12 && station.waitingPassengers <= 16);
+    assert.ok(station.waitingPassengers >= 12 && station.waitingPassengers <= 18);
   }
 });
 

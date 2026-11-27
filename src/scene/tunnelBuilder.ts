@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import {
+  DEFAULT_SCENE_CULL_RANGE_M,
+  isSpanWithinCullingRange,
+} from '../domain/routeVariant';
 import type { TrackAlignment } from '../domain/trackAlignment';
 import {
   getOppositeTrackX,
@@ -15,10 +19,22 @@ import {
 } from './proceduralTextures';
 import type { ISceneResources } from './types';
 
+export interface IMetroTunnelRig extends ISceneResources {
+  updateCulling(playerPosM: number, cullRangeM?: number): number;
+}
+
+interface ICullableSpan {
+  readonly startM: number;
+  readonly endM: number;
+  readonly object: THREE.Object3D;
+  visible: boolean;
+}
+
 const BAY_LENGTH_M = 16;
 const SLEEPER_SPACING_M = 1.6;
 const RAIL_SAMPLE_STEP_M = 4;
 const RIGHT_WALL_X = 3.2;
+const TRACK_CHUNK_LENGTH_M = 600;
 
 function computeRouteLengthM(stations: readonly IStationSpec[]): number {
   const lastStationM = stations[stations.length - 1]?.distanceM ?? 3000;
@@ -31,26 +47,46 @@ export function buildMetroTunnel(
   stations: readonly IStationSpec[],
   speedZones: readonly ISpeedLimitZone[],
   maxAnisotropy: number,
-): ISceneResources {
+): IMetroTunnelRig {
   const disposables: Array<{ dispose(): void }> = [];
+  const cullables: ICullableSpan[] = [];
   const root = new THREE.Group();
   root.name = 'MetroTunnelGroup';
   scene.add(root);
+
+  const registerCullable = (startM: number, endM: number, object: THREE.Object3D): void => {
+    cullables.push({ startM, endM, object, visible: true });
+  };
 
   const routeLengthM = computeRouteLengthM(stations);
   const concreteTex = createTunnelConcreteTexture(maxAnisotropy);
   const ballastTex = createBallastTexture(maxAnisotropy, 1);
   disposables.push(concreteTex, ballastTex);
 
-  addTrackBedAndRails(root, alignment, routeLengthM, stations, ballastTex, disposables);
-  addInstancedSleepers(root, alignment, routeLengthM, stations, disposables);
-  addCurvedTunnelShells(root, alignment, routeLengthM, stations, concreteTex, disposables);
-  addTunnelRibsAndLamps(root, alignment, routeLengthM, stations, disposables);
-  addSpeedLimitSigns(root, alignment, speedZones, maxAnisotropy, disposables);
-  addCurveWarningSigns(root, alignment, maxAnisotropy, disposables);
-  addMeterMarkerPlaques(root, alignment, routeLengthM, stations, maxAnisotropy, disposables);
+  addChunkedTrackBedAndRails(root, alignment, routeLengthM, stations, ballastTex, disposables, registerCullable);
+  addChunkedInstancedSleepers(root, alignment, routeLengthM, stations, disposables, registerCullable);
+  addCurvedTunnelShells(root, alignment, routeLengthM, stations, concreteTex, disposables, registerCullable);
+  addChunkedTunnelRibsAndLamps(root, alignment, routeLengthM, stations, disposables, registerCullable);
+  addSpeedLimitSigns(root, alignment, speedZones, maxAnisotropy, disposables, registerCullable);
+  addCurveWarningSigns(root, alignment, maxAnisotropy, disposables, registerCullable);
+  addMeterMarkerPlaques(root, alignment, routeLengthM, stations, maxAnisotropy, disposables, registerCullable);
 
   return {
+    updateCulling: (playerPosM, cullRangeM = DEFAULT_SCENE_CULL_RANGE_M) => {
+      let visibleCount = 0;
+      for (let i = 0; i < cullables.length; i += 1) {
+        const span = cullables[i];
+        const nextVis = isSpanWithinCullingRange(span.startM, span.endM, playerPosM, cullRangeM, 750);
+        if (span.visible !== nextVis) {
+          span.visible = nextVis;
+          span.object.visible = nextVis;
+        }
+        if (nextVis) {
+          visibleCount += 1;
+        }
+      }
+      return visibleCount;
+    },
     dispose: () => {
       scene.remove(root);
       disposables.forEach((item) => item.dispose());
@@ -85,9 +121,9 @@ function createTrackBeamGeometry(
     if (i < steps) {
       const a = i * 4;
       const b = (i + 1) * 4;
-      indices.push(a + 3, a + 2, b + 2, a + 3, b + 2, b + 3); // top
-      indices.push(a + 2, a + 1, b + 1, a + 2, b + 1, b + 2); // right
-      indices.push(a + 0, a + 3, b + 3, a + 0, b + 3, b + 0); // left
+      indices.push(a + 3, a + 2, b + 2, a + 3, b + 2, b + 3);
+      indices.push(a + 2, a + 1, b + 1, a + 2, b + 1, b + 2);
+      indices.push(a + 0, a + 3, b + 3, a + 0, b + 3, b + 0);
     }
   }
 
@@ -132,113 +168,119 @@ function createTrackFloorRibbon(
   return geo;
 }
 
-function addTrackBedAndRails(
+function addChunkedTrackBedAndRails(
   root: THREE.Group,
   alignment: TrackAlignment,
   routeLengthM: number,
   stations: readonly IStationSpec[],
   ballastTex: THREE.CanvasTexture,
   disposables: Array<{ dispose(): void }>,
+  registerCullable: (startM: number, endM: number, object: THREE.Object3D) => void,
 ): void {
   const startDist = -110;
   const endDist = routeLengthM + 30;
-
-  const floorGeo = createTrackFloorRibbon(startDist, endDist, alignment);
   const floorMat = new THREE.MeshStandardMaterial({ map: ballastTex, roughness: 0.94, metalness: 0.04 });
-  root.add(new THREE.Mesh(floorGeo, floorMat));
-
   const railMat = new THREE.MeshStandardMaterial({ color: 0xb8c4d4, roughness: 0.24, metalness: 0.88 });
-  const playerRailLeftGeo = createTrackBeamGeometry(startDist, endDist, alignment, () => -0.72, 0.08, 0.14, 0.15, true);
-  const playerRailRightGeo = createTrackBeamGeometry(startDist, endDist, alignment, () => 0.72, 0.08, 0.14, 0.15, true);
-  const oppRailLeftGeo = createTrackBeamGeometry(
-    startDist,
-    endDist,
-    alignment,
-    (d) => getOppositeTrackX(d, stations) - 0.72,
-    0.08,
-    0.14,
-    0.15,
-    false,
-  );
-  const oppRailRightGeo = createTrackBeamGeometry(
-    startDist,
-    endDist,
-    alignment,
-    (d) => getOppositeTrackX(d, stations) + 0.72,
-    0.08,
-    0.14,
-    0.15,
-    false,
-  );
-  root.add(
-    new THREE.Mesh(playerRailLeftGeo, railMat),
-    new THREE.Mesh(playerRailRightGeo, railMat),
-    new THREE.Mesh(oppRailLeftGeo, railMat),
-    new THREE.Mesh(oppRailRightGeo, railMat),
-  );
-
   const thirdRailMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.55, metalness: 0.2 });
-  const playerThirdGeo = createTrackBeamGeometry(startDist, endDist, alignment, () => -1.32, 0.14, 0.12, 0.22, true);
-  const oppThirdGeo = createTrackBeamGeometry(
-    startDist,
-    endDist,
-    alignment,
-    (d) => getOppositeTrackX(d, stations) - 1.32,
-    0.14,
-    0.12,
-    0.22,
-    false,
-  );
-  root.add(new THREE.Mesh(playerThirdGeo, thirdRailMat), new THREE.Mesh(oppThirdGeo, thirdRailMat));
+  disposables.push(floorMat, railMat, thirdRailMat);
 
-  disposables.push(
-    floorGeo,
-    floorMat,
-    railMat,
-    playerRailLeftGeo,
-    playerRailRightGeo,
-    oppRailLeftGeo,
-    oppRailRightGeo,
-    thirdRailMat,
-    playerThirdGeo,
-    oppThirdGeo,
-  );
+  for (let chunkStart = startDist; chunkStart < endDist; chunkStart += TRACK_CHUNK_LENGTH_M) {
+    const chunkEnd = Math.min(endDist, chunkStart + TRACK_CHUNK_LENGTH_M + 4);
+    const chunkGroup = new THREE.Group();
+
+    const floorGeo = createTrackFloorRibbon(chunkStart, chunkEnd, alignment);
+    const pLeftGeo = createTrackBeamGeometry(chunkStart, chunkEnd, alignment, () => -0.72, 0.08, 0.14, 0.15, true);
+    const pRightGeo = createTrackBeamGeometry(chunkStart, chunkEnd, alignment, () => 0.72, 0.08, 0.14, 0.15, true);
+    const oLeftGeo = createTrackBeamGeometry(
+      chunkStart,
+      chunkEnd,
+      alignment,
+      (d) => getOppositeTrackX(d, stations) - 0.72,
+      0.08,
+      0.14,
+      0.15,
+      false,
+    );
+    const oRightGeo = createTrackBeamGeometry(
+      chunkStart,
+      chunkEnd,
+      alignment,
+      (d) => getOppositeTrackX(d, stations) + 0.72,
+      0.08,
+      0.14,
+      0.15,
+      false,
+    );
+    const pThirdGeo = createTrackBeamGeometry(chunkStart, chunkEnd, alignment, () => -1.32, 0.14, 0.12, 0.22, true);
+    const oThirdGeo = createTrackBeamGeometry(
+      chunkStart,
+      chunkEnd,
+      alignment,
+      (d) => getOppositeTrackX(d, stations) - 1.32,
+      0.14,
+      0.12,
+      0.22,
+      false,
+    );
+
+    chunkGroup.add(
+      new THREE.Mesh(floorGeo, floorMat),
+      new THREE.Mesh(pLeftGeo, railMat),
+      new THREE.Mesh(pRightGeo, railMat),
+      new THREE.Mesh(oLeftGeo, railMat),
+      new THREE.Mesh(oRightGeo, railMat),
+      new THREE.Mesh(pThirdGeo, thirdRailMat),
+      new THREE.Mesh(oThirdGeo, thirdRailMat),
+    );
+    root.add(chunkGroup);
+    registerCullable(chunkStart, chunkEnd, chunkGroup);
+    disposables.push(floorGeo, pLeftGeo, pRightGeo, oLeftGeo, oRightGeo, pThirdGeo, oThirdGeo);
+  }
 }
 
-function addInstancedSleepers(
+function addChunkedInstancedSleepers(
   root: THREE.Group,
   alignment: TrackAlignment,
   routeLengthM: number,
   stations: readonly IStationSpec[],
   disposables: Array<{ dispose(): void }>,
+  registerCullable: (startM: number, endM: number, object: THREE.Object3D) => void,
 ): void {
-  const count = Math.floor((routeLengthM + 120) / SLEEPER_SPACING_M);
   const geo = new THREE.BoxGeometry(2.15, 0.08, 0.24);
   const mat = new THREE.MeshStandardMaterial({ color: 0x383634, roughness: 0.92, metalness: 0.05 });
-  const mesh = new THREE.InstancedMesh(geo, mat, count * 2);
+  disposables.push(geo, mat);
+
   const dummy = new THREE.Object3D();
   dummy.rotation.order = 'YXZ';
+  const startAll = -104;
+  const endAll = routeLengthM + 16;
 
-  for (let i = 0; i < count; i += 1) {
-    const distM = -104 + i * SLEEPER_SPACING_M;
-    const s = alignment.sample(distM);
-    dummy.position.set(s.x, s.y + 0.045, s.z);
-    dummy.rotation.set(s.pitch, s.yaw, s.cantRollRad);
-    dummy.updateMatrix();
-    mesh.setMatrixAt(i * 2, dummy.matrix);
+  for (let chunkStart = startAll; chunkStart < endAll; chunkStart += TRACK_CHUNK_LENGTH_M) {
+    const chunkEnd = Math.min(endAll, chunkStart + TRACK_CHUNK_LENGTH_M);
+    const count = Math.max(1, Math.floor((chunkEnd - chunkStart) / SLEEPER_SPACING_M));
+    const mesh = new THREE.InstancedMesh(geo, mat, count * 2);
 
-    const oppX = getOppositeTrackX(distM, stations);
-    const oppYaw = getOppositeTrackYaw(distM, stations);
-    const oppPt = alignment.toWorldPoint(distM, oppX, 0.045, false);
-    dummy.position.set(oppPt.x, oppPt.y, oppPt.z);
-    dummy.rotation.set(s.pitch, s.yaw + oppYaw, 0);
-    dummy.updateMatrix();
-    mesh.setMatrixAt(i * 2 + 1, dummy.matrix);
+    for (let i = 0; i < count; i += 1) {
+      const distM = chunkStart + i * SLEEPER_SPACING_M;
+      const s = alignment.sample(distM);
+      dummy.position.set(s.x, s.y + 0.045, s.z);
+      dummy.rotation.set(s.pitch, s.yaw, s.cantRollRad);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i * 2, dummy.matrix);
+
+      const oppX = getOppositeTrackX(distM, stations);
+      const oppYaw = getOppositeTrackYaw(distM, stations);
+      const oppPt = alignment.toWorldPoint(distM, oppX, 0.045, false);
+      dummy.position.set(oppPt.x, oppPt.y, oppPt.z);
+      dummy.rotation.set(s.pitch, s.yaw + oppYaw, 0);
+      dummy.updateMatrix();
+      mesh.setMatrixAt(i * 2 + 1, dummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.frustumCulled = false;
+    root.add(mesh);
+    registerCullable(chunkStart, chunkEnd, mesh);
   }
-  mesh.instanceMatrix.needsUpdate = true;
-  mesh.frustumCulled = false;
-  root.add(mesh);
-  disposables.push(geo, mat);
 }
 
 function computeUndergroundTunnelSpans(
@@ -272,6 +314,7 @@ function addCurvedTunnelShells(
   stations: readonly IStationSpec[],
   concreteTex: THREE.CanvasTexture,
   disposables: Array<{ dispose(): void }>,
+  registerCullable: (startM: number, endM: number, object: THREE.Object3D) => void,
 ): void {
   const spans = computeUndergroundTunnelSpans(alignment, routeLengthM, stations);
   const wallMat = new THREE.MeshStandardMaterial({
@@ -284,7 +327,9 @@ function addCurvedTunnelShells(
 
   spans.forEach((span) => {
     const geo = buildTunnelSpanShellGeometry(span.startM, span.endM, alignment, stations);
-    root.add(new THREE.Mesh(geo, wallMat));
+    const mesh = new THREE.Mesh(geo, wallMat);
+    root.add(mesh);
+    registerCullable(span.startM, span.endM, mesh);
     disposables.push(geo);
   });
 }
@@ -309,7 +354,6 @@ function buildTunnelSpanShellGeometry(
     const pRT = alignment.toWorldPoint(d, RIGHT_WALL_X, 5.25, false);
     const pRB = alignment.toWorldPoint(d, RIGHT_WALL_X, 0, false);
 
-    // 4 vertices per cross section: 0=leftBot, 1=leftTop, 2=rightTop, 3=rightBot
     positions.push(
       pLB.x, pLB.y, pLB.z,
       pLT.x, pLT.y, pLT.z,
@@ -321,11 +365,8 @@ function buildTunnelSpanShellGeometry(
     if (i < steps) {
       const a = i * 4;
       const b = (i + 1) * 4;
-      // Left inner wall (faces +X)
       indices.push(a + 0, b + 0, b + 1, a + 0, b + 1, a + 1);
-      // Ceiling (faces -Y)
       indices.push(a + 1, b + 1, b + 2, a + 1, b + 2, a + 2);
-      // Right inner wall (faces -X)
       indices.push(a + 2, b + 2, b + 3, a + 2, b + 3, a + 3);
     }
   }
@@ -338,24 +379,17 @@ function buildTunnelSpanShellGeometry(
   return geo;
 }
 
-function addTunnelRibsAndLamps(
+function addChunkedTunnelRibsAndLamps(
   root: THREE.Group,
   alignment: TrackAlignment,
   routeLengthM: number,
   stations: readonly IStationSpec[],
   disposables: Array<{ dispose(): void }>,
+  registerCullable: (startM: number, endM: number, object: THREE.Object3D) => void,
 ): void {
   const startBoundary = alignment.tunnelPortalDistanceM !== null ? alignment.tunnelPortalDistanceM + 8 : -112;
-  const bayDistances: number[] = [];
-  for (let distM = startBoundary; distM <= routeLengthM + 16; distM += BAY_LENGTH_M) {
-    if (!isWithinStationHall(distM, stations)) {
-      bayDistances.push(distM);
-    }
-  }
-  const n = bayDistances.length;
-  if (n === 0) {
-    return;
-  }
+  const endBoundary = routeLengthM + 16;
+
   const baseWidth = 10.8;
   const colGeo = new THREE.BoxGeometry(0.42, 5.1, 0.55);
   const beamGeo = new THREE.BoxGeometry(baseWidth, 0.36, 0.52);
@@ -370,62 +404,79 @@ function addTunnelRibsAndLamps(
     emissiveIntensity: 2.5,
     roughness: 0.2,
   });
-
-  const cols = new THREE.InstancedMesh(colGeo, colMat, n * 3);
-  const beams = new THREE.InstancedMesh(beamGeo, colMat, n);
-  const cables = new THREE.InstancedMesh(cableGeo, cableMat, n * 6);
-  const lamps = new THREE.InstancedMesh(lampGeo, lampMat, n * 2);
+  disposables.push(colGeo, beamGeo, cableGeo, lampGeo, colMat, cableMat, lampMat);
 
   const dummy = new THREE.Object3D();
   dummy.rotation.order = 'YXZ';
   const cableHeights = [1.32, 1.56, 1.8];
 
-  bayDistances.forEach((distM, i) => {
-    const s = alignment.sample(distM);
-    const oppX = getOppositeTrackX(distM, stations);
-    const leftWallX = oppX - 3.2;
-    const spanW = RIGHT_WALL_X - leftWallX;
-    const centerX = (leftWallX + RIGHT_WALL_X) * 0.5;
-    const midColX = oppX * 0.5;
+  for (let chunkStart = startBoundary; chunkStart < endBoundary; chunkStart += TRACK_CHUNK_LENGTH_M) {
+    const chunkEnd = Math.min(endBoundary, chunkStart + TRACK_CHUNK_LENGTH_M);
+    const bayDistances: number[] = [];
+    for (let distM = chunkStart; distM < chunkEnd; distM += BAY_LENGTH_M) {
+      if (!isWithinStationHall(distM, stations)) {
+        bayDistances.push(distM);
+      }
+    }
+    const n = bayDistances.length;
+    if (n === 0) {
+      continue;
+    }
 
-    const place = (latX: number, upY: number, scaleX = 1, distOffset = 0): void => {
-      const sampleAt = distOffset === 0 ? s : alignment.sample(distM + distOffset);
-      const pt = alignment.toWorldPoint(distM + distOffset, latX, upY, false);
-      dummy.position.set(pt.x, pt.y, pt.z);
-      dummy.rotation.set(sampleAt.pitch, sampleAt.yaw, 0);
-      dummy.scale.set(scaleX, 1, 1);
-      dummy.updateMatrix();
-    };
+    const chunkGroup = new THREE.Group();
+    const cols = new THREE.InstancedMesh(colGeo, colMat, n * 3);
+    const beams = new THREE.InstancedMesh(beamGeo, colMat, n);
+    const cables = new THREE.InstancedMesh(cableGeo, cableMat, n * 6);
+    const lamps = new THREE.InstancedMesh(lampGeo, lampMat, n * 2);
 
-    place(centerX, 4.92, spanW / baseWidth);
-    beams.setMatrixAt(i, dummy.matrix);
+    bayDistances.forEach((distM, i) => {
+      const s = alignment.sample(distM);
+      const oppX = getOppositeTrackX(distM, stations);
+      const leftWallX = oppX - 3.2;
+      const spanW = RIGHT_WALL_X - leftWallX;
+      const centerX = (leftWallX + RIGHT_WALL_X) * 0.5;
+      const midColX = oppX * 0.5;
 
-    place(leftWallX + 0.28, 2.55);
-    cols.setMatrixAt(i * 3, dummy.matrix);
-    place(midColX, 2.55);
-    cols.setMatrixAt(i * 3 + 1, dummy.matrix);
-    place(RIGHT_WALL_X - 0.28, 2.55);
-    cols.setMatrixAt(i * 3 + 2, dummy.matrix);
+      const place = (latX: number, upY: number, scaleX = 1, distOffset = 0): void => {
+        const sampleAt = distOffset === 0 ? s : alignment.sample(distM + distOffset);
+        const pt = alignment.toWorldPoint(distM + distOffset, latX, upY, false);
+        dummy.position.set(pt.x, pt.y, pt.z);
+        dummy.rotation.set(sampleAt.pitch, sampleAt.yaw, 0);
+        dummy.scale.set(scaleX, 1, 1);
+        dummy.updateMatrix();
+      };
 
-    cableHeights.forEach((h, tier) => {
-      place(leftWallX + 0.18, h);
-      cables.setMatrixAt(i * 6 + tier * 2, dummy.matrix);
-      place(RIGHT_WALL_X - 0.18, h);
-      cables.setMatrixAt(i * 6 + tier * 2 + 1, dummy.matrix);
+      place(centerX, 4.92, spanW / baseWidth);
+      beams.setMatrixAt(i, dummy.matrix);
+
+      place(leftWallX + 0.28, 2.55);
+      cols.setMatrixAt(i * 3, dummy.matrix);
+      place(midColX, 2.55);
+      cols.setMatrixAt(i * 3 + 1, dummy.matrix);
+      place(RIGHT_WALL_X - 0.28, 2.55);
+      cols.setMatrixAt(i * 3 + 2, dummy.matrix);
+
+      cableHeights.forEach((h, tier) => {
+        place(leftWallX + 0.18, h);
+        cables.setMatrixAt(i * 6 + tier * 2, dummy.matrix);
+        place(RIGHT_WALL_X - 0.18, h);
+        cables.setMatrixAt(i * 6 + tier * 2 + 1, dummy.matrix);
+      });
+
+      place(leftWallX + 0.26, 3.65, 1, -3.5);
+      lamps.setMatrixAt(i * 2, dummy.matrix);
+      place(RIGHT_WALL_X - 0.26, 3.65, 1, -3.5);
+      lamps.setMatrixAt(i * 2 + 1, dummy.matrix);
     });
 
-    place(leftWallX + 0.26, 3.65, 1, -3.5);
-    lamps.setMatrixAt(i * 2, dummy.matrix);
-    place(RIGHT_WALL_X - 0.26, 3.65, 1, -3.5);
-    lamps.setMatrixAt(i * 2 + 1, dummy.matrix);
-  });
-
-  [cols, beams, cables, lamps].forEach((inst) => {
-    inst.instanceMatrix.needsUpdate = true;
-    inst.frustumCulled = false;
-    root.add(inst);
-  });
-  disposables.push(colGeo, beamGeo, cableGeo, lampGeo, colMat, cableMat, lampMat);
+    [cols, beams, cables, lamps].forEach((inst) => {
+      inst.instanceMatrix.needsUpdate = true;
+      inst.frustumCulled = false;
+      chunkGroup.add(inst);
+    });
+    root.add(chunkGroup);
+    registerCullable(chunkStart, chunkEnd, chunkGroup);
+  }
 }
 
 function addSpeedLimitSigns(
@@ -434,19 +485,20 @@ function addSpeedLimitSigns(
   speedZones: readonly ISpeedLimitZone[],
   maxAnisotropy: number,
   disposables: Array<{ dispose(): void }>,
+  registerCullable: (startM: number, endM: number, object: THREE.Object3D) => void,
 ): void {
   const postGeo = new THREE.CylinderGeometry(0.04, 0.04, 2.2, 8);
   const postMat = new THREE.MeshStandardMaterial({ color: 0x475569, roughness: 0.5, metalness: 0.7 });
   const signGeo = new THREE.PlaneGeometry(0.68, 0.68);
   disposables.push(postGeo, postMat, signGeo);
 
-  speedZones.forEach((zone) => {
-    if (zone.startM <= 10) {
-      return;
+  const cachedMats = new Map<number, THREE.MeshStandardMaterial>();
+  const getSpeedMat = (limitKmh: number): THREE.MeshStandardMaterial => {
+    const existing = cachedMats.get(limitKmh);
+    if (existing) {
+      return existing;
     }
-    const s = alignment.sample(zone.startM);
-    const pt = alignment.toWorldPoint(zone.startM, -1.92, 0, false);
-    const signTex = createSpeedSignTexture(zone.limitKmh, maxAnisotropy);
+    const signTex = createSpeedSignTexture(limitKmh, maxAnisotropy);
     const signMat = new THREE.MeshStandardMaterial({
       map: signTex,
       emissiveMap: signTex,
@@ -454,16 +506,27 @@ function addSpeedLimitSigns(
       emissiveIntensity: 0.45,
       roughness: 0.35,
     });
+    disposables.push(signTex, signMat);
+    cachedMats.set(limitKmh, signMat);
+    return signMat;
+  };
+
+  speedZones.forEach((zone) => {
+    if (zone.startM <= 10) {
+      return;
+    }
+    const s = alignment.sample(zone.startM);
+    const pt = alignment.toWorldPoint(zone.startM, -1.92, 0, false);
     const signGroup = new THREE.Group();
     signGroup.position.set(pt.x, pt.y, pt.z);
     signGroup.rotation.set(0, s.yaw, 0);
     const post = new THREE.Mesh(postGeo, postMat);
     post.position.set(0, 1.1, 0);
-    const sign = new THREE.Mesh(signGeo, signMat);
+    const sign = new THREE.Mesh(signGeo, getSpeedMat(zone.limitKmh));
     sign.position.set(0, 2.15, 0.06);
     signGroup.add(post, sign);
     root.add(signGroup);
-    disposables.push(signTex, signMat);
+    registerCullable(zone.startM, zone.startM, signGroup);
   });
 }
 
@@ -472,12 +535,33 @@ function addCurveWarningSigns(
   alignment: TrackAlignment,
   maxAnisotropy: number,
   disposables: Array<{ dispose(): void }>,
+  registerCullable: (startM: number, endM: number, object: THREE.Object3D) => void,
 ): void {
   const postGeo = new THREE.CylinderGeometry(0.048, 0.055, 2.35, 8);
   const postMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.5, metalness: 0.7 });
   const signGeo = new THREE.PlaneGeometry(1.12, 1.12);
   const backGeo = new THREE.BoxGeometry(1.18, 1.18, 0.07);
   disposables.push(postGeo, postMat, signGeo, backGeo);
+
+  const cachedMats = new Map<string, THREE.MeshStandardMaterial>();
+  const getCurveMat = (limitKmh: number, direction: 'left' | 'right'): THREE.MeshStandardMaterial => {
+    const key = `${limitKmh}:${direction}`;
+    const existing = cachedMats.get(key);
+    if (existing) {
+      return existing;
+    }
+    const tex = createCurveLimitSignTexture(limitKmh, direction, maxAnisotropy);
+    const mat = new THREE.MeshStandardMaterial({
+      map: tex,
+      emissiveMap: tex,
+      emissive: 0xffffff,
+      emissiveIntensity: 0.85,
+      roughness: 0.28,
+    });
+    disposables.push(tex, mat);
+    cachedMats.set(key, mat);
+    return mat;
+  };
 
   alignment.curveZones.forEach((curve) => {
     if (curve.speedLimitKmh === undefined || curve.signDistanceM === undefined) {
@@ -486,14 +570,6 @@ function addCurveWarningSigns(
     const distM = curve.signDistanceM;
     const s = alignment.sample(distM);
     const pt = alignment.toWorldPoint(distM, 2.18, 0, false);
-    const tex = createCurveLimitSignTexture(curve.speedLimitKmh, curve.direction, maxAnisotropy);
-    const mat = new THREE.MeshStandardMaterial({
-      map: tex,
-      emissiveMap: tex,
-      emissive: 0xffffff,
-      emissiveIntensity: 0.85,
-      roughness: 0.28,
-    });
     const signGroup = new THREE.Group();
     signGroup.position.set(pt.x, pt.y, pt.z);
     signGroup.rotation.set(0, s.yaw, 0);
@@ -501,11 +577,11 @@ function addCurveWarningSigns(
     post.position.set(0, 1.18, 0);
     const back = new THREE.Mesh(backGeo, postMat);
     back.position.set(0, 2.18, 0);
-    const face = new THREE.Mesh(signGeo, mat);
+    const face = new THREE.Mesh(signGeo, getCurveMat(curve.speedLimitKmh, curve.direction));
     face.position.set(0, 2.18, 0.045);
     signGroup.add(post, back, face);
     root.add(signGroup);
-    disposables.push(tex, mat);
+    registerCullable(distM, distM, signGroup);
   });
 }
 
@@ -516,6 +592,7 @@ function addMeterMarkerPlaques(
   stations: readonly IStationSpec[],
   maxAnisotropy: number,
   disposables: Array<{ dispose(): void }>,
+  registerCullable: (startM: number, endM: number, object: THREE.Object3D) => void,
 ): void {
   const startBoundary = alignment.tunnelPortalDistanceM !== null ? alignment.tunnelPortalDistanceM + 20 : 100;
   const plaqueGeo = new THREE.BoxGeometry(0.06, 0.34, 0.64);
@@ -546,6 +623,7 @@ function addMeterMarkerPlaques(
     face.rotation.y = -Math.PI / 2;
     holder.add(backing, face);
     root.add(holder);
+    registerCullable(distM, distM, holder);
     disposables.push(tex, mat);
   }
 }

@@ -36,26 +36,26 @@ function makeInput(overrides: Partial<IControlInput> = {}): IControlInput {
   };
 }
 
-test('M1 and M2 configure island majority with Centrum, Politechnika and Stadion Narodowy as side platforms', () => {
-  const m1IslandCount = LINE_M1_STATIONS.filter((s) => getStationPlatformLayout(s) === 'island').length;
+test('M1 configures real side platforms (Centrum, Słodowiec, Stare Bielany, Wawrzyszew, Młociny) and M2 uses island platforms', () => {
+  const m1SideNames = LINE_M1_STATIONS.filter((s) => getStationPlatformLayout(s) === 'side').map((s) => s.name);
+  assert.deepEqual(m1SideNames, ['Centrum', 'Słodowiec', 'Stare Bielany', 'Wawrzyszew', 'Młociny']);
   const m2IslandCount = LINE_M2_STATIONS.filter((s) => getStationPlatformLayout(s) === 'island').length;
-  assert.ok(m1IslandCount > LINE_M1_STATIONS.length / 2);
-  assert.ok(m2IslandCount > LINE_M2_STATIONS.length / 2);
+  assert.equal(m2IslandCount, LINE_M2_STATIONS.length);
 
   const politechnika = LINE_M1_STATIONS.find((s) => s.name === 'Politechnika');
   const centrum = LINE_M1_STATIONS.find((s) => s.name === 'Centrum');
   const kabaty = LINE_M1_STATIONS.find((s) => s.name === 'Kabaty');
   const stadion = LINE_M2_STATIONS.find((s) => s.name === 'Stadion Narodowy');
-  assert.equal(politechnika?.platformLayout, 'side');
-  assert.equal(politechnika?.platformSide, 'right');
+  assert.equal(politechnika?.platformLayout, 'island');
+  assert.equal(politechnika?.platformSide, 'left');
   assert.equal(centrum?.platformLayout, 'side');
   assert.equal(centrum?.platformSide, 'right');
   assert.equal(kabaty?.platformLayout, 'island');
   assert.equal(kabaty?.platformSide, 'left');
-  assert.equal(stadion?.platformLayout, 'side');
-  assert.equal(stadion?.platformSide, 'right');
+  assert.equal(stadion?.platformLayout, 'island');
+  assert.equal(stadion?.platformSide, 'left');
   assert.equal(METRO_LINE_M1.oppositeDestinationLed, 'KABATY');
-  assert.equal(METRO_LINE_M2.oppositeDestinationLed, 'BEMOWO');
+  assert.equal(METRO_LINE_M2.oppositeDestinationLed, 'BRÓDNO');
 });
 
 test('opposite track smoothly curves out to island station X and stays adjacent at side stations', () => {
@@ -72,9 +72,9 @@ test('opposite track smoothly curves out to island station X and stays adjacent 
   assert.ok(midX < STANDARD_OPPOSITE_TRACK_X && midX > ISLAND_OPPOSITE_TRACK_X);
   assert.ok(Math.abs(getOppositeTrackYaw(466, LINE_M1_STATIONS)) > 0.01);
 
-  // Inside Natolin (side, 1200m) — opposite track stays right next to player track
-  assert.equal(getOppositeTrackX(1170, LINE_M1_STATIONS), STANDARD_OPPOSITE_TRACK_X);
-  assert.equal(getStationPlatformSide(LINE_M1_STATIONS[1]), 'right');
+  // Inside Centrum (side, 7200m) — opposite track stays right next to player track
+  assert.equal(getOppositeTrackX(7170, LINE_M1_STATIONS), STANDARD_OPPOSITE_TRACK_X);
+  assert.equal(getStationPlatformSide(LINE_M1_STATIONS[11]), 'right');
 });
 
 test('wrong-side door attempt is blocked with safety penalty in Duty and zero penalty in Sandbox', () => {

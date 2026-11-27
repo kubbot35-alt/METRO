@@ -58,8 +58,14 @@ const SHORTCUTS: readonly IShortcutEntry[] = [
   {
     keyPl: 'V',
     keyEn: 'V',
-    actionPl: 'Zmiana kamery (Kabina · Lusterko · Zewnętrzna · Wnętrze wagonu)',
-    actionEn: 'Cycle camera (Cab · Mirror · Exterior · Passenger Interior)',
+    actionPl: 'Zmiana kamery (Kabina · Lusterko · Zewn. · Wnętrze · Wózek · Peronowa)',
+    actionEn: 'Cycle camera (Cab · Mirror · Exterior · Interior · Bogie · Station)',
+  },
+  {
+    keyPl: 'M / Klik na monitor 3D',
+    keyEn: 'M / Click 3D Monitor',
+    actionPl: 'Powiększony podgląd CCTV (L/P/Wnętrze) w rogu ekranu',
+    actionEn: 'Enlarged CCTV PiP monitor (L/R/Interior) in screen corner',
   },
   {
     keyPl: 'F',
@@ -98,7 +104,7 @@ const SHORTCUTS: readonly IShortcutEntry[] = [
     actionEn: 'Cab ceiling dome light (on / off)',
   },
   { keyPl: 'H', keyEn: 'H', actionPl: 'Klakson', actionEn: 'Horn' },
-  { keyPl: 'M', keyEn: 'M', actionPl: 'Wyciszenie dźwięków', actionEn: 'Mute audio' },
+  { keyPl: 'Shift + M / U', keyEn: 'Shift + M / U', actionPl: 'Wyciszenie dźwięków', actionEn: 'Mute audio' },
   {
     keyPl: 'P / Esc',
     keyEn: 'P / Esc',

@@ -137,6 +137,8 @@ export const CAMERA_MODE_LABELS: Record<CameraMode, string> = {
   mirror: 'Widok 2: Lusterko / Podgląd peronu',
   exterior: 'Widok 3: Kamera zewnętrzna',
   interior: 'Widok 4: Wnętrze wagonu (Pasażer)',
+  bogie: 'Widok 5: Kamera wózka / torowa',
+  station: 'Widok 6: Kamera stacyjna (Peronowa)',
 };
 
 export function getNextCameraMode(current: CameraMode): CameraMode {
@@ -148,6 +150,12 @@ export function getNextCameraMode(current: CameraMode): CameraMode {
   }
   if (current === 'exterior') {
     return 'interior';
+  }
+  if (current === 'interior') {
+    return 'bogie';
+  }
+  if (current === 'bogie') {
+    return 'station';
   }
   return 'cab';
 }

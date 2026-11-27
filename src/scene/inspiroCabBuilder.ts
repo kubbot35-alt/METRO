@@ -1,11 +1,14 @@
 import * as THREE from 'three';
 import type { ISimulationSnapshot } from '../domain/types';
+import { getStationPlatformSide } from '../domain/trackGeometry';
+import { addModernCabCctvMonitors, type ICabMirrorHardware } from './cabMirrorAttachments';
 import { createInspiroCabScreens } from './inspiroTextures';
 
 export interface IInspiroCabInterior {
   readonly group: THREE.Group;
   readonly leverPivot: THREE.Group;
   readonly wiperPivot: THREE.Group;
+  readonly mirrorHardware: ICabMirrorHardware;
   update(snapshot: ISimulationSnapshot, dtSec: number): void;
   dispose(): void;
 }
@@ -33,7 +36,7 @@ export function buildInspiroCabInterior(maxAnisotropy: number): IInspiroCabInter
     lamps.doorMat, lamps.warnMat, lamps.headlightMat, lamps.czuwakMat,
   );
 
-  addSlopedWindshieldFrame(group, darkPanelMat, aluminumMat, bezelMat, screens.mirrorMonitorTexture, disposables);
+  const mirrorHardware = addSlopedWindshieldFrame(group, darkPanelMat, aluminumMat, bezelMat, disposables);
   addSculptedInspiroDesk(group, deskTopMat, darkPanelMat, bezelMat, screens.leftLcdTexture, screens.rightLcdTexture, lamps, disposables);
   const leverPivot = addErgonomicMasterLever(group, darkPanelMat, aluminumMat, disposables);
   const wiperPivot = addCabWiper(group, disposables);
@@ -43,8 +46,12 @@ export function buildInspiroCabInterior(maxAnisotropy: number): IInspiroCabInter
     group,
     leverPivot,
     wiperPivot,
+    mirrorHardware,
     update: (snapshot: ISimulationSnapshot, dtSec: number): void => {
       screens.update(snapshot, dtSec);
+      const platformSide = getStationPlatformSide(snapshot.currentStation.station);
+      const nearStation = Math.abs(snapshot.currentStation.distanceToTargetM) < 95;
+      mirrorHardware.setActivePlatformSide(platformSide, nearStation);
       lamps.doorMat.emissiveIntensity = snapshot.doorState === 'open' ? 2.8 : 0.45;
       const warnActive = snapshot.isOverspeeding || snapshot.kinematics.emergencyBrake || snapshot.atpActive;
       lamps.warnMat.emissiveIntensity = warnActive ? 3.4 : 0.2;
@@ -75,9 +82,8 @@ function addSlopedWindshieldFrame(
   panelMat: THREE.MeshStandardMaterial,
   trimMat: THREE.MeshStandardMaterial,
   bezelMat: THREE.MeshStandardMaterial,
-  monitorTex: THREE.CanvasTexture,
   disposables: Array<{ dispose(): void }>,
-): void {
+): ICabMirrorHardware {
   const pillarGeo = new THREE.BoxGeometry(0.11, 1.48, 0.16);
   const leftPillar = new THREE.Mesh(pillarGeo, panelMat);
   leftPillar.position.set(-0.92, 0.05, -0.96);
@@ -105,38 +111,13 @@ function addSlopedWindshieldFrame(
   rightGrab.rotation.set(0.24, 0, 0.14);
 
   group.add(leftPillar, rightPillar, header, visor, leftGrab, rightGrab);
-  addUpperPlatformMonitors(group, bezelMat, monitorTex, disposables);
   disposables.push(pillarGeo, headerGeo, visorGeo, grabGeo);
-}
-
-function addUpperPlatformMonitors(
-  group: THREE.Group,
-  bezelMat: THREE.MeshStandardMaterial,
-  monitorTex: THREE.CanvasTexture,
-  disposables: Array<{ dispose(): void }>,
-): void {
-  const bodyGeo = new THREE.BoxGeometry(0.22, 0.13, 0.036);
-  const screenGeo = new THREE.PlaneGeometry(0.196, 0.108);
-  const screenMat = new THREE.MeshStandardMaterial({
-    map: monitorTex,
-    emissiveMap: monitorTex,
-    emissive: 0xffffff,
-    emissiveIntensity: 0.78,
-    roughness: 0.24,
-  });
-
-  ([-1, 1] as const).forEach((side) => {
-    const monGroup = new THREE.Group();
-    monGroup.position.set(side * 0.73, 0.36, -0.94);
-    monGroup.rotation.set(0.14, -side * 0.3, 0);
-    const housing = new THREE.Mesh(bodyGeo, bezelMat);
-    const screen = new THREE.Mesh(screenGeo, screenMat);
-    screen.position.set(0, 0, 0.02);
-    monGroup.add(housing, screen);
-    group.add(monGroup);
-  });
-
-  disposables.push(bodyGeo, screenGeo, screenMat);
+  return addModernCabCctvMonitors(
+    group,
+    bezelMat,
+    { offsetX: 0.72, posY: 0.36, posZ: -0.94, pitchRad: 0.14, yawRad: 0.3, width: 0.22, height: 0.14 },
+    disposables,
+  );
 }
 
 function addSculptedInspiroDesk(

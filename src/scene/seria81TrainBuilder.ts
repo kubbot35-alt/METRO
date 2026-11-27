@@ -46,9 +46,29 @@ export function buildSeria81Consist(maxAnisotropy: number): ISeria81ConsistBuild
   const doorPairs: ISlidingDoorPair[] = [];
   const axles: THREE.Mesh[] = [];
 
+  const mirrorArmGeo = new THREE.BoxGeometry(0.24, 0.022, 0.022);
+  const mirrorHousingGeo = new THREE.BoxGeometry(0.06, 0.28, 0.16);
+  const mirrorGlassGeo = new THREE.PlaneGeometry(0.14, 0.24);
+  const mirrorGlassMat = new THREE.MeshStandardMaterial({
+    color: 0xcbd5e1,
+    roughness: 0.12,
+    metalness: 0.92,
+  });
+  disposables.push(mirrorArmGeo, mirrorHousingGeo, mirrorGlassGeo, mirrorGlassMat);
+
   for (let i = 0; i < CAR_COUNT; i += 1) {
     const carZ = i * (SERIA81_CAR_LENGTH + SERIA81_CAR_GAP) + SERIA81_CAR_LENGTH * 0.5;
-    addSeria81Car(group, carZ, i === 0, i === CAR_COUNT - 1, mats, geos, doorPairs, axles);
+    addSeria81Car(
+      group,
+      carZ,
+      i === 0,
+      i === CAR_COUNT - 1,
+      mats,
+      geos,
+      doorPairs,
+      axles,
+      { mirrorArmGeo, mirrorHousingGeo, mirrorGlassGeo, mirrorGlassMat },
+    );
     if (i < CAR_COUNT - 1) {
       const gangway = new THREE.Mesh(geos.gangway, mats.rubberBlack);
       gangway.position.set(0, 1.98, carZ + SERIA81_CAR_LENGTH * 0.5 + SERIA81_CAR_GAP * 0.5);
@@ -98,6 +118,13 @@ export function buildSeria81Consist(maxAnisotropy: number): ISeria81ConsistBuild
   };
 }
 
+interface IExteriorMirrorParts {
+  readonly mirrorArmGeo: THREE.BoxGeometry;
+  readonly mirrorHousingGeo: THREE.BoxGeometry;
+  readonly mirrorGlassGeo: THREE.PlaneGeometry;
+  readonly mirrorGlassMat: THREE.MeshStandardMaterial;
+}
+
 function addSeria81Car(
   root: THREE.Group,
   centerZ: number,
@@ -107,6 +134,7 @@ function addSeria81Car(
   geos: ISeria81Geometries,
   doorPairs: ISlidingDoorPair[],
   axles: THREE.Mesh[],
+  mirrorParts: IExteriorMirrorParts,
 ): void {
   const shell = new THREE.Mesh(geos.carShell, mats.upperBody);
   shell.position.set(0, 0, centerZ);
@@ -143,10 +171,10 @@ function addSeria81Car(
   BOGIE_OFFSETS_Z.forEach((bOff) => addBogie(root, centerZ + bOff, mats, geos, axles));
 
   if (isFront) {
-    addSeria81FrontFace(root, centerZ - SERIA81_CAR_LENGTH * 0.5, -1, true, mats, geos);
+    addSeria81FrontFace(root, centerZ - SERIA81_CAR_LENGTH * 0.5, -1, true, mats, geos, mirrorParts);
   }
   if (isRear) {
-    addSeria81FrontFace(root, centerZ + SERIA81_CAR_LENGTH * 0.5, 1, false, mats, geos);
+    addSeria81FrontFace(root, centerZ + SERIA81_CAR_LENGTH * 0.5, 1, false, mats, geos, mirrorParts);
   }
 }
 
@@ -223,6 +251,7 @@ function addSeria81FrontFace(
   isFront: boolean,
   mats: ISeria81Materials,
   geos: ISeria81Geometries,
+  mirrorParts: IExteriorMirrorParts,
 ): void {
   const face = new THREE.Group();
   face.position.set(0, 0, endZ);
@@ -291,6 +320,23 @@ function addSeria81FrontFace(
 
   const coupler = new THREE.Mesh(geos.coupler, mats.darkSteel);
   coupler.position.set(0, 0.58, -0.36);
+
+  // Physical 3D exterior wing mirrors on metal brackets flanking the cab
+  ([-1, 1] as const).forEach((side) => {
+    const mirrorUnit = new THREE.Group();
+    mirrorUnit.position.set(side * (SERIA81_CAR_WIDTH * 0.5 + 0.14), 2.52, 0.14);
+    const armTop = new THREE.Mesh(mirrorParts.mirrorArmGeo, mats.chromeSteel);
+    armTop.position.set(-side * 0.09, 0.09, 0);
+    const armBot = new THREE.Mesh(mirrorParts.mirrorArmGeo, mats.chromeSteel);
+    armBot.position.set(-side * 0.09, -0.09, 0);
+    const casing = new THREE.Mesh(mirrorParts.mirrorHousingGeo, mats.rubberBlack);
+    casing.rotation.y = -side * 0.28;
+    const glass = new THREE.Mesh(mirrorParts.mirrorGlassGeo, mirrorParts.mirrorGlassMat);
+    glass.position.set(0, 0, 0.082);
+    glass.rotation.y = -side * 0.28;
+    mirrorUnit.add(armTop, armBot, casing, glass);
+    face.add(mirrorUnit);
+  });
 
   face.add(
     frontPlate,

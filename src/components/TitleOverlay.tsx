@@ -8,6 +8,7 @@ import {
   getLocalizedTrain,
 } from '../domain/i18nCatalog';
 import { METRO_LINE_CATALOG } from '../domain/routeData';
+import { getRouteStartOptions } from '../domain/routeVariant';
 import { TIME_OF_DAY_CATALOG } from '../domain/timeOfDayCatalog';
 import { TRAIN_CATALOG } from '../domain/trainCatalog';
 import type {
@@ -22,6 +23,7 @@ import type {
   ITimeOfDaySpec,
   ITrainModelSpec,
   MetroLineId,
+  RouteDirection,
   TimeOfDayId,
   TrainModelId,
   WeatherModeId,
@@ -31,6 +33,9 @@ import { LeaderboardPanel } from './LeaderboardPanel';
 
 interface ITitleOverlayProps {
   readonly activeLine: IMetroLineSpec;
+  readonly baseLineSpec: IMetroLineSpec;
+  readonly routeDirection: RouteDirection;
+  readonly startStationIndex: number;
   readonly customLines: readonly ICustomLineDraft[];
   readonly driverProfile: IDriverProfileStats;
   readonly gamepadStatus: IGamepadStatus;
@@ -43,6 +48,8 @@ interface ITitleOverlayProps {
   readonly achievementsUnlocked: number;
   readonly achievementsTotal: number;
   readonly onSelectLine: (lineId: MetroLineId) => void;
+  readonly onSelectRouteDirection: (direction: RouteDirection) => void;
+  readonly onSelectStartStation: (startIndex: number) => void;
   readonly onOpenLineBuilder: () => void;
   readonly onEditCustomLine: (draft: ICustomLineDraft) => void;
   readonly onDeleteCustomLine: (id: string) => void;
@@ -100,6 +107,9 @@ const MODE_OPTIONS: ReadonlyArray<{
 
 export function TitleOverlay({
   activeLine,
+  baseLineSpec,
+  routeDirection,
+  startStationIndex,
   customLines,
   driverProfile,
   gamepadStatus,
@@ -112,6 +122,8 @@ export function TitleOverlay({
   achievementsUnlocked,
   achievementsTotal,
   onSelectLine,
+  onSelectRouteDirection,
+  onSelectStartStation,
   onOpenLineBuilder,
   onEditCustomLine,
   onDeleteCustomLine,
@@ -142,6 +154,7 @@ export function TitleOverlay({
     draft,
     spec: compileCustomLineSpec(draft),
   }));
+  const startOptions = getRouteStartOptions(baseLineSpec, routeDirection);
 
   return (
     <div className="fixed inset-0 z-20 pointer-events-none flex flex-col justify-between p-4 md:p-5 bg-gradient-to-r from-[#06090f]/94 via-[#06090f]/78 to-[#06090f]/45 overflow-y-auto">
@@ -157,7 +170,7 @@ export function TitleOverlay({
               <div className="min-w-0">
                 <p
                   data-testid="title-route-subtitle"
-                  className="text-[11px] font-mono-tabular tracking-[0.14em] uppercase truncate"
+                  className="text-[10.5px] font-mono-tabular tracking-[0.07em] uppercase truncate"
                   style={{ color: activeLine.cssColor }}
                 >
                   {activeLine.name} · {activeLine.stations.length} {tr('Stacji', 'Stations')} · {activeLine.routeLabel}
@@ -298,6 +311,86 @@ export function TitleOverlay({
                   onDelete={() => onDeleteCustomLine(draft.id)}
                 />
               ))}
+            </div>
+
+            <div
+              data-testid="route-variant-bar"
+              className="mt-2 rounded-lg border border-slate-700/80 bg-[#0b1019]/95 px-2.5 py-2 grid grid-cols-1 md:grid-cols-[minmax(0,1fr)_auto] gap-2 items-center"
+            >
+              <label className="flex items-center gap-2 min-w-0">
+                <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400 whitespace-nowrap shrink-0">
+                  {tr('Stacja startowa', 'Start Station')}:
+                </span>
+                <select
+                  data-testid="select-start-station"
+                  value={startStationIndex}
+                  onChange={(e) => {
+                    onSelectStartStation(Number(e.target.value));
+                    e.currentTarget.blur();
+                  }}
+                  className="flex-1 min-w-0 rounded border border-slate-600/90 bg-[#121926] px-2 py-1 text-xs font-mono-tabular text-slate-100 focus:outline-none focus:border-amber-400 cursor-pointer"
+                >
+                  {startOptions.map((opt) => (
+                    <option key={opt.startIndex} value={opt.startIndex}>
+                      {lang === 'en' ? opt.labelEn : opt.labelPl}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400 whitespace-nowrap">
+                  {tr('Kierunek', 'Direction')}:
+                </span>
+                <div
+                  role="group"
+                  aria-label={tr('Kierunek jazdy', 'Route direction')}
+                  className="flex items-center rounded-md border border-slate-600/90 bg-[#0d1420] p-0.5"
+                >
+                  <button
+                    type="button"
+                    data-testid="select-direction-normal"
+                    aria-pressed={routeDirection === 'normal'}
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onSelectRouteDirection('normal');
+                    }}
+                    className={`px-2 py-1 rounded text-[10.5px] font-mono-tabular font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                      routeDirection === 'normal'
+                        ? 'text-white shadow'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                    style={
+                      routeDirection === 'normal'
+                        ? { backgroundColor: baseLineSpec.cssColor }
+                        : undefined
+                    }
+                  >
+                    {tr('Normalny', 'Normal')} → {baseLineSpec.destinationLed}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="select-direction-reverse"
+                    aria-pressed={routeDirection === 'reverse'}
+                    onClick={(e) => {
+                      e.currentTarget.blur();
+                      onSelectRouteDirection('reverse');
+                    }}
+                    className={`px-2 py-1 rounded text-[10.5px] font-mono-tabular font-bold transition-colors cursor-pointer whitespace-nowrap ${
+                      routeDirection === 'reverse'
+                        ? 'text-white shadow'
+                        : 'text-slate-300 hover:text-white'
+                    }`}
+                    style={
+                      routeDirection === 'reverse'
+                        ? { backgroundColor: baseLineSpec.cssColor }
+                        : undefined
+                    }
+                  >
+                    {tr('Powrotny', 'Reverse')} → {baseLineSpec.oppositeDestinationLed}
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
