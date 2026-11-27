@@ -1,5 +1,8 @@
+import { canEnableAtoForMode } from '../domain/atoSystem';
+import { localizeAtoStatus } from '../domain/i18nDynamic';
 import { getStationPlatformSide } from '../domain/trackGeometry';
 import type { ISimulationSnapshot } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 import { CzuwakIndicator } from './CzuwakIndicator';
 import { MasterControllerSlider } from './MasterControllerSlider';
 import { RadioDispatchModule } from './RadioDispatchModule';
@@ -14,6 +17,7 @@ interface ICabDashboardHudProps {
   readonly onToggleDoorsRight: () => void;
   readonly onToggleHeadlights: () => void;
   readonly onToggleWipers: () => void;
+  readonly onToggleAto: () => void;
   readonly onAcknowledgeCzuwak: () => void;
   readonly onAcknowledgeRadio: () => void;
   readonly onCycleCamera: () => void;
@@ -29,6 +33,7 @@ export function CabDashboardHud({
   onToggleDoorsRight,
   onToggleHeadlights,
   onToggleWipers,
+  onToggleAto,
   onAcknowledgeCzuwak,
   onAcknowledgeRadio,
   onCycleCamera,
@@ -36,6 +41,7 @@ export function CabDashboardHud({
   onHornChange,
   onLeverChange,
 }: ICabDashboardHudProps) {
+  const { lang, tr } = useI18n();
   const { kinematics, currentStation, doorState, openDoorSide, canToggleDoors, doorFault } = snapshot;
   const distM = Math.round(currentStation.distanceToTargetM);
   const platformSide = getStationPlatformSide(currentStation.station);
@@ -50,6 +56,7 @@ export function CabDashboardHud({
   const theme = snapshot.trainModel.visual.theme;
   const isRetro = theme === 'retro';
   const isVarsovia = theme === 'varsovia';
+  const atoAllowed = canEnableAtoForMode(snapshot.gameMode);
   const panelClasses = isRetro
     ? 'bg-[#15201c]/95 border-[#4c6b5f]'
     : isVarsovia
@@ -81,7 +88,7 @@ export function CabDashboardHud({
     return (
       <div className="fixed bottom-0 inset-x-0 z-10 pointer-events-none flex justify-center px-2 pb-1.5">
         <section
-          aria-label="Kompaktowy pulpit maszynisty"
+          aria-label={tr('Kompaktowy pulpit maszynisty', 'Compact driver dashboard')}
           data-testid="compact-touch-hud"
           data-theme={theme}
           className={`pointer-events-auto w-full max-w-[780px] ${panelClasses} border rounded-lg px-2.5 py-1.5 shadow-2xl flex items-center justify-between gap-2.5`}
@@ -106,13 +113,28 @@ export function CabDashboardHud({
             <span className={`w-3 h-3 rounded-full ${signalDot} shrink-0`} aria-hidden="true" />
             <div className="flex flex-col leading-tight text-[9.5px] font-mono-tabular">
               <span className="text-slate-200 font-bold">
-                {snapshot.nextSignal ? `${Math.max(0, Math.round(snapshot.nextSignal.distanceAheadM))}m` : 'KONIEC'}
+                {snapshot.nextSignal ? `${Math.max(0, Math.round(snapshot.nextSignal.distanceAheadM))}m` : tr('KONIEC', 'END')}
               </span>
               <span className={snapshot.atpActive ? 'text-red-300 font-bold' : 'text-slate-400'}>
-                {snapshot.atpActive ? 'ATP!' : aspect === 'red' ? 'STÓJ' : aspect === 'yellow' ? 'UWAGA' : 'WOLNA'}
+                {snapshot.atpActive
+                  ? 'ATP!'
+                  : aspect === 'red'
+                    ? tr('STÓJ', 'STOP')
+                    : aspect === 'yellow'
+                      ? tr('UWAGA', 'CAUTION')
+                      : tr('WOLNA', 'CLEAR')}
               </span>
             </div>
           </div>
+
+          {snapshot.atoEnabled && (
+            <span
+              data-testid="compact-ato-status"
+              className="px-1.5 py-0.5 rounded border border-emerald-400/80 bg-emerald-500/20 text-emerald-200 text-[9px] font-mono-tabular font-bold whitespace-nowrap shrink-0"
+            >
+              {localizeAtoStatus(lang, snapshot.atoStatus)}
+            </span>
+          )}
 
           <div className={`flex-1 min-w-0 border-l ${dividerClass} pl-2 flex flex-col gap-0.5`}>
             <div className="flex items-center justify-between gap-1.5 min-w-0">
@@ -129,7 +151,7 @@ export function CabDashboardHud({
                     : 'bg-slate-800 border-slate-700 text-slate-300'
                 }`}
               >
-                {isLeftPlatform ? '◀ L' : 'P ▶'}
+                {isLeftPlatform ? '◀ L' : `${tr('P', 'R')} ▶`}
               </span>
             </div>
             {doorState === 'open' ? (
@@ -153,7 +175,7 @@ export function CabDashboardHud({
   return (
     <div className="fixed bottom-0 inset-x-0 z-10 pointer-events-none flex justify-center px-2.5 pb-2">
       <section
-        aria-label="Pulpit maszynisty"
+        aria-label={tr('Pulpit maszynisty', 'Driver dashboard')}
         data-theme={theme}
         className={`pointer-events-auto w-full max-w-[1416px] ${panelClasses} border rounded-t-xl rounded-b-md px-3 py-2 shadow-2xl grid grid-cols-1 lg:grid-cols-[auto_auto_auto_minmax(224px,1fr)_auto_auto] items-center gap-2.5`}
       >
@@ -180,19 +202,27 @@ export function CabDashboardHud({
               <span className="text-[11px] font-mono-tabular uppercase tracking-wider text-slate-400 whitespace-nowrap">
                 {currentStation.station.code}
               </span>
+              {snapshot.atoEnabled && (
+                <span
+                  data-testid="hud-ato-status"
+                  className="px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/75 text-emerald-200 font-mono-tabular text-[9px] font-bold uppercase whitespace-nowrap"
+                >
+                  {localizeAtoStatus(lang, snapshot.atoStatus)}
+                </span>
+              )}
               {snapshot.weather.wheelSlipActive ? (
                 <span
                   data-testid="wheel-slip-indicator"
                   className="px-1 py-0.5 rounded bg-amber-500 text-slate-950 font-mono-tabular text-[9px] font-bold uppercase animate-pulse whitespace-nowrap"
                 >
-                  POŚLIZG!
+                  {tr('POŚLIZG!', 'SLIP!')}
                 </span>
               ) : (snapshot.weather.wetRailsActive || snapshot.radio.slipperyRailsActive) && (
                 <span
                   data-testid="wet-rails-badge"
                   className="px-1 py-0.5 rounded bg-sky-500/20 border border-sky-400/60 text-sky-200 font-mono-tabular text-[9px] font-bold uppercase whitespace-nowrap"
                 >
-                  ŚLISKIE SZYNY
+                  {tr('ŚLISKIE SZYNY', 'SLIPPERY RAILS')}
                 </span>
               )}
             </div>
@@ -209,10 +239,10 @@ export function CabDashboardHud({
               }`}
             >
               {snapshot.challenge?.skipStations
-                ? `PRZEJAZD ≤ ${snapshot.challenge.stationPassLimitKmh ?? 40}`
+                ? `${tr('PRZEJAZD', 'PASS')} ≤ ${snapshot.challenge.stationPassLimitKmh ?? 40}`
                 : isLeftPlatform
-                  ? '◀ Peron L [Q]'
-                  : 'Peron P [E] ▶'}
+                  ? tr('◀ Peron L [Q]', '◀ Platf. L [Q]')
+                  : tr('Peron P [E] ▶', 'Platf. R [E] ▶')}
             </span>
           </div>
 
@@ -229,18 +259,18 @@ export function CabDashboardHud({
                 }`}
               >
                 {trackworkAlert
-                  ? 'ROBOTY 25'
+                  ? tr('ROBOTY 25', 'WORKS 25')
                   : snapshot.trackProfile.inCurveLimitZone
-                    ? 'ŁUK 45'
+                    ? tr('ŁUK 45', 'CURVE 45')
                     : snapshot.trackProfile.upcomingCurveLimitKmh !== null
-                      ? `ŁUK ${snapshot.trackProfile.upcomingCurveLimitKmh}`
+                      ? `${tr('ŁUK', 'CURVE')} ${snapshot.trackProfile.upcomingCurveLimitKmh}`
                       : snapshot.challenge?.skipStations
-                        ? 'PRZEJAZD 40'
+                        ? tr('PRZEJAZD 40', 'PASS 40')
                         : currentStation.inStopZone
-                          ? 'STREFA STOP'
+                          ? tr('STREFA STOP', 'STOP ZONE')
                           : isLeftPlatform
-                            ? 'WYSPOWY'
-                            : 'BOCZNY'}
+                            ? tr('WYSPOWY', 'ISLAND')
+                            : tr('BOCZNY', 'SIDE')}
               </span>
               <span className="font-mono-tabular text-base font-bold text-slate-50 whitespace-nowrap">
                 {distM >= 0 ? `${distM} m` : `+${Math.abs(distM)} m`}
@@ -253,12 +283,12 @@ export function CabDashboardHud({
               <div className="flex justify-between text-[11px] font-mono-tabular text-emerald-300">
                 <span className="truncate">
                   {doorFault.phase === 'awaiting-retry'
-                    ? `AWARIA DRZWI — powtórz [${expectedKey}]`
+                    ? tr(`AWARIA DRZWI — powtórz [${expectedKey}]`, `DOOR FAULT — retry [${expectedKey}]`)
                     : doorFault.phase === 'resetting'
-                      ? 'Reset drzwi...'
+                      ? tr('Reset drzwi...', 'Resetting doors...')
                       : snapshot.boardingCompletedForCurrent
-                        ? `Wymiana zakończona — zamknij [${expectedKey}]`
-                        : 'Wymiana pasażerów'}
+                        ? tr(`Wymiana zakończona — zamknij [${expectedKey}]`, `Boarding done — close [${expectedKey}]`)
+                        : tr('Wymiana pasażerów', 'Passenger boarding')}
                 </span>
                 <span className="whitespace-nowrap">
                   {doorFault.phase === 'resetting'
@@ -282,7 +312,7 @@ export function CabDashboardHud({
 
         <div className={`border-l ${dividerClass} pl-2.5 flex flex-col gap-1.5 min-w-[186px]`}>
           <div className="flex items-center justify-between text-xs font-mono-tabular">
-            <span className="text-slate-400 uppercase">Drzwi L / P</span>
+            <span className="text-slate-400 uppercase">{tr('Drzwi L / P', 'Doors L / R')}</span>
             <span
               className={
                 doorFault.phase !== 'none'
@@ -293,12 +323,12 @@ export function CabDashboardHud({
               }
             >
               {doorFault.phase !== 'none'
-                ? 'AWARIA'
+                ? tr('AWARIA', 'FAULT')
                 : doorState === 'open'
                   ? openDoorSide === 'left'
-                    ? 'OTWARTE L'
-                    : 'OTWARTE P'
-                  : 'ZAMKNIĘTE'}
+                    ? tr('OTWARTE L', 'OPEN L')
+                    : tr('OTWARTE P', 'OPEN R')
+                  : tr('ZAMKNIĘTE', 'CLOSED')}
             </span>
           </div>
           <div className="grid grid-cols-2 gap-1.5">
@@ -306,7 +336,7 @@ export function CabDashboardHud({
               type="button"
               data-testid="doors-left-btn"
               data-academy-highlight={academyHighlight === 'doors-left' ? '1' : '0'}
-              aria-label="Drzwi lewe [Q]"
+              aria-label={tr('Drzwi lewe [Q]', 'Left doors [Q]')}
               disabled={!canToggleDoors}
               onClick={(e) => {
                 e.currentTarget.blur();
@@ -324,13 +354,13 @@ export function CabDashboardHud({
                         : 'bg-slate-900 border-slate-800 text-slate-500 cursor-not-allowed'
               } ${academyHighlight === 'doors-left' ? highlightRing : ''}`}
             >
-              ◀ DRZWI L [Q]
+              {tr('◀ DRZWI L [Q]', '◀ DOORS L [Q]')}
             </button>
             <button
               type="button"
               data-testid="doors-right-btn"
               data-academy-highlight={academyHighlight === 'doors-right' ? '1' : '0'}
-              aria-label="Drzwi prawe [E]"
+              aria-label={tr('Drzwi prawe [E]', 'Right doors [E]')}
               disabled={!canToggleDoors}
               onClick={(e) => {
                 e.currentTarget.blur();
@@ -348,17 +378,17 @@ export function CabDashboardHud({
                         : 'bg-slate-900 border-slate-800 text-slate-500 cursor-not-allowed'
               } ${academyHighlight === 'doors-right' ? highlightRing : ''}`}
             >
-              DRZWI P [E] ▶
+              {tr('DRZWI P [E] ▶', 'DOORS R [E] ▶')}
             </button>
           </div>
           <span className="text-[10px] text-slate-400 font-mono-tabular">
             {snapshot.challenge?.skipStations
-              ? 'Przejazd techniczny — bez postojów'
+              ? tr('Przejazd techniczny — bez postojów', 'Technical run — non-stop')
               : doorFault.phase === 'resetting'
-                ? `Reset drzwi: ${doorFault.remainingSec.toFixed(1)} s`
+                ? `${tr('Reset drzwi', 'Door reset')}: ${doorFault.remainingSec.toFixed(1)} s`
                 : snapshot.gameMode === 'sandbox'
-                  ? 'Q Lewe · E Prawe · O Auto'
-                  : '0 km/h · Otwórz po stronie peronu'}
+                  ? tr('Q Lewe · E Prawe · O Auto', 'Q Left · E Right · O Auto')
+                  : tr('0 km/h · Otwórz po stronie peronu', '0 km/h · Open platform side')}
           </span>
         </div>
 
@@ -374,10 +404,10 @@ export function CabDashboardHud({
           <div className="flex-1 flex flex-col gap-1.5 min-w-[322px]">
             <div className="flex items-center justify-between text-xs font-mono-tabular gap-2">
               <div className="flex items-center gap-1.5">
-                <span className="text-slate-400 uppercase">Nastawnik</span>
+                <span className="text-slate-400 uppercase">{tr('Nastawnik', 'Controller')}</span>
                 {snapshot.challenge && snapshot.challenge.tractionMultiplier < 1 && (
                   <span className="px-1 py-0.5 rounded bg-amber-500/20 border border-amber-400/60 text-amber-300 text-[9px] font-bold">
-                    MOC {Math.round(snapshot.challenge.tractionMultiplier * 100)}%
+                    {tr('MOC', 'PWR')} {Math.round(snapshot.challenge.tractionMultiplier * 100)}%
                   </span>
                 )}
               </div>
@@ -391,10 +421,10 @@ export function CabDashboardHud({
                 }
               >
                 {kinematics.emergencyBrake
-                  ? 'AWARYJNY'
+                  ? tr('AWARYJNY', 'EMERGENCY')
                   : brakePct > 0
-                    ? `HAM -${brakePct}%`
-                    : `MOC +${throttlePct}%`}
+                    ? `${tr('HAM', 'BRK')} -${brakePct}%`
+                    : `${tr('MOC', 'PWR')} +${throttlePct}%`}
               </span>
             </div>
 
@@ -443,7 +473,7 @@ export function CabDashboardHud({
                   }`}
                   aria-hidden="true"
                 />
-                <span>Wycier. [X]</span>
+                <span>{tr('Wycier. [X]', 'Wipers [X]')}</span>
               </button>
               <button
                 type="button"
@@ -464,7 +494,36 @@ export function CabDashboardHud({
                   className={`w-1.5 h-1.5 rounded-full shrink-0 ${snapshot.headlightsOn ? 'bg-amber-300' : 'bg-slate-600'}`}
                   aria-hidden="true"
                 />
-                <span>Światła [L]</span>
+                <span>{tr('Światła [L]', 'Lights [L]')}</span>
+              </button>
+              <button
+                type="button"
+                data-testid="ato-toggle-btn"
+                aria-pressed={snapshot.atoEnabled}
+                title={
+                  atoAllowed
+                    ? tr('Autopilot ATO [A]', 'ATO Autopilot [A]')
+                    : tr('ATO dostępne tylko w Sandbox / trybie Pasażera', 'ATO is only available in Sandbox / Passenger mode')
+                }
+                onClick={(e) => {
+                  e.currentTarget.blur();
+                  onToggleAto();
+                }}
+                className={`px-1 py-1 rounded text-[10px] font-mono-tabular font-bold whitespace-nowrap cursor-pointer flex items-center justify-center gap-1 border ${
+                  snapshot.atoEnabled
+                    ? 'bg-emerald-500/25 border-emerald-400 text-emerald-200 shadow-[0_0_10px_rgba(16,185,129,0.35)]'
+                    : atoAllowed
+                      ? 'bg-slate-800 hover:bg-emerald-950/70 border-emerald-500/50 text-emerald-200'
+                      : 'bg-slate-900 border-slate-700/80 text-slate-500 hover:text-slate-300'
+                }`}
+              >
+                <span
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    snapshot.atoEnabled ? 'bg-emerald-300 animate-pulse' : 'bg-slate-600'
+                  }`}
+                  aria-hidden="true"
+                />
+                <span>ATO [A]</span>
               </button>
               <button
                 type="button"
@@ -475,7 +534,7 @@ export function CabDashboardHud({
                 }}
                 className="px-1 py-1 rounded text-[10px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer bg-slate-800 hover:bg-slate-700 text-sky-200 border border-slate-700"
               >
-                Kamera [V]
+                {tr('Kamera [V]', 'Camera [V]')}
               </button>
               <button
                 type="button"
@@ -492,7 +551,7 @@ export function CabDashboardHud({
                     : 'bg-slate-800 hover:bg-slate-700 text-slate-200'
                 } ${academyHighlight === 'horn' ? highlightRing : ''}`}
               >
-                Klakson [H]
+                {tr('Klakson [H]', 'Horn [H]')}
               </button>
               <button
                 type="button"
@@ -500,13 +559,13 @@ export function CabDashboardHud({
                   e.currentTarget.blur();
                   onEmergencyBrake();
                 }}
-                className={`col-span-2 px-1.5 py-1 rounded text-[10px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer ${
+                className={`px-1 py-1 rounded text-[10px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer ${
                   kinematics.emergencyBrake
                     ? 'bg-red-600 text-white'
                     : 'bg-slate-800 hover:bg-red-900/70 text-red-300'
                 }`}
               >
-                Hamulec awaryjny [B]
+                {tr('Awaryjny [B]', 'E-Brake [B]')}
               </button>
             </div>
           </div>
@@ -523,6 +582,7 @@ function StopApproachBar({
   readonly distanceToTargetM: number;
   readonly compact?: boolean;
 }) {
+  const { tr } = useI18n();
   const clamped = Math.max(-20, Math.min(120, distanceToTargetM));
   const progressRatio = 1 - (clamped + 20) / 140;
   return (
@@ -539,7 +599,7 @@ function StopApproachBar({
       </div>
       {!compact && (
         <span className="text-[10px] font-mono-tabular text-slate-400 whitespace-nowrap">
-          W/S Moc · Spacja Hamulec · Cel: STOP
+          {tr('W/S Moc · Spacja Hamulec · Cel: STOP', 'W/S Power · Space Brake · Target: STOP')}
         </span>
       )}
     </div>

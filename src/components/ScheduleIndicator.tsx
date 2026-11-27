@@ -1,5 +1,6 @@
 import { formatClockTime, formatDeviationTime } from '../domain/scheduleSystem';
 import type { IScheduleSnapshot, PunctualityStatus } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 
 interface IScheduleIndicatorProps {
   readonly schedule: IScheduleSnapshot;
@@ -16,6 +17,7 @@ function getDeviationClasses(status: PunctualityStatus): string {
 }
 
 export function ScheduleIndicator({ schedule }: IScheduleIndicatorProps) {
+  const { tr } = useI18n();
   const clockText = formatClockTime(schedule.currentClockSec);
   const arrivalText = formatClockTime(schedule.nextArrivalClockSec);
   const deviationText = formatDeviationTime(schedule.deviationSec);
@@ -23,12 +25,12 @@ export function ScheduleIndicator({ schedule }: IScheduleIndicatorProps) {
   return (
     <div
       data-testid="schedule-indicator"
-      aria-label={`Zegar ${clockText}, rozkład ${arrivalText}, odchyłka ${deviationText}`}
+      aria-label={`${tr('Zegar', 'Clock')} ${clockText}, ${tr('rozkład', 'ETA')} ${arrivalText}, ${tr('odchyłka', 'delta')} ${deviationText}`}
       className="border-l border-slate-800 pl-3.5 flex flex-col gap-1 min-w-[148px]"
     >
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
-          Czas
+          {tr('Czas', 'Time')}
         </span>
         <span className="font-mono-tabular text-sm font-bold text-slate-100">
           {clockText}
@@ -37,7 +39,7 @@ export function ScheduleIndicator({ schedule }: IScheduleIndicatorProps) {
 
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
-          Przyjazd
+          {tr('Przyjazd', 'Arrival')}
         </span>
         <span className="font-mono-tabular text-xs font-semibold text-amber-200">
           {arrivalText}
@@ -47,7 +49,9 @@ export function ScheduleIndicator({ schedule }: IScheduleIndicatorProps) {
       <div
         className={`mt-0.5 px-2 py-0.5 rounded border text-xs font-mono-tabular font-bold flex items-center justify-between ${getDeviationClasses(schedule.status)}`}
       >
-        <span className="text-[10px] uppercase tracking-wider opacity-85">Rozkład</span>
+        <span className="text-[10px] uppercase tracking-wider opacity-85">
+          {tr('Rozkład', 'Timetable')}
+        </span>
         <span>{deviationText}</span>
       </div>
     </div>

@@ -1,5 +1,7 @@
+import { getLocalizedAchievement } from '../domain/i18nCatalog';
 import { formatLeaderboardDate } from '../domain/leaderboard';
 import type { IAchievementRecord, IAchievementSpec } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 
 interface IAchievementsModalProps {
   readonly catalog: readonly IAchievementSpec[];
@@ -12,6 +14,7 @@ export function AchievementsModal({
   unlockedRecords,
   onClose,
 }: IAchievementsModalProps) {
+  const { lang, tr } = useI18n();
   const unlockedMap = new Map(unlockedRecords.map((rec) => [rec.id, rec.unlockedAtIso]));
   const unlockedCount = unlockedMap.size;
   const totalCount = catalog.length;
@@ -29,19 +32,19 @@ export function AchievementsModal({
         <div className="flex items-start justify-between gap-4 mb-3">
           <div>
             <p className="text-[11px] font-mono-tabular uppercase tracking-[0.2em] text-amber-400">
-              Odznaki maszynisty · Metro M1 / M2
+              {tr('Odznaki maszynisty · Metro M1 / M2', 'Driver Badges · Metro M1 / M2')}
             </p>
             <h2
               id="achievements-modal-title"
               className="font-display text-2xl font-bold text-slate-50 mt-0.5"
             >
-              Osiągnięcia
+              {tr('Osiągnięcia', 'Achievements')}
             </h2>
           </div>
           <button
             type="button"
             data-testid="achievements-close-btn"
-            aria-label="Zamknij osiągnięcia"
+            aria-label={tr('Zamknij osiągnięcia', 'Close achievements')}
             onClick={onClose}
             className="w-8 h-8 rounded border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 font-mono-tabular text-sm cursor-pointer"
           >
@@ -51,12 +54,19 @@ export function AchievementsModal({
 
         <div className="mb-4 rounded-md bg-[#0a0e16] border border-slate-800 p-3">
           <div className="flex items-center justify-between text-xs font-mono-tabular mb-1.5">
-            <span className="text-slate-300 uppercase tracking-wider">Postęp odblokowania</span>
+            <span className="text-slate-300 uppercase tracking-wider">
+              {tr('Postęp odblokowania', 'Unlock Progress')}
+            </span>
             <span data-testid="achievements-progress-text" className="font-bold text-amber-300">
               {unlockedCount} / {totalCount} ({progressPct}%)
             </span>
           </div>
-          <svg viewBox="0 0 1000 14" className="w-full h-3" role="img" aria-label={`Postęp ${progressPct}%`}>
+          <svg
+            viewBox="0 0 1000 14"
+            className="w-full h-3"
+            role="img"
+            aria-label={tr(`Postęp ${progressPct}%`, `Progress ${progressPct}%`)}
+          >
             <rect x={0} y={0} width={1000} height={14} rx={7} fill="#1e293b" />
             {progressPct > 0 && (
               <rect x={0} y={0} width={Math.max(24, progressPct * 10)} height={14} rx={7} fill="#f59e0b" />
@@ -68,6 +78,10 @@ export function AchievementsModal({
           {catalog.map((spec) => {
             const unlockedIso = unlockedMap.get(spec.id);
             const isUnlocked = unlockedIso !== undefined;
+            const loc = getLocalizedAchievement(lang, spec.id, {
+              title: spec.title,
+              description: spec.description,
+            });
             return (
               <div
                 key={spec.id}
@@ -109,7 +123,7 @@ export function AchievementsModal({
                         isUnlocked ? 'text-amber-200' : 'text-slate-300'
                       }`}
                     >
-                      {spec.title}
+                      {loc.title}
                     </h3>
                     {isUnlocked && (
                       <span className="text-[10px] font-mono-tabular text-emerald-300 shrink-0">
@@ -118,7 +132,7 @@ export function AchievementsModal({
                     )}
                   </div>
                   <p className="text-[11px] text-slate-400 leading-snug mt-1">
-                    {spec.description}
+                    {loc.description}
                   </p>
                 </div>
               </div>
@@ -131,7 +145,7 @@ export function AchievementsModal({
           onClick={onClose}
           className="mt-4 w-full py-2.5 rounded-md bg-amber-500 hover:bg-amber-400 text-slate-950 font-display font-bold text-sm cursor-pointer"
         >
-          Zamknij
+          {tr('Zamknij', 'Close')}
         </button>
       </div>
     </div>

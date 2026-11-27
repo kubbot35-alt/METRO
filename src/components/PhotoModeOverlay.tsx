@@ -1,3 +1,4 @@
+import { getLocalizedPhotoFilter } from '../domain/i18nCatalog';
 import {
   MAX_PHOTO_FOV_DEG,
   MAX_PHOTO_TILT_DEG,
@@ -6,6 +7,7 @@ import {
   PHOTO_FILTERS,
 } from '../domain/photoMode';
 import type { IPhotoCameraState, PhotoFilterId } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 
 interface IPhotoModeOverlayProps {
   readonly state: IPhotoCameraState;
@@ -32,6 +34,7 @@ export function PhotoModeOverlay({
   onCapturePng,
   onClose,
 }: IPhotoModeOverlayProps) {
+  const { lang, tr } = useI18n();
   const isVhs = state.filter === 'vhs';
   const hasVignette = state.filter === 'cinematic' || state.filter === 'noir';
 
@@ -71,13 +74,13 @@ export function PhotoModeOverlay({
       {!capturing && (
         <aside
           data-testid="photo-mode-panel"
-          aria-label="Panel Trybu Fotograficznego"
+          aria-label={tr('Panel Trybu Fotograficznego', 'Photo Mode Panel')}
           className="pointer-events-auto fixed bottom-4 right-4 w-[312px] bg-[#0a0f18]/94 border border-cyan-500/45 rounded-lg p-3.5 shadow-2xl text-slate-100 flex flex-col gap-3"
         >
           <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-2">
             <div>
               <p className="text-[10px] font-mono-tabular uppercase tracking-[0.18em] text-cyan-300">
-                Tryb Fotograficzny · Stop-klatka
+                {tr('Tryb Fotograficzny · Stop-klatka', 'Photo Mode · Freeze Frame')}
               </p>
               <p className="font-display text-sm font-bold text-slate-50 leading-tight mt-0.5">
                 {trainName}
@@ -89,14 +92,14 @@ export function PhotoModeOverlay({
               onClick={onClose}
               className="px-2 py-1 rounded border border-slate-700 bg-slate-900 hover:bg-slate-800 text-[11px] font-mono-tabular text-slate-200 cursor-pointer"
             >
-              Zamknij [F]
+              {tr('Zamknij [F]', 'Close [F]')}
             </button>
           </div>
 
           <div className="space-y-2.5">
             <label className="block">
               <div className="flex items-center justify-between text-[11px] font-mono-tabular mb-1">
-                <span className="text-slate-300 uppercase">Ogniskowa / FOV</span>
+                <span className="text-slate-300 uppercase">{tr('Ogniskowa / FOV', 'Focal Length / FOV')}</span>
                 <span className="text-cyan-300 font-bold" data-testid="photo-fov-value">
                   {state.fovDeg}°
                 </span>
@@ -115,7 +118,7 @@ export function PhotoModeOverlay({
 
             <label className="block">
               <div className="flex items-center justify-between text-[11px] font-mono-tabular mb-1">
-                <span className="text-slate-300 uppercase">Przechył (Tilt)</span>
+                <span className="text-slate-300 uppercase">{tr('Przechył (Tilt)', 'Camera Roll (Tilt)')}</span>
                 <span className="text-cyan-300 font-bold" data-testid="photo-tilt-value">
                   {state.rollDeg > 0 ? `+${state.rollDeg}°` : `${state.rollDeg}°`}
                 </span>
@@ -135,11 +138,15 @@ export function PhotoModeOverlay({
 
           <div>
             <p className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400 mb-1.5">
-              Filtr kolorystyczny
+              {tr('Filtr kolorystyczny', 'Color Filter')}
             </p>
             <div className="grid grid-cols-2 gap-1.5">
               {PHOTO_FILTERS.map((f) => {
                 const active = f.id === state.filter;
+                const loc = getLocalizedPhotoFilter(lang, f.id, {
+                  label: f.label,
+                  shortDesc: f.shortDesc,
+                });
                 return (
                   <button
                     key={f.id}
@@ -154,10 +161,10 @@ export function PhotoModeOverlay({
                     }`}
                   >
                     <span className="block text-[11px] font-mono-tabular font-bold leading-tight">
-                      {f.label}
+                      {loc.label}
                     </span>
                     <span className="block text-[9.5px] text-slate-400 leading-tight mt-0.5 truncate">
-                      {f.shortDesc}
+                      {loc.shortDesc}
                     </span>
                   </button>
                 );
@@ -172,7 +179,7 @@ export function PhotoModeOverlay({
               onClick={onCapturePng}
               className="flex-1 py-2 px-3 rounded-md bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-display font-bold text-xs tracking-wide cursor-pointer shadow-lg"
             >
-              {savedNotice ? '✓ Zapisano PNG!' : 'Zrób zdjęcie (PNG)'}
+              {savedNotice ? tr('✓ Zapisano PNG!', '✓ PNG Saved!') : tr('Zrób zdjęcie (PNG)', 'Take Photo (PNG)')}
             </button>
             <button
               type="button"
@@ -180,12 +187,15 @@ export function PhotoModeOverlay({
               onClick={onResetCamera}
               className="py-2 px-2.5 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 text-[11px] font-mono-tabular text-slate-200 cursor-pointer"
             >
-              Reset
+              {tr('Reset', 'Reset')}
             </button>
           </div>
 
           <p className="text-[10px] font-mono-tabular text-slate-400 leading-snug border-t border-slate-800 pt-2">
-            Przeciągnij myszą: obrót · WASD: lot · Q/E: dół/góra · Shift: szybciej · Scroll: zoom
+            {tr(
+              'Przeciągnij myszą: obrót · WASD: lot · Q/E: dół/góra · Shift: szybciej · Scroll: zoom',
+              'Drag mouse: look · WASD: fly · Q/E: down/up · Shift: boost · Scroll: zoom',
+            )}
           </p>
         </aside>
       )}

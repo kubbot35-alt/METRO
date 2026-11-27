@@ -1,4 +1,5 @@
 import type { ITachographSnapshot } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 
 interface ITachographChartProps {
   readonly tachograph: ITachographSnapshot;
@@ -31,6 +32,7 @@ function formatAxisTime(sec: number): string {
 }
 
 export function TachographChart({ tachograph }: ITachographChartProps) {
+  const { tr } = useI18n();
   const { samples, stationMarks, violationMarks, maxSpeedKmh, totalDurationSec } = tachograph;
   const durationAxis = Math.max(totalDurationSec, samples[samples.length - 1]?.timeSec ?? 1, 1);
 
@@ -55,28 +57,28 @@ export function TachographChart({ tachograph }: ITachographChartProps) {
 
   return (
     <section
-      aria-label="Tachograf kolejowy — wykres prędkości"
+      aria-label={tr('Tachograf kolejowy — wykres prędkości', 'Rail Tachograph — speed chart')}
       data-testid="tachograph-chart"
       className="mb-4 rounded-md border border-slate-700/90 bg-[#080c13] p-3"
     >
       <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
         <div>
           <p className="text-[10px] font-mono-tabular uppercase tracking-[0.18em] text-cyan-300 font-bold">
-            Tachograf · Rejestrator prędkości (1 Hz)
+            {tr('Tachograf · Rejestrator prędkości (1 Hz)', 'Tachograph · Speed Recorder (1 Hz)')}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3 text-[10px] font-mono-tabular text-slate-300">
           <span className="flex items-center gap-1">
             <span className="w-3 h-0.5 bg-sky-400 inline-block" />
-            Prędkość (maks. {Math.round(maxSpeedKmh)} km/h)
+            {tr(`Prędkość (maks. ${Math.round(maxSpeedKmh)} km/h)`, `Speed (max ${Math.round(maxSpeedKmh)} km/h)`)}
           </span>
           <span className="flex items-center gap-1">
             <span className="w-3 h-0.5 border-t-2 border-dashed border-red-400 inline-block" />
-            Limit
+            {tr('Limit', 'Limit')}
           </span>
           <span className="flex items-center gap-1">
             <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
-            Wykroczenia ({violationMarks.length})
+            {tr(`Wykroczenia (${violationMarks.length})`, `Violations (${violationMarks.length})`)}
           </span>
         </div>
       </div>
@@ -85,7 +87,10 @@ export function TachographChart({ tachograph }: ITachographChartProps) {
         viewBox={`0 0 ${CHART_WIDTH} ${CHART_HEIGHT}`}
         className="w-full h-auto block select-none"
         role="img"
-        aria-label="Wykres prędkości pociągu względem limitu prędkości na trasie"
+        aria-label={tr(
+          'Wykres prędkości pociągu względem limitu prędkości na trasie',
+          'Train speed chart compared to route speed limits',
+        )}
       >
         <defs>
           <linearGradient id="tachoSpeedFill" x1="0" y1="0" x2="0" y2="1">

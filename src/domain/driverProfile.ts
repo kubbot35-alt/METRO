@@ -158,19 +158,24 @@ export function calculateCourseXp(
   const baseXp = isAcademyCompleted ? 250 : 80;
   const distanceXp = isAcademyCompleted ? 0 : Math.round(routeKm * 45);
   const scoreXp = isAcademyCompleted ? 0 : Math.max(0, Math.round(snapshot.score / 12));
-  const modeMultiplier = isAcademyCompleted
-    ? 1.0
-    : snapshot.gameMode === 'sandbox'
-      ? 0.55
-      : snapshot.gameMode === 'challenge'
-        ? snapshot.challengeOutcome?.passed
-          ? 1.5
-          : 1.15
-        : 1.0;
+  const isPassengerOrAto = snapshot.gameMode === 'passenger' || snapshot.atoEnabled;
+  const modeMultiplier = isPassengerOrAto
+    ? 0
+    : isAcademyCompleted
+      ? 1.0
+      : snapshot.gameMode === 'sandbox'
+        ? 0.55
+        : snapshot.gameMode === 'challenge'
+          ? snapshot.challengeOutcome?.passed
+            ? 1.5
+            : 1.15
+          : 1.0;
 
-  const gainedXp = isAcademyCompleted
-    ? 250
-    : Math.max(40, Math.round((baseXp + distanceXp + scoreXp) * modeMultiplier));
+  const gainedXp = isPassengerOrAto
+    ? 0
+    : isAcademyCompleted
+      ? 250
+      : Math.max(40, Math.round((baseXp + distanceXp + scoreXp) * modeMultiplier));
   const previousRank = getRankForXp(currentXp);
   const totalXpAfter = currentXp + gainedXp;
   const newRank = getRankForXp(totalXpAfter);
@@ -250,6 +255,9 @@ export class DriverProfileService implements IDriverProfileService {
   } {
     const prev = this.load();
     const reward = calculateCourseXp(snapshot, prev.xp);
+    if (snapshot.gameMode === 'passenger' || snapshot.atoEnabled) {
+      return { profile: prev, reward };
+    }
     const routeKm = Math.max(0, snapshot.kinematics.positionM / 1000);
     const arrivalsThisRun = snapshot.schedule.punctualitySamples;
     const punctualThisRun = snapshot.schedule.punctualArrivalsCount ?? 0;

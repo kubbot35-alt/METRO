@@ -1,4 +1,5 @@
 import type { ISimulationSnapshot } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 
 interface IStatusModalProps {
   readonly snapshot: ISimulationSnapshot;
@@ -23,6 +24,7 @@ export function StatusModal({
   onOpenSettings,
   onTitle,
 }: IStatusModalProps) {
+  const { tr } = useI18n();
   const isPause = snapshot.phase === 'paused';
   const avgError =
     snapshot.stationsServed > 0
@@ -38,24 +40,26 @@ export function StatusModal({
         className="w-full max-w-md bg-[#121721] border border-slate-700 rounded-lg p-6 shadow-2xl"
       >
         <p className="text-xs font-mono-tabular uppercase tracking-widest text-amber-400">
-          {isPause ? 'Symulacja wstrzymana' : `Kurs zakończony · ${snapshot.line.name}`}
+          {isPause
+            ? tr('Symulacja wstrzymana', 'Simulation Paused')
+            : tr(`Kurs zakończony · ${snapshot.line.name}`, `Run Finished · ${snapshot.line.name}`)}
         </p>
         <h2
           id="status-modal-title"
           className="font-display text-2xl font-bold text-slate-50 mt-1 mb-5"
         >
-          {isPause ? 'Pauza' : 'Podsumowanie kursu'}
+          {isPause ? tr('Pauza', 'Paused') : tr('Podsumowanie kursu', 'Run Summary')}
         </h2>
 
         <div className="grid grid-cols-2 gap-3 mb-6">
-          <StatTile label="Wynik" value={`${Math.round(snapshot.score)} pkt`} />
+          <StatTile label={tr('Wynik', 'Score')} value={`${Math.round(snapshot.score)} ${tr('pkt', 'pts')}`} />
           <StatTile
-            label="Obsłużone stacje"
+            label={tr('Obsłużone stacje', 'Stations Served')}
             value={`${snapshot.stationsServed} / ${snapshot.totalStations}`}
           />
-          <StatTile label="Przewiezieni pasażerowie" value={String(snapshot.passengersCarried)} />
+          <StatTile label={tr('Przewiezieni pasażerowie', 'Passengers Carried')} value={String(snapshot.passengersCarried)} />
           <StatTile
-            label={isPause ? 'Czas jazdy' : 'Błąd / Czas'}
+            label={isPause ? tr('Czas jazdy', 'Elapsed Time') : tr('Błąd / Czas', 'Error / Time')}
             value={
               isPause
                 ? formatDuration(snapshot.elapsedTimeSec)
@@ -71,7 +75,7 @@ export function StatusModal({
               onClick={onResume}
               className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-display font-bold rounded-md cursor-pointer"
             >
-              Wznów jazdę
+              {tr('Wznów jazdę', 'Resume Drive')}
             </button>
           ) : (
             <button
@@ -80,7 +84,7 @@ export function StatusModal({
               onClick={onRestart}
               className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-display font-bold rounded-md cursor-pointer"
             >
-              Nowy kurs
+              {tr('Nowy kurs', 'New Run')}
             </button>
           )}
 
@@ -91,7 +95,7 @@ export function StatusModal({
               onClick={onOpenPhotoMode}
               className="w-full py-2.5 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/70 text-cyan-100 font-display font-bold rounded-md cursor-pointer"
             >
-              Tryb Fotograficzny (wolna kamera) [F]
+              {tr('Tryb Fotograficzny (wolna kamera) [F]', 'Photo Mode (Free Camera) [F]')}
             </button>
           )}
 
@@ -102,7 +106,7 @@ export function StatusModal({
               onClick={onOpenSettings}
               className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-100 font-medium rounded-md cursor-pointer"
             >
-              ⚙ Ustawienia (dźwięk, grafika, FOV)
+              {tr('⚙ Ustawienia (dźwięk, grafika, FOV)', '⚙ Settings (Audio, Graphics, FOV)')}
             </button>
           )}
 
@@ -112,7 +116,7 @@ export function StatusModal({
               onClick={onRestart}
               className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 font-medium rounded-md cursor-pointer"
             >
-              Restartuj kurs
+              {tr('Restartuj kurs', 'Restart Run')}
             </button>
           )}
 
@@ -121,7 +125,7 @@ export function StatusModal({
             onClick={onTitle}
             className="w-full py-2.5 bg-transparent hover:bg-slate-800/70 border border-slate-700 text-slate-300 font-medium rounded-md cursor-pointer"
           >
-            Ekran startowy
+            {tr('Ekran startowy', 'Main Menu')}
           </button>
         </div>
       </div>

@@ -1,7 +1,9 @@
 import { useRef, type PointerEvent as ReactPointerEvent } from 'react';
+import { canEnableAtoForMode } from '../domain/atoSystem';
 import { computeThumbSliderAxis, triggerSubtleTouchHaptic } from '../domain/mobileTouch';
 import { getStationPlatformSide } from '../domain/trackGeometry';
 import type { ISimulationSnapshot } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 
 interface IMobileTouchControlsProps {
   readonly snapshot: ISimulationSnapshot;
@@ -13,6 +15,7 @@ interface IMobileTouchControlsProps {
   readonly onEmergencyBrake: () => void;
   readonly onCycleCamera: () => void;
   readonly onToggleHeadlights: () => void;
+  readonly onToggleAto: () => void;
   readonly onHornChange: (active: boolean) => void;
 }
 
@@ -26,8 +29,10 @@ export function MobileTouchControls({
   onEmergencyBrake,
   onCycleCamera,
   onToggleHeadlights,
+  onToggleAto,
   onHornChange,
 }: IMobileTouchControlsProps) {
+  const { tr } = useI18n();
   const trackRef = useRef<HTMLDivElement | null>(null);
   const draggingRef = useRef<boolean>(false);
 
@@ -37,6 +42,7 @@ export function MobileTouchControls({
   const rightRecommended = canToggleDoors && doorState === 'closed' && !isLeftPlatform;
   const leftOpen = doorState === 'open' && openDoorSide === 'left';
   const rightOpen = doorState === 'open' && openDoorSide === 'right';
+  const atoAllowed = canEnableAtoForMode(snapshot.gameMode);
   const academyHighlight =
     snapshot.academy && !snapshot.academy.completed ? snapshot.academy.highlightTarget : null;
   const hlRing = 'ring-2 ring-cyan-300 shadow-[0_0_16px_rgba(34,211,238,0.85)] animate-pulse';
@@ -46,12 +52,12 @@ export function MobileTouchControls({
     : Math.max(-1, Math.min(1, snapshot.leverTarget));
   const thumbTopPct = ((1 - clampedLever) / 2) * 100;
   const leverLabel = kinematics.emergencyBrake
-    ? 'AWAR.'
+    ? tr('AWAR.', 'E-BRK')
     : clampedLever > 0.04
       ? `+${Math.round(clampedLever * 100)}%`
       : clampedLever < -0.04
         ? `${Math.round(clampedLever * 100)}%`
-        : '0 / LUZ';
+        : tr('0 / LUZ', '0 / IDLE');
 
   const applyPointerAxis = (clientY: number): void => {
     const el = trackRef.current;
@@ -82,7 +88,6 @@ export function MobileTouchControls({
       return;
     }
     draggingRef.current = false;
-    // Keep the chosen lever position upon release (realistic detent master controller)
     if (e.currentTarget.hasPointerCapture(e.pointerId)) {
       e.currentTarget.releasePointerCapture(e.pointerId);
     }
@@ -98,16 +103,31 @@ export function MobileTouchControls({
       data-testid="mobile-touch-controls"
       className="fixed inset-x-0 bottom-[58px] top-[100px] z-20 pointer-events-none flex items-end justify-between px-2 pb-1 sm:px-3 touch-none select-none"
     >
-      {/* Left: Vertical Thumb Master Controller Slider */}
       <div className="pointer-events-auto flex flex-col items-center gap-1 bg-[#0a1019]/90 border border-slate-700/85 rounded-xl px-2 py-1.5 shadow-2xl touch-none">
+        <button
+          type="button"
+          data-testid="touch-ato-btn"
+          aria-pressed={snapshot.atoEnabled}
+          onClick={() => tapAction(onToggleAto)}
+          className={`w-full px-1.5 py-1 rounded-md border text-[9.5px] font-mono-tabular font-bold whitespace-nowrap touch-none cursor-pointer ${
+            snapshot.atoEnabled
+              ? 'bg-emerald-500 border-emerald-200 text-slate-950'
+              : atoAllowed
+                ? 'bg-slate-800 border-emerald-500/60 text-emerald-200 active:bg-slate-700'
+                : 'bg-slate-900 border-slate-700 text-slate-500'
+          }`}
+        >
+          {snapshot.atoEnabled ? 'ATO ON' : 'ATO'}
+        </button>
+
         <span className="text-[9px] font-mono-tabular font-bold uppercase tracking-wider text-emerald-300 leading-none">
-          MOC +
+          {tr('MOC +', 'PWR +')}
         </span>
 
         <div
           ref={trackRef}
           role="slider"
-          aria-label="Dotykowy nastawnik jazdy i hamowania"
+          aria-label={tr('Dotykowy nastawnik jazdy i hamowania', 'Touch master controller')}
           aria-valuemin={-100}
           aria-valuemax={100}
           aria-valuenow={Math.round(clampedLever * 100)}
@@ -116,7 +136,7 @@ export function MobileTouchControls({
           onPointerMove={handleSliderMove}
           onPointerUp={handleSliderUp}
           onPointerCancel={handleSliderUp}
-          className={`relative w-12 h-[126px] [@media(min-height:560px)]:h-[188px] rounded-lg border-2 border-slate-600/90 bg-[#060a10] touch-none flex justify-center cursor-ns-resize ${
+          className={`relative w-12 h-[112px] [@media(min-height:560px)]:h-[168px] rounded-lg border-2 border-slate-600/90 bg-[#060a10] touch-none flex justify-center cursor-ns-resize ${
             academyHighlight === 'throttle' ? hlRing : ''
           }`}
         >
@@ -144,7 +164,7 @@ export function MobileTouchControls({
         </div>
 
         <span className="text-[9px] font-mono-tabular font-bold uppercase tracking-wider text-amber-300 leading-none">
-          HAM −
+          {tr('HAM −', 'BRK −')}
         </span>
 
         <button
@@ -157,7 +177,6 @@ export function MobileTouchControls({
         </button>
       </div>
 
-      {/* Right: Ergonomic Touch Action Pad */}
       <div className="pointer-events-auto grid grid-cols-2 gap-1.5 w-[178px] sm:w-[190px] bg-[#0a1019]/90 border border-slate-700/85 rounded-xl p-1.5 shadow-2xl touch-none">
         <button
           type="button"
@@ -172,7 +191,7 @@ export function MobileTouchControls({
                 : 'bg-slate-900/90 border-slate-800 text-slate-500'
           } ${academyHighlight === 'doors-left' ? hlRing : ''}`}
         >
-          ◀ DRZWI L
+          {tr('◀ DRZWI L', '◀ DOORS L')}
         </button>
 
         <button
@@ -188,7 +207,7 @@ export function MobileTouchControls({
                 : 'bg-slate-900/90 border-slate-800 text-slate-500'
           } ${academyHighlight === 'doors-right' ? hlRing : ''}`}
         >
-          DRZWI P ▶
+          {tr('DRZWI P ▶', 'DOORS R ▶')}
         </button>
 
         <button
@@ -227,7 +246,7 @@ export function MobileTouchControls({
               : 'bg-slate-800 border-slate-600 text-slate-300'
           } ${academyHighlight === 'headlights' ? hlRing : ''}`}
         >
-          ŚWIATŁA
+          {tr('ŚWIATŁA', 'LIGHTS')}
         </button>
 
         <button
@@ -246,7 +265,7 @@ export function MobileTouchControls({
               : 'bg-slate-800 border-slate-600 text-slate-200 active:bg-slate-700'
           } ${academyHighlight === 'horn' ? hlRing : ''}`}
         >
-          KLAKSON
+          {tr('KLAKSON', 'HORN')}
         </button>
 
         <button
@@ -255,7 +274,7 @@ export function MobileTouchControls({
           onClick={() => tapAction(onCycleCamera)}
           className="min-h-[38px] [@media(min-height:560px)]:min-h-[44px] px-1.5 py-1 rounded-lg border bg-slate-800 border-slate-600 text-sky-200 active:bg-slate-700 text-[10px] font-mono-tabular font-bold whitespace-nowrap touch-none cursor-pointer"
         >
-          KAMERA
+          {tr('KAMERA', 'CAMERA')}
         </button>
 
         <button
@@ -268,7 +287,7 @@ export function MobileTouchControls({
               : 'bg-red-950/90 border-red-500/75 text-red-200 active:bg-red-800'
           }`}
         >
-          HAM. AWAR.
+          {tr('HAM. AWAR.', 'E-BRAKE')}
         </button>
       </div>
     </div>

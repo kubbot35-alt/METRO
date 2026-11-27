@@ -23,6 +23,7 @@ export interface IInputController {
   triggerCzuwakAck(): void;
   triggerRadioAck(): void;
   triggerCameraCycle(): void;
+  triggerAtoToggle(): void;
   setVirtualHorn(active: boolean): void;
   setVirtualLeverAxis(axis: number | null): void;
   clearHeld(): void;

@@ -1,5 +1,6 @@
 import { formatLeaderboardDate } from '../domain/leaderboard';
 import type { DriverGrade, ILeaderboardEntry } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 
 interface ILeaderboardPanelProps {
   readonly entries: readonly ILeaderboardEntry[];
@@ -14,19 +15,21 @@ const GRADE_PILL_STYLES: Record<DriverGrade, string> = {
 };
 
 export function LeaderboardPanel({ entries }: ILeaderboardPanelProps) {
+  const { tr } = useI18n();
+
   return (
     <section
-      aria-label="Najlepsze wyniki"
+      aria-label={tr('Najlepsze wyniki', 'Top Scores')}
       data-testid="leaderboard-panel"
       className="rounded-lg border border-slate-700/80 bg-[#0c1018]/92 p-4 shadow-xl"
     >
       <div className="flex items-center justify-between gap-2 mb-3 pb-2 border-b border-slate-800">
         <div>
           <p className="text-[10px] font-mono-tabular uppercase tracking-[0.2em] text-amber-400">
-            Tablica rekordów
+            {tr('Tablica rekordów', 'Leaderboard')}
           </p>
           <h2 className="font-display text-lg font-bold text-slate-50 leading-tight">
-            Najlepsze wyniki
+            {tr('Najlepsze wyniki', 'Best Runs')}
           </h2>
         </div>
         <span className="text-[11px] font-mono-tabular text-slate-400 whitespace-nowrap shrink-0">TOP 5</span>
@@ -34,7 +37,10 @@ export function LeaderboardPanel({ entries }: ILeaderboardPanelProps) {
 
       {entries.length === 0 ? (
         <p className="text-xs text-slate-400 leading-relaxed py-4 text-center">
-          Brak zapisanych kursów. Ukończ przejazd dowolną linią metra, aby zapisać pierwszy rekord.
+          {tr(
+            'Brak zapisanych kursów. Ukończ przejazd dowolną linią metra, aby zapisać pierwszy rekord.',
+            'No saved runs yet. Complete a run on any metro line to set your first record.',
+          )}
         </p>
       ) : (
         <ol className="flex flex-col gap-2">
@@ -62,13 +68,15 @@ export function LeaderboardPanel({ entries }: ILeaderboardPanelProps) {
                     {entry.trainName}
                   </div>
                   <div className="text-[10px] font-mono-tabular text-slate-400 truncate">
-                    {entry.timeOfDayId === 'rush' ? 'Szczyt 08:00' : 'Wieczór 23:30'} ·{' '}
-                    {formatLeaderboardDate(entry.dateIso)}
+                    {entry.timeOfDayId === 'rush'
+                      ? tr('Szczyt 08:00', 'Rush 08:00')
+                      : tr('Wieczór 23:30', 'Evening 23:30')}{' '}
+                    · {formatLeaderboardDate(entry.dateIso)}
                   </div>
                 </div>
               </div>
               <span className="font-mono-tabular text-sm font-bold text-amber-300 whitespace-nowrap shrink-0">
-                {entry.score} pkt
+                {entry.score} {tr('pkt', 'pts')}
               </span>
             </li>
           ))}

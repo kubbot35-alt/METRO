@@ -1,6 +1,12 @@
 import { CHALLENGE_CATALOG, getChallengeSpec } from '../domain/challengeCatalog';
 import { compileCustomLineSpec } from '../domain/customLines';
 import { DRIVER_RANKS, getRankProgress } from '../domain/driverProfile';
+import {
+  getLocalizedChallenge,
+  getLocalizedRank,
+  getLocalizedTimeOfDay,
+  getLocalizedTrain,
+} from '../domain/i18nCatalog';
 import { METRO_LINE_CATALOG } from '../domain/routeData';
 import { TIME_OF_DAY_CATALOG } from '../domain/timeOfDayCatalog';
 import { TRAIN_CATALOG } from '../domain/trainCatalog';
@@ -20,6 +26,7 @@ import type {
   TrainModelId,
   WeatherModeId,
 } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 import { LeaderboardPanel } from './LeaderboardPanel';
 
 interface ITitleOverlayProps {
@@ -49,32 +56,45 @@ interface ITitleOverlayProps {
   readonly onOpenSettings: () => void;
   readonly onToggleHelp: () => void;
   readonly onStartAcademy: () => void;
+  readonly onStartPassengerAto: () => void;
   readonly onStart: () => void;
 }
 
 const MODE_OPTIONS: ReadonlyArray<{
   readonly id: GameModeId;
-  readonly title: string;
-  readonly badge: string;
-  readonly description: string;
+  readonly titlePl: string;
+  readonly titleEn: string;
+  readonly badgePl: string;
+  readonly badgeEn: string;
+  readonly descPl: string;
+  readonly descEn: string;
 }> = [
   {
     id: 'duty',
-    title: 'Tryb Służbowy',
-    badge: 'REKORDY',
-    description: 'Rozkład jazdy, punktacja, czuwak, losowe awarie i zapis w TOP 5.',
+    titlePl: 'Tryb Służbowy',
+    titleEn: 'Duty Mode',
+    badgePl: 'REKORDY',
+    badgeEn: 'RECORDS',
+    descPl: 'Rozkład jazdy, punktacja, czuwak, losowe awarie i zapis w TOP 5.',
+    descEn: 'Timetable, scoring, Czuwak vigilance, random faults, and TOP 5 records.',
   },
   {
     id: 'sandbox',
-    title: 'Wolna Jazda',
-    badge: 'BEZ KAR',
-    description: 'Swobodna jazda bez kar, czuwaka i awarii. Sterowanie semaforami.',
+    titlePl: 'Wolna Jazda',
+    titleEn: 'Sandbox',
+    badgePl: 'BEZ KAR · ATO',
+    badgeEn: 'NO PENALTY · ATO',
+    descPl: 'Swobodna jazda bez kar, sterowanie semaforami i opcjonalny Autopilot [A].',
+    descEn: 'Free driving without penalties, signal control, and optional ATO Autopilot [A].',
   },
   {
     id: 'challenge',
-    title: 'Wyzwania',
-    badge: '3 SCENARIUSZE',
-    description: 'Scenariusze specjalne z osobnymi odznakami w Osiągnięciach.',
+    titlePl: 'Wyzwania',
+    titleEn: 'Challenges',
+    badgePl: '3 SCENARIUSZE',
+    badgeEn: '3 SCENARIOS',
+    descPl: 'Scenariusze specjalne z osobnymi odznakami w Osiągnięciach.',
+    descEn: 'Special scenarios with dedicated badges in Achievements.',
   },
 ];
 
@@ -105,10 +125,17 @@ export function TitleOverlay({
   onOpenSettings,
   onToggleHelp,
   onStartAcademy,
+  onStartPassengerAto,
   onStart,
 }: ITitleOverlayProps) {
-  const activeChallenge = getChallengeSpec(selectedChallengeId);
+  const { lang, setLanguage, tr } = useI18n();
+  const activeChallengeRaw = getChallengeSpec(selectedChallengeId);
+  const activeChallenge = getLocalizedChallenge(lang, activeChallengeRaw.id, activeChallengeRaw);
   const rankProgress = getRankProgress(driverProfile.xp);
+  const currentRankLoc = getLocalizedRank(lang, rankProgress.currentRank.id, rankProgress.currentRank);
+  const nextRankLoc = rankProgress.nextRank
+    ? getLocalizedRank(lang, rankProgress.nextRank.id, rankProgress.nextRank)
+    : null;
   const rankIndex = DRIVER_RANKS.findIndex((r) => r.id === rankProgress.currentRank.id) + 1;
   const activeBadge = activeLine.badgeCode ?? activeLine.id;
   const compiledCustomLines = customLines.map((draft) => ({
@@ -133,7 +160,7 @@ export function TitleOverlay({
                   className="text-[11px] font-mono-tabular tracking-[0.14em] uppercase truncate"
                   style={{ color: activeLine.cssColor }}
                 >
-                  {activeLine.name} · {activeLine.stations.length} Stacji · {activeLine.routeLabel}
+                  {activeLine.name} · {activeLine.stations.length} {tr('Stacji', 'Stations')} · {activeLine.routeLabel}
                 </p>
                 <h1 className="font-display text-2xl md:text-3xl font-bold tracking-tight text-slate-50 leading-none mt-0.5">
                   METRO {activeBadge}
@@ -142,6 +169,45 @@ export function TitleOverlay({
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+              <div
+                role="group"
+                aria-label={tr('Język interfejsu', 'Interface language')}
+                data-testid="title-lang-toggle"
+                className="flex items-center rounded-md border border-slate-600/90 bg-[#0c111b]/95 p-0.5 shrink-0"
+              >
+                <button
+                  type="button"
+                  data-testid="lang-toggle-pl"
+                  aria-pressed={lang === 'pl'}
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    setLanguage('pl');
+                  }}
+                  className={`px-2 py-1 rounded text-[11px] font-mono-tabular font-bold transition-colors cursor-pointer ${
+                    lang === 'pl'
+                      ? 'bg-amber-500 text-slate-950'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  PL
+                </button>
+                <button
+                  type="button"
+                  data-testid="lang-toggle-en"
+                  aria-pressed={lang === 'en'}
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    setLanguage('en');
+                  }}
+                  className={`px-2 py-1 rounded text-[11px] font-mono-tabular font-bold transition-colors cursor-pointer ${
+                    lang === 'en'
+                      ? 'bg-amber-500 text-slate-950'
+                      : 'text-slate-300 hover:text-white'
+                  }`}
+                >
+                  EN
+                </button>
+              </div>
               <button
                 type="button"
                 data-testid="title-profile-btn"
@@ -151,7 +217,7 @@ export function TitleOverlay({
                 }}
                 className="px-2.5 py-1.5 rounded-md border border-emerald-500/60 bg-[#0d1d19]/95 hover:bg-emerald-950/70 text-xs font-mono-tabular text-emerald-200 font-semibold cursor-pointer whitespace-nowrap shrink-0"
               >
-                Profil
+                {tr('Profil', 'Profile')}
               </button>
               <button
                 type="button"
@@ -162,7 +228,7 @@ export function TitleOverlay({
                 }}
                 className="px-2.5 py-1.5 rounded-md border border-slate-600 bg-[#101622]/95 hover:bg-slate-800 text-xs font-mono-tabular text-slate-100 font-semibold cursor-pointer whitespace-nowrap shrink-0"
               >
-                ⚙ Ustawienia
+                ⚙ {tr('Ustawienia', 'Settings')}
               </button>
               <button
                 type="button"
@@ -173,7 +239,7 @@ export function TitleOverlay({
                 }}
                 className="px-2.5 py-1.5 rounded-md border border-amber-500/60 bg-[#18140d]/95 hover:bg-amber-950/70 text-xs font-mono-tabular text-amber-200 font-semibold cursor-pointer flex items-center gap-1.5 whitespace-nowrap shrink-0"
               >
-                <span>Osiągnięcia</span>
+                <span>{tr('Osiągnięcia', 'Achievements')}</span>
                 <span className="px-1.5 py-0.5 rounded-xs bg-amber-500/20 text-amber-300 text-[10px]">
                   {achievementsUnlocked}/{achievementsTotal}
                 </span>
@@ -187,7 +253,7 @@ export function TitleOverlay({
                 }}
                 className="px-2.5 py-1.5 rounded-md border border-slate-700 bg-[#0d1118]/90 hover:bg-slate-800 text-xs font-mono-tabular text-slate-200 cursor-pointer whitespace-nowrap shrink-0"
               >
-                ? Sterowanie
+                ? {tr('Sterowanie', 'Controls')}
               </button>
             </div>
           </div>
@@ -195,7 +261,7 @@ export function TitleOverlay({
           <div className="mb-2.5">
             <div className="flex items-center justify-between gap-2 mb-1">
               <p className="text-[10px] font-mono-tabular uppercase tracking-[0.18em] text-slate-400">
-                1. Wybierz linię metra
+                {tr('1. Wybierz linię metra', '1. Select Metro Line')}
               </p>
               <button
                 type="button"
@@ -206,7 +272,7 @@ export function TitleOverlay({
                 }}
                 className="px-2 py-0.5 rounded border border-emerald-500/60 bg-emerald-500/15 hover:bg-emerald-500/25 text-[10px] font-mono-tabular font-bold text-emerald-200 cursor-pointer whitespace-nowrap"
               >
-                + Stwórz własną linię
+                {tr('+ Stwórz własną linię', '+ Create Custom Line')}
               </button>
             </div>
             <div
@@ -237,7 +303,7 @@ export function TitleOverlay({
 
           <div className="mb-2.5">
             <p className="text-[10px] font-mono-tabular uppercase tracking-[0.18em] text-slate-400 mb-1">
-              2. Wybierz skład metra
+              {tr('2. Wybierz skład metra', '2. Select Train Model')}
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
               {TRAIN_CATALOG.map((spec) => (
@@ -253,7 +319,7 @@ export function TitleOverlay({
 
           <div className="mb-2.5">
             <p className="text-[10px] font-mono-tabular uppercase tracking-[0.18em] text-slate-400 mb-1">
-              3. Pora dnia i pogoda (STP Kabaty)
+              {tr('3. Pora dnia i pogoda (STP Kabaty)', '3. Time of Day & Weather (STP Kabaty)')}
             </p>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
               {TIME_OF_DAY_CATALOG.map((tod) => (
@@ -266,17 +332,23 @@ export function TitleOverlay({
               ))}
               <WeatherModeCard
                 mode="clear"
-                title="Bez opadów"
-                badge="SUCHO"
-                description="Dobra widoczność i pełna przyczepność hamowania."
+                title={tr('Bez opadów', 'Clear')}
+                badge={tr('SUCHO', 'DRY')}
+                description={tr(
+                  'Dobra widoczność i pełna przyczepność hamowania.',
+                  'Clear visibility and full rail braking adhesion.',
+                )}
                 selected={selectedWeatherMode === 'clear'}
                 onSelect={() => onSelectWeatherMode('clear')}
               />
               <WeatherModeCard
                 mode="rain"
-                title="Deszcz"
-                badge="MOKRO"
-                description="Opady na STP Kabaty, wycieraczki [X] i śliskie szyny (+20% hamowania)."
+                title={tr('Deszcz', 'Rain')}
+                badge={tr('MOKRO', 'WET')}
+                description={tr(
+                  'Opady na STP Kabaty, wycieraczki [X] i śliskie szyny (+20% hamowania).',
+                  'Rain on STP Kabaty surface track, wipers [X], and slippery rails (+20% braking).',
+                )}
                 selected={selectedWeatherMode === 'rain'}
                 onSelect={() => onSelectWeatherMode('rain')}
               />
@@ -285,7 +357,7 @@ export function TitleOverlay({
 
           <div className="mb-2.5">
             <p className="text-[10px] font-mono-tabular uppercase tracking-[0.18em] text-slate-400 mb-1">
-              4. Tryb gry
+              {tr('4. Tryb gry', '4. Game Mode')}
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
               {MODE_OPTIONS.map((opt) => {
@@ -313,7 +385,7 @@ export function TitleOverlay({
                   >
                     <div className="flex items-center justify-between gap-1.5">
                       <span className="font-display text-sm font-bold text-slate-50">
-                        {opt.title}
+                        {tr(opt.titlePl, opt.titleEn)}
                       </span>
                       <span
                         className={`text-[9px] font-mono-tabular font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${
@@ -326,10 +398,12 @@ export function TitleOverlay({
                             : 'bg-slate-800 text-slate-300'
                         }`}
                       >
-                        {opt.badge}
+                        {tr(opt.badgePl, opt.badgeEn)}
                       </span>
                     </div>
-                    <p className="text-[11px] text-slate-300 leading-snug">{opt.description}</p>
+                    <p className="text-[11px] text-slate-300 leading-snug">
+                      {tr(opt.descPl, opt.descEn)}
+                    </p>
                   </button>
                 );
               })}
@@ -352,7 +426,7 @@ export function TitleOverlay({
             )}
           </div>
 
-          <div className="flex flex-wrap items-center gap-2.5">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               data-start="true"
@@ -360,13 +434,31 @@ export function TitleOverlay({
                 e.currentTarget.blur();
                 onStart();
               }}
-              className="px-7 py-2.5 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-display font-bold text-base tracking-wide rounded-md shadow-lg transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+              className="px-6 py-2.5 bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-display font-bold text-base tracking-wide rounded-md shadow-lg transition-colors cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
             >
               {selectedGameMode === 'sandbox'
-                ? `Uruchom Wolną Jazdę (${activeBadge})`
+                ? tr(`Uruchom Wolną Jazdę (${activeBadge})`, `Start Sandbox (${activeBadge})`)
                 : selectedGameMode === 'challenge'
-                  ? `Start wyzwania: ${activeChallenge.title} (${activeBadge})`
-                  : `Rozpocznij kurs (${activeBadge})`}
+                  ? tr(
+                      `Start wyzwania: ${activeChallenge.title} (${activeBadge})`,
+                      `Start Challenge: ${activeChallenge.title} (${activeBadge})`,
+                    )
+                  : tr(`Rozpocznij kurs (${activeBadge})`, `Start Course (${activeBadge})`)}
+            </button>
+
+            <button
+              type="button"
+              data-testid="start-passenger-ato-btn"
+              onClick={(e) => {
+                e.currentTarget.blur();
+                onStartPassengerAto();
+              }}
+              className="px-4 py-2.5 bg-[#0e221b]/95 hover:bg-emerald-950/90 border-2 border-emerald-400/80 text-emerald-100 font-display font-bold text-sm tracking-wide rounded-md shadow-lg transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap"
+            >
+              <span>{tr('Przejazd jako Pasażer', 'Passenger Ride')}</span>
+              <span className="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-200 text-[10px] font-mono-tabular">
+                ATO
+              </span>
             </button>
 
             <button
@@ -378,7 +470,7 @@ export function TitleOverlay({
               }}
               className="px-4 py-2.5 bg-[#0a1d2a]/95 hover:bg-cyan-950/90 border-2 border-cyan-400/80 text-cyan-100 font-display font-bold text-sm tracking-wide rounded-md shadow-lg transition-colors cursor-pointer flex items-center gap-2 whitespace-nowrap"
             >
-              <span>Samouczek / Akademia</span>
+              <span>{tr('Samouczek / Akademia', 'Tutorial / Academy')}</span>
               <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 text-cyan-200 text-[10px] font-mono-tabular">
                 +250 XP
               </span>
@@ -406,17 +498,18 @@ export function TitleOverlay({
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[9.5px] font-mono-tabular uppercase tracking-[0.14em] text-slate-400">
-                    Ranga maszynisty
+                    {tr('Ranga maszynisty', 'Driver Rank')}
                   </p>
                   <span className="text-xs font-mono-tabular font-bold text-amber-300 whitespace-nowrap shrink-0">
                     {driverProfile.xp} XP
                   </span>
                 </div>
                 <p className="font-display text-base font-bold text-slate-50 leading-tight mt-0.5">
-                  {rankProgress.currentRank.title}
+                  {currentRankLoc.title}
                 </p>
                 <p className="text-[10px] font-mono-tabular text-slate-400 mt-0.5">
-                  {driverProfile.totalDistanceKm.toFixed(1)} km · {driverProfile.completedCourses} kursów
+                  {driverProfile.totalDistanceKm.toFixed(1)} km · {driverProfile.completedCourses}{' '}
+                  {tr('kursów', 'runs')}
                 </p>
               </div>
             </div>
@@ -431,11 +524,13 @@ export function TitleOverlay({
             </div>
             <div className="flex items-center justify-between gap-2 text-[10px] font-mono-tabular text-slate-400 mt-1.5">
               <span className="truncate">
-                {rankProgress.nextRank
-                  ? `Następna: ${rankProgress.nextRank.title}`
-                  : 'Maksymalny stopień'}
+                {nextRankLoc
+                  ? `${tr('Następna', 'Next')}: ${nextRankLoc.title}`
+                  : tr('Maksymalny stopień', 'Max rank')}
               </span>
-              <span className="text-emerald-300 whitespace-nowrap shrink-0">Profil →</span>
+              <span className="text-emerald-300 whitespace-nowrap shrink-0">
+                {tr('Profil →', 'Profile →')}
+              </span>
             </div>
           </button>
 
@@ -445,7 +540,10 @@ export function TitleOverlay({
 
       <div className="w-full flex items-center justify-center gap-3 mt-1.5 relative">
         <p className="text-xs font-mono-tabular text-slate-300 tracking-wide text-center bg-[#090b0f]/85 px-4 py-1.5 rounded border border-slate-800/80">
-          W / S Moc · Spacja Hamulec · B Awaryjny · Q / E Drzwi L/P · V Kamera (4) · F Foto · R Radio · X Wycieraczki · C Czuwak · L Światła
+          {tr(
+            'W / S Moc · Spacja Hamulec · B Awaryjny · Q / E Drzwi L/P · A Autopilot · V Kamera (4) · F Foto · R Radio · X Wycieraczki · C Czuwak · L Światła',
+            'W / S Throttle · Space Brake · B Emergency · Q / E Doors L/R · A Autopilot · V Camera (4) · F Photo · R Radio · X Wipers · C Czuwak · L Lights',
+          )}
         </p>
         {gamepadStatus.connected && (
           <div
@@ -466,7 +564,7 @@ export function TitleOverlay({
               <rect x="2" y="6" width="20" height="12" rx="4" />
               <path d="M6 12h4M8 10v4M15 11h.01M18 13h.01" />
             </svg>
-            <span>Pad aktywny</span>
+            <span>{tr('Pad aktywny', 'Gamepad active')}</span>
           </div>
         )}
       </div>
@@ -483,6 +581,8 @@ function ChallengeScenarioCard({
   readonly selected: boolean;
   readonly onSelect: () => void;
 }) {
+  const { lang } = useI18n();
+  const loc = getLocalizedChallenge(lang, spec.id, spec);
   return (
     <button
       type="button"
@@ -500,7 +600,7 @@ function ChallengeScenarioCard({
     >
       <div className="flex items-center justify-between gap-1.5">
         <span className="font-display text-xs font-bold text-slate-50 leading-tight">
-          {spec.title}
+          {loc.title}
         </span>
         <span
           className={`text-[9px] font-mono-tabular font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${
@@ -509,11 +609,11 @@ function ChallengeScenarioCard({
               : 'bg-slate-800 text-slate-300'
           }`}
         >
-          {spec.badge}
+          {loc.badge}
         </span>
       </div>
-      <p className="text-[10px] font-mono-tabular text-fuchsia-300">{spec.shortLabel}</p>
-      <p className="text-[10px] text-slate-300 leading-snug line-clamp-2">{spec.description}</p>
+      <p className="text-[10px] font-mono-tabular text-fuchsia-300">{loc.shortLabel}</p>
+      <p className="text-[10px] text-slate-300 leading-snug line-clamp-2">{loc.description}</p>
     </button>
   );
 }
@@ -531,6 +631,7 @@ function LineSelectionCard({
   readonly onEdit?: () => void;
   readonly onDelete?: () => void;
 }) {
+  const { tr } = useI18n();
   const badge = spec.badgeCode ?? spec.id;
   const activeStyles = selected
     ? 'bg-[#121a28]/95 shadow-lg'
@@ -570,16 +671,16 @@ function LineSelectionCard({
             <button
               type="button"
               data-testid={`edit-custom-line-${spec.id}`}
-              aria-label={`Edytuj ${spec.name}`}
+              aria-label={`${tr('Edytuj', 'Edit')} ${spec.name}`}
               onClick={onEdit}
               className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[10px] font-mono-tabular text-slate-200 cursor-pointer"
             >
-              Edytuj
+              {tr('Edytuj', 'Edit')}
             </button>
             <button
               type="button"
               data-testid={`delete-custom-line-${spec.id}`}
-              aria-label={`Usuń ${spec.name}`}
+              aria-label={`${tr('Usuń', 'Delete')} ${spec.name}`}
               onClick={onDelete}
               className="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-red-900/80 text-[10px] font-mono-tabular text-red-300 cursor-pointer"
             >
@@ -597,7 +698,11 @@ function LineSelectionCard({
         className="text-left text-[11px] text-slate-300 leading-snug truncate cursor-pointer"
       >
         {spec.routeLabel}
-        {spec.isCustom ? (spec.hasSurfaceStart ? ' · Start naziemny' : ' · Własna trasa') : ''}
+        {spec.isCustom
+          ? spec.hasSurfaceStart
+            ? tr(' · Start naziemny', ' · Surface start')
+            : tr(' · Własna trasa', ' · Custom line')
+          : ''}
       </button>
     </div>
   );
@@ -612,6 +717,8 @@ function TrainSelectionCard({
   readonly selected: boolean;
   readonly onSelect: () => void;
 }) {
+  const { lang, tr } = useI18n();
+  const loc = getLocalizedTrain(lang, spec.id, spec);
   const isRetro = spec.visual.theme === 'retro';
   const isVarsovia = spec.visual.theme === 'varsovia';
   const activeStyles = selected
@@ -649,24 +756,24 @@ function TrainSelectionCard({
                 : 'bg-slate-800 text-slate-400'
             }`}
           >
-            {selected ? 'WYBRANY' : spec.subtitle}
+            {selected ? tr('WYBRANY', 'SELECTED') : loc.subtitle}
           </span>
         </div>
-        <p className="text-[10.5px] text-slate-300 leading-snug line-clamp-2">{spec.description}</p>
+        <p className="text-[10.5px] text-slate-300 leading-snug line-clamp-2">{loc.description}</p>
       </div>
 
       <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-700/60 font-mono-tabular text-[10px]">
         <div className="min-w-0">
-          <span className="block text-[8.5px] uppercase text-slate-400">Masa</span>
+          <span className="block text-[8.5px] uppercase text-slate-400">{tr('Masa', 'Mass')}</span>
           <span className="text-slate-100 font-semibold truncate block">{spec.massLabel}</span>
         </div>
         <div className="min-w-0">
-          <span className="block text-[8.5px] uppercase text-slate-400">Rozruch</span>
-          <span className="text-slate-100 font-semibold truncate block">{spec.accelLabel}</span>
+          <span className="block text-[8.5px] uppercase text-slate-400">{tr('Rozruch', 'Launch')}</span>
+          <span className="text-slate-100 font-semibold truncate block">{loc.accelLabel}</span>
         </div>
         <div className="min-w-0">
-          <span className="block text-[8.5px] uppercase text-slate-400">Hamulce</span>
-          <span className="text-slate-100 font-semibold truncate block">{spec.brakeLabel}</span>
+          <span className="block text-[8.5px] uppercase text-slate-400">{tr('Hamulce', 'Brakes')}</span>
+          <span className="text-slate-100 font-semibold truncate block">{loc.brakeLabel}</span>
         </div>
       </div>
     </button>
@@ -682,6 +789,8 @@ function TimeOfDayCard({
   readonly selected: boolean;
   readonly onSelect: () => void;
 }) {
+  const { lang } = useI18n();
+  const loc = getLocalizedTimeOfDay(lang, spec.id, spec);
   const isEvening = spec.id === 'evening';
   const activeStyles = selected
     ? isEvening
@@ -701,7 +810,7 @@ function TimeOfDayCard({
       className={`text-left rounded-lg border-2 p-2 transition-colors cursor-pointer flex flex-col gap-0.5 ${activeStyles}`}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="font-display text-sm font-bold text-slate-50">{spec.name}</span>
+        <span className="font-display text-sm font-bold text-slate-50">{loc.name}</span>
         <span
           className={`text-[11px] font-mono-tabular font-bold px-2 py-0.5 rounded ${
             selected
@@ -714,7 +823,7 @@ function TimeOfDayCard({
           {spec.clockLabel}
         </span>
       </div>
-      <p className="text-[10px] text-slate-300 leading-snug line-clamp-2">{spec.description}</p>
+      <p className="text-[10px] text-slate-300 leading-snug line-clamp-2">{loc.description}</p>
     </button>
   );
 }

@@ -20,7 +20,17 @@ export type MetroLineId = string;
 
 export type TrackAlignmentIntensity = 'flat' | 'moderate' | 'curvy';
 
-export type GameModeId = 'duty' | 'sandbox' | 'challenge' | 'academy';
+export type GameModeId = 'duty' | 'sandbox' | 'challenge' | 'academy' | 'passenger';
+
+export type LanguageId = 'pl' | 'en';
+
+export type AtoStatus =
+  | 'off'
+  | 'cruising'
+  | 'signal-hold'
+  | 'approaching'
+  | 'boarding'
+  | 'departing';
 
 export type ChallengeId = 'inverter_fault' | 'technical_run' | 'black_series';
 
@@ -91,6 +101,7 @@ export interface IRadioDispatchState {
   readonly messageId: number;
   readonly text: string;
   readonly spokenText: string;
+  readonly stationName?: string;
   readonly category: RadioDispatchCategory;
   readonly remainingSec: number;
   readonly maxWindowSec: number;
@@ -118,6 +129,7 @@ export interface IGameSettings {
   readonly showFps: boolean;
   readonly gamepadVibration: boolean;
   readonly touchControlsMode: TouchControlsMode;
+  readonly language: LanguageId;
 }
 
 export type TachographViolationKind = 'overspeed' | 'red_signal' | 'czuwak';
@@ -502,6 +514,8 @@ export interface IAnnouncementState {
   readonly id: number;
   readonly text: string;
   readonly spokenText?: string;
+  readonly stationName?: string;
+  readonly platformSide?: DoorSide;
   readonly kind: 'next' | 'arrival';
   readonly remainingSec: number;
 }
@@ -560,6 +574,7 @@ export interface IControlInput {
   readonly acknowledgeCzuwakPressed?: boolean;
   readonly acknowledgeRadioPressed?: boolean;
   readonly cycleCameraPressed?: boolean;
+  readonly toggleAtoPressed?: boolean;
   readonly manualLeverAxis?: number | null;
   readonly hornActive: boolean;
 }
@@ -713,6 +728,8 @@ export interface ISimulationSnapshot {
   readonly elapsedTimeSec: number;
   readonly feedback: IFeedbackMessage | null;
   readonly hornActive: boolean;
+  readonly atoEnabled: boolean;
+  readonly atoStatus: AtoStatus;
   readonly tachograph: ITachographSnapshot;
   readonly stationSplits: readonly IGhostStationSplit[];
 }
@@ -728,6 +745,7 @@ export interface IMetroSimulation {
   setTimeOfDay(timeOfDayId: TimeOfDayId): void;
   triggerSandboxOncomingTrain(): void;
   cycleSandboxNextSignal(): void;
+  toggleAto?(): boolean;
   start(): void;
   pause(): void;
   resume(): void;

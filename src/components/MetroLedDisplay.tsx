@@ -1,4 +1,6 @@
+import { localizeAnnouncement } from '../domain/i18nDynamic';
 import type { IAnnouncementState, MetroLineId } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 
 interface IMetroLedDisplayProps {
   readonly announcement: IAnnouncementState | null;
@@ -11,7 +13,9 @@ export function MetroLedDisplay({
   lineId = 'M1',
   lineCssColor,
 }: IMetroLedDisplayProps) {
-  if (!announcement) {
+  const { lang } = useI18n();
+  const localized = localizeAnnouncement(lang, announcement);
+  if (!localized) {
     return null;
   }
 
@@ -29,7 +33,7 @@ export function MetroLedDisplay({
         {lineId}
       </span>
       <span className="font-mono-tabular text-xs md:text-sm font-semibold tracking-[0.11em] uppercase text-amber-300 whitespace-nowrap">
-        {announcement.text}
+        {localized.displayText}
       </span>
     </div>
   );

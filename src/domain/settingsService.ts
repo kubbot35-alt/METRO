@@ -2,6 +2,7 @@ import type {
   GraphicsQualityId,
   IGameSettings,
   IGraphicsQualityPreset,
+  LanguageId,
   TouchControlsMode,
 } from './types';
 
@@ -27,6 +28,7 @@ export const DEFAULT_GAME_SETTINGS: IGameSettings = {
   showFps: false,
   gamepadVibration: true,
   touchControlsMode: 'auto',
+  language: 'pl',
 };
 
 export const GRAPHICS_QUALITY_PRESETS: readonly IGraphicsQualityPreset[] = [
@@ -87,6 +89,13 @@ function parseTouchControlsMode(value: unknown): TouchControlsMode {
   return DEFAULT_GAME_SETTINGS.touchControlsMode;
 }
 
+function parseLanguage(value: unknown): LanguageId {
+  if (value === 'pl' || value === 'en') {
+    return value;
+  }
+  return DEFAULT_GAME_SETTINGS.language;
+}
+
 export function sanitizeGameSettings(raw: unknown): IGameSettings {
   if (!raw || typeof raw !== 'object') {
     return { ...DEFAULT_GAME_SETTINGS };
@@ -104,6 +113,7 @@ export function sanitizeGameSettings(raw: unknown): IGameSettings {
         ? obj.gamepadVibration
         : DEFAULT_GAME_SETTINGS.gamepadVibration,
     touchControlsMode: parseTouchControlsMode(obj.touchControlsMode),
+    language: parseLanguage(obj.language),
   };
 }
 

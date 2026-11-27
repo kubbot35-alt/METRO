@@ -1,4 +1,5 @@
 import type { SignalAspect } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 
 interface ISandboxControlsBarProps {
   readonly nextSignalAspect: SignalAspect | undefined;
@@ -13,12 +14,13 @@ export function SandboxControlsBar({
   onSpawnOncoming,
   onCycleSignal,
 }: ISandboxControlsBarProps) {
+  const { tr } = useI18n();
   const aspectLabel =
     nextSignalAspect === 'red'
-      ? 'Czerwone'
+      ? tr('Czerwone', 'Red')
       : nextSignalAspect === 'yellow'
-        ? 'Żółte'
-        : 'Zielone';
+        ? tr('Żółte', 'Yellow')
+        : tr('Zielone', 'Green');
 
   return (
     <div
@@ -39,7 +41,7 @@ export function SandboxControlsBar({
         }}
         className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[11px] font-mono-tabular font-semibold text-slate-100 cursor-pointer"
       >
-        {oncomingActive ? 'Mijanka aktywna' : '+ Wywołaj mijankę'}
+        {oncomingActive ? tr('Mijanka aktywna', 'AI Train Active') : tr('+ Wywołaj mijankę', '+ Spawn AI Train')}
       </button>
 
       <button
@@ -52,7 +54,7 @@ export function SandboxControlsBar({
         }}
         className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-600 text-[11px] font-mono-tabular font-semibold text-amber-200 cursor-pointer"
       >
-        Semafor: {aspectLabel} ↻
+        {tr('Semafor', 'Signal')}: {aspectLabel} ↻
       </button>
     </div>
   );

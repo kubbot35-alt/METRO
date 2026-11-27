@@ -1,4 +1,7 @@
+import { getLocalizedCameraLabel, getLocalizedChallenge } from '../domain/i18nCatalog';
+import { localizeFeedbackText, localizeRadioDispatch } from '../domain/i18nDynamic';
 import type { FeedbackTone, IGhostDeltaSnapshot, ISimulationSnapshot } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 import { GhostDeltaBadge } from './GhostDeltaBadge';
 import { MetroLedDisplay } from './MetroLedDisplay';
 import { RouteLineStrip } from './RouteLineStrip';
@@ -44,7 +47,16 @@ export function TopHudBar({
   onSandboxCycleSignal,
   onAcknowledgeRadio,
 }: ITopHudBarProps) {
+  const { lang, tr } = useI18n();
   const { feedback, announcement, cameraNotice, radio, challenge } = snapshot;
+  const localizedChallenge = challenge
+    ? getLocalizedChallenge(lang, challenge.id, challenge)
+    : null;
+  const localizedRadio = localizeRadioDispatch(lang, radio);
+  const localizedCameraLabel = cameraNotice
+    ? getLocalizedCameraLabel(lang, snapshot.cameraMode, cameraNotice.label)
+    : null;
+  const localizedFeedback = feedback ? localizeFeedbackText(lang, feedback.text) : null;
   const theme = snapshot.trainModel.visual.theme;
   const isRetro = theme === 'retro';
   const isVarsovia = theme === 'varsovia';
@@ -60,7 +72,7 @@ export function TopHudBar({
       <div className={`${barClasses} border rounded-md px-2 sm:px-3 py-1.5 sm:py-2 flex items-center gap-2 sm:gap-3`}>
         <div className="flex flex-col leading-tight">
           <span className="text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
-            Punkty
+            {tr('Punkty', 'Score')}
           </span>
           <span className="font-mono-tabular text-base sm:text-xl font-bold text-slate-50">
             {Math.round(snapshot.score)}
@@ -69,7 +81,7 @@ export function TopHudBar({
         <div className="h-6 sm:h-7 w-px bg-slate-700/80" aria-hidden="true" />
         <div className="flex flex-col leading-tight">
           <span className="text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
-            Stacja
+            {tr('Stacja', 'Station')}
           </span>
           <span className="font-mono-tabular text-sm sm:text-base font-semibold text-amber-300">
             {snapshot.currentStation.stationIndex + 1} / {snapshot.totalStations}
@@ -78,7 +90,7 @@ export function TopHudBar({
         <div className="h-6 sm:h-7 w-px bg-slate-700/80" aria-hidden="true" />
         <div className="flex flex-col leading-tight" data-testid="passengers-counter">
           <span className="text-[9px] sm:text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
-            Pasaż.
+            {tr('Pasaż.', 'Pax')}
           </span>
           <span className="font-mono-tabular text-sm sm:text-base font-semibold text-emerald-300">
             {snapshot.passengersCarried}
@@ -87,14 +99,24 @@ export function TopHudBar({
         <div className="h-7 w-px bg-slate-700/80 hidden lg:block" aria-hidden="true" />
         <div className="hidden lg:flex flex-col leading-tight">
           <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
-            Skład
+            {tr('Skład', 'Train')}
           </span>
           <span className="font-mono-tabular text-xs font-semibold text-slate-200 whitespace-nowrap">
-            {snapshot.trainModel.name} · {snapshot.timeOfDay.id === 'rush' ? 'Szczyt' : 'Wieczór'}
+            {snapshot.trainModel.name} ·{' '}
+            {snapshot.timeOfDay.id === 'rush' ? tr('Szczyt', 'Rush') : tr('Wieczór', 'Evening')}
           </span>
         </div>
       </div>
       <GhostDeltaBadge delta={ghostDelta} />
+      {snapshot.gameMode === 'passenger' && (
+        <div
+          data-testid="passenger-ato-badge"
+          className="mt-1.5 px-2.5 py-1 rounded-md border border-emerald-400/75 bg-[#0b1f18]/92 text-emerald-200 text-[11px] font-mono-tabular font-bold flex items-center gap-2 shadow-lg"
+        >
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+          <span>{tr('PRZEJAZD PASAŻERA · AUTOPILOT ATO', 'PASSENGER RIDE · ATO AUTOPILOT')}</span>
+        </div>
+      )}
       {snapshot.gameMode === 'sandbox' && (
         <SandboxControlsBar
           nextSignalAspect={snapshot.nextSignal?.signal.aspect}
@@ -103,21 +125,21 @@ export function TopHudBar({
           onCycleSignal={onSandboxCycleSignal}
         />
       )}
-      {challenge && (
+      {localizedChallenge && (
         <div
           data-testid="challenge-objective-bar"
           className="mt-1.5 px-3 py-1.5 rounded-md border border-fuchsia-400/70 bg-[#1d1026]/92 text-fuchsia-100 text-[11px] font-mono-tabular shadow-lg max-w-[360px]"
         >
           <div className="flex items-center justify-between gap-2">
             <span className="font-bold uppercase tracking-wider text-fuchsia-300">
-              WYZWANIE · {challenge.title}
+              {tr('WYZWANIE', 'CHALLENGE')} · {localizedChallenge.title}
             </span>
             <span className="px-1.5 py-0.5 rounded bg-fuchsia-500/20 border border-fuchsia-400/50 text-[9px] font-bold text-amber-200 whitespace-nowrap">
-              {challenge.badge}
+              {localizedChallenge.badge}
             </span>
           </div>
           <p className="text-[10px] text-slate-200 mt-0.5 leading-snug">
-            {challenge.objectiveSummary}
+            {localizedChallenge.objectiveSummary}
           </p>
         </div>
       )}
@@ -140,7 +162,7 @@ export function TopHudBar({
               <div className="flex items-center gap-2">
                 <span className="w-2.5 h-2.5 rounded-full bg-cyan-300 animate-pulse shrink-0" />
                 <span className="text-[10px] font-mono-tabular font-bold uppercase tracking-[0.16em] text-cyan-300">
-                  Radio Dyspozytora · Kanał Ruchowy
+                  {tr('Radio Dyspozytora · Kanał Ruchowy', 'Dispatch Radio · Traffic Channel')}
                 </span>
               </div>
               <button
@@ -152,10 +174,16 @@ export function TopHudBar({
                 }}
                 className="px-2.5 py-1 rounded bg-cyan-400 hover:bg-cyan-300 text-slate-950 font-mono-tabular font-bold text-[11px] whitespace-nowrap cursor-pointer"
               >
-                Potwierdź [R]{snapshot.gameMode === 'sandbox' ? '' : ' +40 pkt'} ({radio.remainingSec.toFixed(1)}s)
+                {tr('Potwierdź [R]', 'Confirm [R]')}
+                {snapshot.gameMode === 'sandbox' || snapshot.gameMode === 'passenger'
+                  ? ''
+                  : tr(' +40 pkt', ' +40 pts')}{' '}
+                ({radio.remainingSec.toFixed(1)}s)
               </button>
             </div>
-            <p className="text-xs font-medium text-slate-100 leading-snug">{radio.text}</p>
+            <p className="text-xs font-medium text-slate-100 leading-snug">
+              {localizedRadio.displayText}
+            </p>
             <div className="w-full h-1 bg-slate-800 rounded overflow-hidden">
               <div
                 className="h-full bg-cyan-400 transition-transform origin-left"
@@ -164,23 +192,25 @@ export function TopHudBar({
             </div>
           </div>
         )}
-        {cameraNotice && (
+        {localizedCameraLabel && (
           <div
             data-testid="camera-notice"
             className="px-3.5 py-1.5 rounded-md border border-sky-400/70 bg-[#0c1829]/95 text-sky-100 text-xs font-mono-tabular font-semibold tracking-wide shadow-lg"
           >
-            {cameraNotice.label}
+            {localizedCameraLabel}
           </div>
         )}
-        {feedback && (
+        {feedback && localizedFeedback && (
           <div
             role="status"
+            data-testid="hud-feedback-banner"
             className={`px-4 py-2 rounded-md border text-sm font-medium flex items-center gap-2.5 shadow-lg ${getFeedbackColor(feedback.tone)}`}
           >
-            <span>{feedback.text}</span>
+            <span>{localizedFeedback}</span>
             {feedback.pointsDelta !== 0 && (
               <span className="font-mono-tabular font-bold">
-                {feedback.pointsDelta > 0 ? `+${feedback.pointsDelta}` : feedback.pointsDelta} pkt
+                {feedback.pointsDelta > 0 ? `+${feedback.pointsDelta}` : feedback.pointsDelta}{' '}
+                {tr('pkt', 'pts')}
               </span>
             )}
           </div>
@@ -192,8 +222,8 @@ export function TopHudBar({
           type="button"
           tabIndex={-1}
           data-testid="help-toggle-btn"
-          aria-label="Pomoc i skróty klawiszowe [?]"
-          title="Pomoc i skróty klawiszowe [?]"
+          aria-label={tr('Pomoc i skróty klawiszowe [?]', 'Help & keybindings [?]')}
+          title={tr('Pomoc i skróty klawiszowe [?]', 'Help & keybindings [?]')}
           onClick={(e) => {
             e.currentTarget.blur();
             onToggleHelp();
@@ -207,8 +237,8 @@ export function TopHudBar({
           type="button"
           tabIndex={-1}
           data-testid="camera-cycle-btn"
-          aria-label="Zmień kamerę [V]"
-          title="Zmień kamerę [V]"
+          aria-label={tr('Zmień kamerę [V]', 'Cycle camera [V]')}
+          title={tr('Zmień kamerę [V]', 'Cycle camera [V]')}
           onClick={(e) => {
             e.currentTarget.blur();
             onCycleCamera();
@@ -225,8 +255,8 @@ export function TopHudBar({
         <button
           type="button"
           tabIndex={-1}
-          aria-label={muted ? 'Włącz dźwięk [M]' : 'Wycisz dźwięk [M]'}
-          title={muted ? 'Włącz dźwięk [M]' : 'Wycisz dźwięk [M]'}
+          aria-label={muted ? tr('Włącz dźwięk [M]', 'Unmute audio [M]') : tr('Wycisz dźwięk [M]', 'Mute audio [M]')}
+          title={muted ? tr('Włącz dźwięk [M]', 'Unmute audio [M]') : tr('Wycisz dźwięk [M]', 'Mute audio [M]')}
           onClick={(e) => {
             e.currentTarget.blur();
             onToggleMute();
@@ -246,8 +276,8 @@ export function TopHudBar({
         <button
           type="button"
           tabIndex={-1}
-          aria-label="Pauza [P]"
-          title="Pauza [P]"
+          aria-label={tr('Pauza [P]', 'Pause [P]')}
+          title={tr('Pauza [P]', 'Pause [P]')}
           onClick={(e) => {
             e.currentTarget.blur();
             onPause();
@@ -263,8 +293,8 @@ export function TopHudBar({
         <button
           type="button"
           tabIndex={-1}
-          aria-label="Restartuj kurs [Shift+R]"
-          title="Restartuj kurs [Shift+R]"
+          aria-label={tr('Restartuj kurs [Shift+R]', 'Restart run [Shift+R]')}
+          title={tr('Restartuj kurs [Shift+R]', 'Restart run [Shift+R]')}
           onClick={(e) => {
             e.currentTarget.blur();
             onRestart();

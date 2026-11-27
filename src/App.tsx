@@ -21,6 +21,7 @@ import { getPhotoFilterSpec } from './domain/photoMode';
 import { formatClockTime, formatDeviationTime } from './domain/scheduleSystem';
 import { getStationPlatformLayout, getStationPlatformSide } from './domain/trackGeometry';
 import { useMetroGame } from './hooks/useMetroGame';
+import { LanguageProvider } from './i18n/LanguageContext';
 
 export default function App() {
   const mountRef = useRef<HTMLDivElement | null>(null);
@@ -28,11 +29,15 @@ export default function App() {
   const { snapshot } = game;
 
   return (
+    <LanguageProvider language={game.settings.language} onSetLanguage={game.setLanguage}>
     <main
       className="relative w-full h-full overflow-hidden bg-[#06080d]"
       data-testid="metro-simulator-root"
       data-phase={snapshot.phase}
       data-mode={snapshot.gameMode}
+      data-ato={snapshot.atoEnabled ? '1' : '0'}
+      data-ato-status={snapshot.atoStatus}
+      data-lang={game.settings.language}
       data-speed={Math.round(snapshot.kinematics.speedKmh)}
       data-position={Math.round(snapshot.kinematics.positionM)}
       data-score={Math.round(snapshot.score)}
@@ -132,6 +137,7 @@ export default function App() {
           onOpenSettings={game.openSettings}
           onToggleHelp={game.toggleHelp}
           onStartAcademy={game.startAcademy}
+          onStartPassengerAto={game.startPassengerAto}
           onStart={game.startGame}
         />
       )}
@@ -172,6 +178,7 @@ export default function App() {
               onEmergencyBrake={game.triggerEmergencyBrake}
               onCycleCamera={game.cycleCamera}
               onToggleHeadlights={game.toggleHeadlights}
+              onToggleAto={game.toggleAto}
               onHornChange={game.setHornActive}
             />
           )}
@@ -182,6 +189,7 @@ export default function App() {
             onToggleDoorsRight={game.toggleDoorsRight}
             onToggleHeadlights={game.toggleHeadlights}
             onToggleWipers={game.toggleWipers}
+            onToggleAto={game.toggleAto}
             onAcknowledgeCzuwak={game.acknowledgeCzuwak}
             onAcknowledgeRadio={game.acknowledgeRadio}
             onCycleCamera={game.cycleCamera}
@@ -269,5 +277,6 @@ export default function App() {
       {!game.photoModeActive && <AchievementToast toast={game.achievementToast} />}
       <GamepadToast toast={game.gamepadToast} />
     </main>
+    </LanguageProvider>
   );
 }

@@ -1,4 +1,5 @@
 import type { ISimulationSnapshot, SignalAspect } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 
 interface IRouteLineStripProps {
   readonly snapshot: ISimulationSnapshot;
@@ -18,18 +19,18 @@ function toSvgX(distanceM: number, totalDistanceM: number): number {
 function getSignalStyle(aspect: SignalAspect | undefined): {
   readonly dotClass: string;
   readonly textClass: string;
-  readonly label: string;
 } {
   if (aspect === 'red') {
-    return { dotClass: 'bg-red-500', textClass: 'text-red-300', label: 'STÓJ' };
+    return { dotClass: 'bg-red-500', textClass: 'text-red-300' };
   }
   if (aspect === 'yellow') {
-    return { dotClass: 'bg-amber-400', textClass: 'text-amber-300', label: 'UWAGA' };
+    return { dotClass: 'bg-amber-400', textClass: 'text-amber-300' };
   }
-  return { dotClass: 'bg-emerald-400', textClass: 'text-emerald-300', label: 'WOLNA' };
+  return { dotClass: 'bg-emerald-400', textClass: 'text-emerald-300' };
 }
 
 export function RouteLineStrip({ snapshot }: IRouteLineStripProps) {
+  const { tr } = useI18n();
   const { line, stations, kinematics, currentStation, nextSignal, trackworkZones } = snapshot;
   const maxDistM = stations[stations.length - 1]?.distanceM ?? 4200;
   const trainX = toSvgX(kinematics.positionM, maxDistM);
@@ -62,12 +63,14 @@ export function RouteLineStrip({ snapshot }: IRouteLineStripProps) {
         <div className="flex items-center gap-2 shrink-0" data-testid="koralik-signal">
           {trackworkZones.length > 0 && (
             <span className="text-[10px] text-amber-300 font-semibold hidden sm:inline">
-              ROBOTY
+              {tr('ROBOTY', 'WORKS')}
             </span>
           )}
           <span className={`w-2.5 h-2.5 rounded-full inline-block ${signalStyle.dotClass}`} aria-hidden="true" />
           <span className={`text-[10px] font-bold ${signalStyle.textClass}`}>
-            {nextSignal ? `SEM ${Math.max(0, Math.round(nextSignal.distanceAheadM))}m` : 'KONIEC'}
+            {nextSignal
+              ? `${tr('SEM', 'SIG')} ${Math.max(0, Math.round(nextSignal.distanceAheadM))}m`
+              : tr('KONIEC', 'END')}
           </span>
         </div>
       </div>
@@ -76,7 +79,7 @@ export function RouteLineStrip({ snapshot }: IRouteLineStripProps) {
         viewBox="0 0 1000 34"
         className="w-full h-7 overflow-visible"
         role="img"
-        aria-label={`Schemat trasy ${line.name}`}
+        aria-label={tr(`Schemat trasy ${line.name}`, `Route map ${line.name}`)}
       >
         <rect x={TRACK_X_START} y={TRACK_Y - 3} width={TRACK_SPAN} height={6} rx={3} fill="#1e293b" />
         <rect x={TRACK_X_START} y={TRACK_Y - 2.2} width={TRACK_SPAN} height={4.4} rx={2.2} fill={lineHex} />

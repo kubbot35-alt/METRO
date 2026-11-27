@@ -13,6 +13,7 @@ export class KeyboardInputController implements IInputController {
   private czuwakAckQueued = false;
   private radioAckQueued = false;
   private cameraCycleQueued = false;
+  private atoToggleQueued = false;
   private virtualHornActive = false;
   private virtualLeverAxis: number | null = null;
 
@@ -48,6 +49,7 @@ export class KeyboardInputController implements IInputController {
       acknowledgeCzuwakPressed: this.czuwakAckQueued,
       acknowledgeRadioPressed: this.radioAckQueued,
       cycleCameraPressed: this.cameraCycleQueued,
+      toggleAtoPressed: this.atoToggleQueued,
       manualLeverAxis: this.virtualLeverAxis,
       hornActive: this.heldKeys.has('KeyH') || this.virtualHornActive,
     };
@@ -60,6 +62,7 @@ export class KeyboardInputController implements IInputController {
     this.czuwakAckQueued = false;
     this.radioAckQueued = false;
     this.cameraCycleQueued = false;
+    this.atoToggleQueued = false;
     return input;
   }
 
@@ -108,6 +111,11 @@ export class KeyboardInputController implements IInputController {
     this.cameraCycleQueued = true;
   }
 
+  public triggerAtoToggle(): void {
+    this.callbacks?.onFirstInteraction();
+    this.atoToggleQueued = true;
+  }
+
   public setVirtualHorn(active: boolean): void {
     if (active) {
       this.callbacks?.onFirstInteraction();
@@ -133,6 +141,7 @@ export class KeyboardInputController implements IInputController {
     this.czuwakAckQueued = false;
     this.radioAckQueued = false;
     this.cameraCycleQueued = false;
+    this.atoToggleQueued = false;
   }
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
@@ -219,6 +228,10 @@ export class KeyboardInputController implements IInputController {
       }
     } else if (code === 'KeyV') {
       this.cameraCycleQueued = true;
+    } else if (code === 'KeyA') {
+      if (!isTitle && !isModalOpen) {
+        this.atoToggleQueued = true;
+      }
     } else if (code === 'F1' || key === '?') {
       this.callbacks?.onHelpToggle();
     } else if (code === 'KeyP' || code === 'Escape') {

@@ -15,6 +15,7 @@ import {
   GhostRecordStorageService,
   type IGhostRecordService,
 } from '../domain/ghostDelta';
+import { localizeAnnouncement, localizeRadioDispatch } from '../domain/i18nDynamic';
 import { LeaderboardService, type ILeaderboardService } from '../domain/leaderboard';
 import { MetroSimulationEngine } from '../domain/metroSimulation';
 import {
@@ -46,6 +47,7 @@ import type {
   IPhotoCameraState,
   IPhotoMoveInput,
   ISimulationSnapshot,
+  LanguageId,
   MetroLineId,
   PhotoFilterId,
   TimeOfDayId,
@@ -112,9 +114,11 @@ export interface IMetroGameController {
   openSettings: () => void;
   closeSettings: () => void;
   updateSettings: (partial: Partial<IGameSettings>) => void;
+  setLanguage: (language: LanguageId) => void;
   resetSettings: () => void;
   startGame: () => void;
   startAcademy: () => void;
+  startPassengerAto: () => void;
   pauseGame: () => void;
   resumeGame: () => void;
   restartGame: () => void;
@@ -127,6 +131,7 @@ export interface IMetroGameController {
   toggleDoorsRight: () => void;
   toggleHeadlights: () => void;
   toggleWipers: () => void;
+  toggleAto: () => void;
   acknowledgeCzuwak: () => void;
   acknowledgeRadio: () => void;
   cycleCamera: () => void;
@@ -486,6 +491,13 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     [applyAndPersistSettings],
   );
 
+  const setLanguage = useCallback(
+    (language: LanguageId): void => {
+      updateSettings({ language });
+    },
+    [updateSettings],
+  );
+
   const resetSettings = useCallback((): void => {
     const defaults = settingsServiceRef.current!.reset();
     applyAndPersistSettings(defaults);
@@ -547,6 +559,30 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     syncNow();
   }, [syncNow]);
 
+  const startPassengerAto = useCallback((): void => {
+    const sim = simRef.current;
+    if (!sim) {
+      return;
+    }
+    const currentSnap = sim.getSnapshot();
+    if (currentSnap.gameMode !== 'passenger' && currentSnap.gameMode !== 'academy') {
+      preAcademyModeRef.current = currentSnap.gameMode;
+    }
+    audioRef.current?.unlock();
+    inputRef.current?.clearHeld();
+    recordedGameOverRef.current = false;
+    setIsNewRecord(false);
+    setLastCourseXpReward(null);
+    helpOpenRef.current = false;
+    setHelpOpen(false);
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur();
+    }
+    sim.setGameMode('passenger');
+    sim.start();
+    syncNow();
+  }, [syncNow]);
+
   const pauseGame = useCallback((): void => {
     simRef.current?.pause();
     audioRef.current?.silence();
@@ -578,12 +614,14 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
   const returnToTitle = useCallback((): void => {
     const currentSnap = simRef.current?.getSnapshot();
     const isAcademy = currentSnap?.gameMode === 'academy';
+    const isPassenger = currentSnap?.gameMode === 'passenger';
     const restoredLine = isAcademy ? preAcademyLineRef.current : currentSnap?.line;
-    const restoredMode: GameModeId = isAcademy
-      ? preAcademyModeRef.current === 'academy'
-        ? 'duty'
-        : preAcademyModeRef.current
-      : currentSnap?.gameMode ?? 'duty';
+    const restoredMode: GameModeId =
+      isAcademy || isPassenger
+        ? preAcademyModeRef.current === 'academy' || preAcademyModeRef.current === 'passenger'
+          ? 'duty'
+          : preAcademyModeRef.current
+        : currentSnap?.gameMode ?? 'duty';
     const currentChallengeId = currentSnap?.challenge?.id ?? 'inverter_fault';
     const currentWeatherMode = currentSnap?.weather.mode ?? 'clear';
     const currentModelId = currentSnap?.trainModel.id ?? 'inspiro';
@@ -677,6 +715,12 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
   const toggleWipers = useCallback((): void => {
     inputRef.current?.triggerWipersToggle();
   }, []);
+
+  const toggleAto = useCallback((): void => {
+    audioRef.current?.unlock();
+    simRef.current?.toggleAto?.();
+    syncNow();
+  }, [syncNow]);
 
   const acknowledgeCzuwak = useCallback((): void => {
     inputRef.current?.triggerCzuwakAck();
@@ -1017,6 +1061,8 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     let lastAcademyStep = simRef.current!.getSnapshot().academy?.currentStep ?? 0;
     let lastAcademyHighlight = simRef.current!.getSnapshot().academy?.highlightTarget ?? null;
     let lastSplitsCount = simRef.current!.getSnapshot().stationSplits.length;
+    let lastAtoEnabled = simRef.current!.getSnapshot().atoEnabled;
+    let lastAtoStatus = simRef.current!.getSnapshot().atoStatus;
 
     const tick = (): void => {
       if (!active) {
@@ -1108,6 +1154,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         toggleDoorsRightPressed: false,
         toggleHeadlightsPressed: false,
         toggleWipersPressed: false,
+        toggleAtoPressed: false,
         acknowledgeCzuwakPressed: false,
         acknowledgeRadioPressed: false,
         cycleCameraPressed: false,
@@ -1208,20 +1255,25 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
 
       audio.update(snap, latestAudio);
       if (snap.phase === 'playing') {
+        const activeLang = settingsRef.current.language;
         const speechVol = settingsRef.current.masterVolume * settingsRef.current.voiceVolume;
         if (latestAudio.radioDispatchTriggered && snap.radio.active) {
+          const localizedRadio = localizeRadioDispatch(activeLang, snap.radio);
           speech.announce(
             10000 + snap.radio.messageId,
-            snap.radio.spokenText,
+            localizedRadio.spokenText,
             audio.isMuted(),
             speechVol,
+            activeLang,
           );
         } else if (snap.announcement) {
+          const localizedAnn = localizeAnnouncement(activeLang, snap.announcement);
           speech.announce(
             snap.announcement.id,
-            snap.announcement.spokenText ?? snap.announcement.text,
+            localizedAnn?.spokenText ?? snap.announcement.spokenText ?? snap.announcement.text,
             audio.isMuted(),
             speechVol,
+            activeLang,
           );
         }
       }
@@ -1253,7 +1305,9 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         snap.timeOfDay.id !== lastTimeOfDayId ||
         academyStep !== lastAcademyStep ||
         academyHighlight !== lastAcademyHighlight ||
-        snap.stationSplits.length !== lastSplitsCount;
+        snap.stationSplits.length !== lastSplitsCount ||
+        snap.atoEnabled !== lastAtoEnabled ||
+        snap.atoStatus !== lastAtoStatus;
       if (discreteChanged || now - lastHudSync >= HUD_SYNC_INTERVAL_MS) {
         lastHudSync = now;
         lastPhase = snap.phase;
@@ -1277,6 +1331,8 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         lastAcademyStep = academyStep;
         lastAcademyHighlight = academyHighlight;
         lastSplitsCount = snap.stationSplits.length;
+        lastAtoEnabled = snap.atoEnabled;
+        lastAtoStatus = snap.atoStatus;
         document.body.dataset.state = snap.phase;
         setSnapshot(snap);
       }
@@ -1361,9 +1417,11 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     openSettings,
     closeSettings,
     updateSettings,
+    setLanguage,
     resetSettings,
     startGame,
     startAcademy,
+    startPassengerAto,
     pauseGame,
     resumeGame,
     restartGame,
@@ -1376,6 +1434,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     toggleDoorsRight,
     toggleHeadlights,
     toggleWipers,
+    toggleAto,
     acknowledgeCzuwak,
     acknowledgeRadio,
     cycleCamera,

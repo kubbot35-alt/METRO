@@ -1,17 +1,25 @@
 import type { GraphicsQualityId } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 
 interface IFpsCounterBadgeProps {
   readonly fps: number;
   readonly quality: GraphicsQualityId;
 }
 
-const QUALITY_SHORT: Record<GraphicsQualityId, string> = {
+const QUALITY_SHORT_PL: Record<GraphicsQualityId, string> = {
   low: 'NIS',
   medium: 'ŚRD',
   high: 'WYS',
 };
 
+const QUALITY_SHORT_EN: Record<GraphicsQualityId, string> = {
+  low: 'LOW',
+  medium: 'MED',
+  high: 'HIGH',
+};
+
 export function FpsCounterBadge({ fps, quality }: IFpsCounterBadgeProps) {
+  const { isEn } = useI18n();
   const color =
     fps >= 45 ? 'text-emerald-300' : fps >= 24 ? 'text-amber-300' : 'text-red-300';
   return (
@@ -21,7 +29,9 @@ export function FpsCounterBadge({ fps, quality }: IFpsCounterBadgeProps) {
     >
       <span className={`font-bold ${color}`}>{fps} FPS</span>
       <span className="text-slate-500">·</span>
-      <span className="text-slate-400">{QUALITY_SHORT[quality]}</span>
+      <span className="text-slate-400">
+        {isEn ? QUALITY_SHORT_EN[quality] : QUALITY_SHORT_PL[quality]}
+      </span>
     </div>
   );
 }

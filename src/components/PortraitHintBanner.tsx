@@ -1,8 +1,11 @@
+import { useI18n } from '../i18n/LanguageContext';
+
 interface IPortraitHintBannerProps {
   readonly onDismiss: () => void;
 }
 
 export function PortraitHintBanner({ onDismiss }: IPortraitHintBannerProps) {
+  const { tr } = useI18n();
   return (
     <div
       role="status"
@@ -26,12 +29,12 @@ export function PortraitHintBanner({ onDismiss }: IPortraitHintBannerProps) {
           <path d="M22 12a10 10 0 01-4 8" />
         </svg>
         <p className="text-xs font-medium text-amber-100 leading-snug">
-          Obróć telefon poziomo dla lepszego widoku
+          {tr('Obróć telefon poziomo dla lepszego widoku', 'Rotate your phone to landscape for a better view')}
         </p>
       </div>
       <button
         type="button"
-        aria-label="Zamknij podpowiedź orientacji"
+        aria-label={tr('Zamknij podpowiedź orientacji', 'Dismiss orientation hint')}
         data-testid="dismiss-portrait-hint"
         onClick={onDismiss}
         className="w-7 h-7 rounded border border-slate-600 bg-slate-900/90 hover:bg-slate-800 text-slate-200 text-xs font-mono-tabular shrink-0 cursor-pointer"

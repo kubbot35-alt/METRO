@@ -1,4 +1,7 @@
+import { getLocalizedAcademyStep } from '../domain/i18nCatalog';
+import { localizeAcademySubTask } from '../domain/i18nDynamic';
 import type { IAcademySnapshot } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 
 interface IAcademyGuidePanelProps {
   readonly academy: IAcademySnapshot;
@@ -6,11 +9,17 @@ interface IAcademyGuidePanelProps {
 }
 
 export function AcademyGuidePanel({ academy, gamepadConnected }: IAcademyGuidePanelProps) {
+  const { lang, tr } = useI18n();
   const stepNumbers: readonly number[] = [1, 2, 3, 4, 5];
+  const localizedStep = getLocalizedAcademyStep(lang, academy.currentStep, {
+    title: academy.title,
+    instruction: academy.instruction,
+    gamepadHint: academy.gamepadHint,
+  });
 
   return (
     <aside
-      aria-label="Instrukcja Akademii Maszynisty"
+      aria-label={tr('Instrukcja Akademii Maszynisty', 'Driver Academy Instructions')}
       data-testid="academy-guide-panel"
       data-step={academy.currentStep}
       className={`fixed top-[76px] left-4 z-10 w-[336px] max-w-[calc(100vw-2rem)] pointer-events-none rounded-lg border-2 px-3.5 py-2.5 shadow-2xl transition-colors ${
@@ -23,11 +32,11 @@ export function AcademyGuidePanel({ academy, gamepadConnected }: IAcademyGuidePa
         <div className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-cyan-300 animate-pulse shrink-0" />
           <span className="text-[10px] font-mono-tabular font-bold uppercase tracking-[0.16em] text-cyan-300">
-            Akademia Maszynisty
+            {tr('Akademia Maszynisty', 'Driver Academy')}
           </span>
         </div>
         <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 border border-cyan-400/50 text-[10px] font-mono-tabular font-bold text-cyan-100 whitespace-nowrap">
-          KROK {academy.currentStep} / {academy.totalSteps}
+          {tr('KROK', 'STEP')} {academy.currentStep} / {academy.totalSteps}
         </span>
       </div>
 
@@ -47,9 +56,11 @@ export function AcademyGuidePanel({ academy, gamepadConnected }: IAcademyGuidePa
       </div>
 
       <h3 className="font-display text-sm font-bold text-slate-50 leading-snug">
-        {academy.title}
+        {localizedStep.title}
       </h3>
-      <p className="text-[11.5px] text-slate-200 leading-snug mt-0.5">{academy.instruction}</p>
+      <p className="text-[11.5px] text-slate-200 leading-snug mt-0.5">
+        {localizedStep.instruction}
+      </p>
 
       <ul className="mt-2 space-y-1">
         {academy.subTasks.map((task, idx) => (
@@ -68,14 +79,14 @@ export function AcademyGuidePanel({ academy, gamepadConnected }: IAcademyGuidePa
             >
               {task.done ? '✓' : idx + 1}
             </span>
-            <span className="leading-tight">{task.label}</span>
+            <span className="leading-tight">{localizeAcademySubTask(lang, task.label)}</span>
           </li>
         ))}
       </ul>
 
       {gamepadConnected && (
         <p className="mt-2 pt-1.5 border-t border-slate-700/75 text-[10px] font-mono-tabular text-sky-300 leading-snug">
-          {academy.gamepadHint}
+          {localizedStep.gamepadHint}
         </p>
       )}
     </aside>

@@ -4,7 +4,9 @@ import {
   getPunctualityPercent,
   getRankProgress,
 } from '../domain/driverProfile';
+import { getLocalizedRank } from '../domain/i18nCatalog';
 import type { IDriverProfileStats } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 
 interface IDriverProfileModalProps {
   readonly profile: IDriverProfileStats;
@@ -30,9 +32,14 @@ export function DriverProfileModal({
   onReset,
   onClose,
 }: IDriverProfileModalProps) {
+  const { lang, tr } = useI18n();
   const [confirmReset, setConfirmReset] = useState(false);
   const progress = getRankProgress(profile.xp);
   const punctualityPct = getPunctualityPercent(profile);
+  const currentRankLoc = getLocalizedRank(lang, progress.currentRank.id, progress.currentRank);
+  const nextRankLoc = progress.nextRank
+    ? getLocalizedRank(lang, progress.nextRank.id, progress.nextRank)
+    : null;
 
   return (
     <div className="fixed inset-0 z-40 bg-[#05070c]/86 flex items-center justify-center p-4">
@@ -46,15 +53,18 @@ export function DriverProfileModal({
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>
             <p className="text-[10px] font-mono-tabular uppercase tracking-[0.2em] text-amber-400">
-              Kariera Maszynisty · Statystyki Zapisywane Lokalnie
+              {tr(
+                'Kariera Maszynisty · Statystyki Zapisywane Lokalnie',
+                'Driver Career · Locally Saved Statistics',
+              )}
             </p>
             <h2 id="driver-profile-title" className="font-display text-2xl font-bold text-slate-50 mt-0.5">
-              Profil Maszynisty
+              {tr('Profil Maszynisty', 'Driver Profile')}
             </h2>
           </div>
           <button
             type="button"
-            aria-label="Zamknij profil"
+            aria-label={tr('Zamknij profil', 'Close profile')}
             onClick={onClose}
             className="w-8 h-8 rounded border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 font-mono-tabular text-sm cursor-pointer"
           >
@@ -76,15 +86,15 @@ export function DriverProfileModal({
               </div>
               <div>
                 <p className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
-                  Aktualna ranga
+                  {tr('Aktualna ranga', 'Current Rank')}
                 </p>
                 <p
                   data-testid="profile-rank-title"
                   className="font-display text-xl font-bold text-slate-50 leading-tight"
                 >
-                  {progress.currentRank.title}
+                  {currentRankLoc.title}
                 </p>
-                <p className="text-xs text-slate-400">{progress.currentRank.description}</p>
+                <p className="text-xs text-slate-400">{currentRankLoc.description}</p>
               </div>
             </div>
             <div className="text-right shrink-0 font-mono-tabular">
@@ -92,9 +102,12 @@ export function DriverProfileModal({
                 {profile.xp} XP
               </p>
               <p className="text-[10px] text-slate-400">
-                {progress.nextRank
-                  ? `Do ${progress.nextRank.title}: ${Math.max(0, progress.nextRank.minXp - profile.xp)} XP`
-                  : 'Maksymalna ranga!'}
+                {progress.nextRank && nextRankLoc
+                  ? tr(
+                      `Do ${nextRankLoc.title}: ${Math.max(0, progress.nextRank.minXp - profile.xp)} XP`,
+                      `To ${nextRankLoc.title}: ${Math.max(0, progress.nextRank.minXp - profile.xp)} XP`,
+                    )
+                  : tr('Maksymalna ranga!', 'Max rank!')}
               </p>
             </div>
           </div>
@@ -113,49 +126,53 @@ export function DriverProfileModal({
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-4">
           <CareerStatTile
             testId="profile-stat-km"
-            label="Przejechane km"
+            label={tr('Przejechane km', 'Distance Driven')}
             value={`${profile.totalDistanceKm.toFixed(2)} km`}
           />
           <CareerStatTile
             testId="profile-stat-passengers"
-            label="Przewiezieni pasażerowie"
+            label={tr('Przewiezieni pasażerowie', 'Passengers Carried')}
             value={String(profile.totalPassengers)}
           />
           <CareerStatTile
             testId="profile-stat-courses"
-            label="Ukończone kursy"
+            label={tr('Ukończone kursy', 'Completed Runs')}
             value={String(profile.completedCourses)}
           />
           <CareerStatTile
             testId="profile-stat-time"
-            label="Czas za sterami"
+            label={tr('Czas za sterami', 'Driving Time')}
             value={formatTotalTime(profile.totalDriveTimeSec)}
           />
           <CareerStatTile
             testId="profile-stat-grade"
-            label="Najwyższa ocena"
+            label={tr('Najwyższa ocena', 'Highest Grade')}
             value={profile.highestGrade ?? '—'}
           />
           <CareerStatTile
             testId="profile-stat-punctuality"
-            label="Punktualność"
+            label={tr('Punktualność', 'Punctuality')}
             value={punctualityPct !== null ? `${punctualityPct}%` : '—'}
             sub={
               profile.totalArrivals > 0
-                ? `${profile.punctualArrivals}/${profile.totalArrivals} stacji o czasie`
-                : 'Brak przyjazdów'
+                ? tr(
+                    `${profile.punctualArrivals}/${profile.totalArrivals} stacji o czasie`,
+                    `${profile.punctualArrivals}/${profile.totalArrivals} stops on time`,
+                  )
+                : tr('Brak przyjazdów', 'No arrivals yet')
             }
           />
         </div>
 
         <div className="rounded-md border border-slate-800 bg-[#0a0d13] p-3.5 mb-4">
           <p className="text-[10px] font-mono-tabular uppercase tracking-[0.16em] text-amber-300 font-bold mb-2">
-            Ścieżka awansu maszynisty
+            {tr('Ścieżka awansu maszynisty', 'Driver Promotion Path')}
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {DRIVER_RANKS.map((rank, idx) => {
               const unlocked = profile.xp >= rank.minXp;
               const isCurrent = rank.id === progress.currentRank.id;
+              const loc = getLocalizedRank(lang, rank.id, rank);
               return (
                 <div
                   key={rank.id}
@@ -172,7 +189,7 @@ export function DriverProfileModal({
                     <span className="text-[10px] font-mono-tabular text-amber-300">{rank.minXp} XP</span>
                   </div>
                   <p className="font-display text-xs font-bold text-slate-100 mt-0.5 leading-tight">
-                    {rank.title}
+                    {loc.title}
                   </p>
                 </div>
               );
@@ -183,7 +200,9 @@ export function DriverProfileModal({
         <div className="flex items-center justify-between gap-3">
           {confirmReset ? (
             <div className="flex items-center gap-2">
-              <span className="text-xs text-red-300 font-mono-tabular">Wyzerować karierę?</span>
+              <span className="text-xs text-red-300 font-mono-tabular">
+                {tr('Wyzerować karierę?', 'Reset career stats?')}
+              </span>
               <button
                 type="button"
                 data-testid="profile-confirm-reset-btn"
@@ -193,14 +212,14 @@ export function DriverProfileModal({
                 }}
                 className="px-3 py-1.5 rounded bg-red-600 hover:bg-red-500 text-xs font-mono-tabular font-bold text-white cursor-pointer"
               >
-                Tak, resetuj
+                {tr('Tak, resetuj', 'Yes, reset')}
               </button>
               <button
                 type="button"
                 onClick={() => setConfirmReset(false)}
                 className="px-2.5 py-1.5 rounded border border-slate-700 text-xs font-mono-tabular text-slate-300 cursor-pointer"
               >
-                Anuluj
+                {tr('Anuluj', 'Cancel')}
               </button>
             </div>
           ) : (
@@ -210,7 +229,7 @@ export function DriverProfileModal({
               onClick={() => setConfirmReset(true)}
               className="px-3.5 py-2 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs font-mono-tabular text-slate-400 cursor-pointer"
             >
-              Resetuj statystyki
+              {tr('Resetuj statystyki', 'Reset Stats')}
             </button>
           )}
 
@@ -220,7 +239,7 @@ export function DriverProfileModal({
             onClick={onClose}
             className="px-6 py-2 bg-amber-500 hover:bg-amber-400 text-slate-950 font-display font-bold text-sm rounded-md cursor-pointer"
           >
-            Zamknij
+            {tr('Zamknij', 'Close')}
           </button>
         </div>
       </div>

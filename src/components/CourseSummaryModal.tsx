@@ -1,4 +1,10 @@
 import { getRankProgress } from '../domain/driverProfile';
+import {
+  getLocalizedChallenge,
+  getLocalizedGradeTitle,
+  getLocalizedRank,
+  getLocalizedTimeOfDay,
+} from '../domain/i18nCatalog';
 import { formatDeviationTime } from '../domain/scheduleSystem';
 import type {
   DriverGrade,
@@ -6,6 +12,7 @@ import type {
   IDriverProfileStats,
   ISimulationSnapshot,
 } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 import { TachographChart } from './TachographChart';
 
 interface ICourseSummaryModalProps {
@@ -39,7 +46,22 @@ export function CourseSummaryModal({
   onRestart,
   onTitle,
 }: ICourseSummaryModalProps) {
+  const { lang, tr } = useI18n();
   const gradeStyle = GRADE_STYLES[snapshot.driverGrade];
+  const gradeTitle = getLocalizedGradeTitle(lang, snapshot.driverGrade, gradeStyle.title);
+  const localizedTime = getLocalizedTimeOfDay(lang, snapshot.timeOfDay.id, {
+    name: snapshot.timeOfDay.name,
+    description: snapshot.timeOfDay.description,
+  });
+  const localizedChallenge = snapshot.challenge
+    ? getLocalizedChallenge(lang, snapshot.challenge.id, {
+        title: snapshot.challenge.title,
+        shortLabel: snapshot.challenge.shortLabel,
+        badge: snapshot.challenge.badge,
+        description: snapshot.challenge.description,
+        objectiveSummary: snapshot.challenge.objectiveSummary,
+      })
+    : null;
   const totalViolations =
     snapshot.overspeedViolations + snapshot.redSignalViolations + snapshot.czuwakViolations;
   const punctualityText = formatDeviationTime(snapshot.schedule.averageDeviationSec);
@@ -48,6 +70,8 @@ export function CourseSummaryModal({
     : driverProfile
       ? getRankProgress(driverProfile.xp)
       : null;
+
+  const isPassengerAto = snapshot.gameMode === 'passenger';
 
   return (
     <div className="fixed inset-0 z-30 bg-[#07090e]/85 flex items-center justify-center p-3 sm:p-4">
@@ -58,21 +82,33 @@ export function CourseSummaryModal({
         data-testid="course-summary-modal"
         className="w-full max-w-2xl max-h-[92vh] overflow-y-auto bg-[#111620] border border-slate-700 rounded-lg p-4 sm:p-6 shadow-2xl"
       >
+        {isPassengerAto && (
+          <div className="mb-4 px-3.5 py-2 rounded-md border border-cyan-400/70 bg-cyan-500/15 text-cyan-200 text-center text-xs font-mono-tabular">
+            {tr(
+              'Przejazd pasażerski ATO zakończony — kursy z autopilotem nie zapisują rekordów ani osiągnięć.',
+              'Passenger ATO ride completed — autopilot runs do not record leaderboard scores or achievements.',
+            )}
+          </div>
+        )}
+
         {snapshot.gameMode === 'academy' && snapshot.academy?.completed && (
           <div
             data-testid="academy-complete-banner"
             className="mb-4 px-3.5 py-2.5 rounded-md border-2 border-cyan-400 bg-cyan-500/20 text-cyan-100 text-center"
           >
             <p className="font-display font-bold text-sm uppercase tracking-wide text-cyan-200">
-              LICENCJA MASZYNISTY PRZYZNANA!
+              {tr('LICENCJA MASZYNISTY PRZYZNANA!', 'TRAIN DRIVER LICENSE AWARDED!')}
             </p>
             <p className="text-xs mt-0.5 text-slate-100">
-              Ukończono wszystkie 5 etapów Akademii · Odblokowano odznakę i bonus +250 XP
+              {tr(
+                'Ukończono wszystkie 5 etapów Akademii · Odblokowano odznakę i bonus +250 XP',
+                'Completed all 5 Academy steps · Badge unlocked & +250 XP bonus',
+              )}
             </p>
           </div>
         )}
 
-        {snapshot.challenge && snapshot.challengeOutcome && (
+        {snapshot.challenge && snapshot.challengeOutcome && localizedChallenge && (
           <div
             data-testid="challenge-outcome-banner"
             className={`mb-4 px-3.5 py-2.5 rounded-md border text-center ${
@@ -83,8 +119,14 @@ export function CourseSummaryModal({
           >
             <p className="font-display font-bold text-sm uppercase tracking-wide">
               {snapshot.challengeOutcome.passed
-                ? `WYZWANIE ZALICZONE: ${snapshot.challenge.title} — Odblokowano odznakę!`
-                : `WYZWANIE NIEZALICZONE: ${snapshot.challenge.title}`}
+                ? tr(
+                    `WYZWANIE ZALICZONE: ${localizedChallenge.title} — Odblokowano odznakę!`,
+                    `CHALLENGE PASSED: ${localizedChallenge.title} — Badge unlocked!`,
+                  )
+                : tr(
+                    `WYZWANIE NIEZALICZONE: ${localizedChallenge.title}`,
+                    `CHALLENGE FAILED: ${localizedChallenge.title}`,
+                  )}
             </p>
             <p className="text-xs mt-0.5 text-slate-200">{snapshot.challengeOutcome.reason}</p>
           </div>
@@ -95,27 +137,30 @@ export function CourseSummaryModal({
             data-testid="new-record-badge"
             className="mb-4 px-3.5 py-2 rounded-md bg-amber-500/20 border border-amber-400 text-amber-300 font-display font-bold text-sm tracking-wide text-center uppercase"
           >
-            NOWY REKORD! Najlepszy wynik zapisany w tabeli
+            {tr(
+              'NOWY REKORD! Najlepszy wynik zapisany w tabeli',
+              'NEW RECORD! Best score saved to leaderboard',
+            )}
           </div>
         )}
 
         <div className="flex items-center justify-between gap-4 mb-5">
           <div>
             <p className="text-xs font-mono-tabular uppercase tracking-widest text-amber-400">
-              {snapshot.line.name} · {snapshot.stations[snapshot.stations.length - 1]?.name ?? 'Koniec'} · {snapshot.trainModel.name} · {snapshot.timeOfDay.name}
+              {snapshot.line.name} · {snapshot.stations[snapshot.stations.length - 1]?.name ?? tr('Koniec', 'Terminus')} · {snapshot.trainModel.name} · {localizedTime.name}
             </p>
             <h2
               id="course-summary-title"
               className="font-display text-2xl font-bold text-slate-50 mt-1"
             >
-              Podsumowanie kursu
+              {tr('Podsumowanie kursu', 'Run Summary')}
             </h2>
-            <p className="text-sm text-slate-300 mt-0.5">{gradeStyle.title}</p>
+            <p className="text-sm text-slate-300 mt-0.5">{gradeTitle}</p>
           </div>
 
           <div className="flex flex-col items-center shrink-0">
             <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400 mb-1">
-              Ocena
+              {tr('Ocena', 'Grade')}
             </span>
             <div
               data-testid="driver-grade-badge"
@@ -127,19 +172,22 @@ export function CourseSummaryModal({
         </div>
 
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 mb-6">
-          <SummaryTile label="Łączny wynik" value={`${Math.round(snapshot.score)} pkt`} />
-          <SummaryTile label="Pasażerowie" value={String(snapshot.passengersCarried)} />
-          <SummaryTile label="Śr. punktualność" value={punctualityText} />
           <SummaryTile
-            label="Obsłużone stacje"
+            label={tr('Łączny wynik', 'Total Score')}
+            value={`${Math.round(snapshot.score)} ${tr('pkt', 'pts')}`}
+          />
+          <SummaryTile label={tr('Pasażerowie', 'Passengers')} value={String(snapshot.passengersCarried)} />
+          <SummaryTile label={tr('Śr. punktualność', 'Avg. Punctuality')} value={punctualityText} />
+          <SummaryTile
+            label={tr('Obsłużone stacje', 'Stations Served')}
             value={`${snapshot.stationsServed} / ${snapshot.totalStations}`}
           />
           <SummaryTile
-            label="Wykroczenia"
+            label={tr('Wykroczenia', 'Violations')}
             value={String(totalViolations)}
             sub={`V:${snapshot.overspeedViolations} · S:${snapshot.redSignalViolations} · C:${snapshot.czuwakViolations}`}
           />
-          <SummaryTile label="Czas kursu" value={formatDuration(snapshot.elapsedTimeSec)} />
+          <SummaryTile label={tr('Czas kursu', 'Run Time')} value={formatDuration(snapshot.elapsedTimeSec)} />
         </div>
 
         <TachographChart tachograph={snapshot.tachograph} />
@@ -155,17 +203,21 @@ export function CourseSummaryModal({
                 className="px-3 py-2 rounded border-2 border-amber-300 bg-amber-500/20 text-amber-200 text-center animate-pulse"
               >
                 <p className="font-display font-bold text-sm uppercase tracking-wider">
-                  AWANS! Nowa ranga: {xpReward.newRank.title}
+                  {tr('AWANS! Nowa ranga:', 'PROMOTION! New rank:')}{' '}
+                  {getLocalizedRank(lang, xpReward.newRank.id, xpReward.newRank).title}
                 </p>
                 <p className="text-[11px] text-amber-100/90">
-                  {xpReward.previousRank.title} → {xpReward.newRank.title}
+                  {getLocalizedRank(lang, xpReward.previousRank.id, xpReward.previousRank).title} →{' '}
+                  {getLocalizedRank(lang, xpReward.newRank.id, xpReward.newRank).title}
                 </p>
               </div>
             )}
             <div className="flex items-center justify-between gap-2 text-xs font-mono-tabular">
               <div>
-                <span className="text-slate-400">Ranga: </span>
-                <span className="font-bold text-slate-100">{rankProgress.currentRank.title}</span>
+                <span className="text-slate-400">{tr('Ranga: ', 'Rank: ')}</span>
+                <span className="font-bold text-slate-100">
+                  {getLocalizedRank(lang, rankProgress.currentRank.id, rankProgress.currentRank).title}
+                </span>
               </div>
               <span className="font-bold text-emerald-300">+{xpReward.gainedXp} XP</span>
             </div>
@@ -179,11 +231,14 @@ export function CourseSummaryModal({
               />
             </div>
             <div className="flex items-center justify-between text-[10px] font-mono-tabular text-slate-400">
-              <span>Łącznie: {xpReward.totalXpAfter} XP</span>
+              <span>{tr(`Łącznie: ${xpReward.totalXpAfter} XP`, `Total: ${xpReward.totalXpAfter} XP`)}</span>
               <span>
                 {rankProgress.nextRank
-                  ? `Do ${rankProgress.nextRank.title}: ${Math.max(0, rankProgress.nextRank.minXp - xpReward.totalXpAfter)} XP`
-                  : 'Maksymalny poziom'}
+                  ? tr(
+                      `Do ${getLocalizedRank(lang, rankProgress.nextRank.id, rankProgress.nextRank).title}: ${Math.max(0, rankProgress.nextRank.minXp - xpReward.totalXpAfter)} XP`,
+                      `To ${getLocalizedRank(lang, rankProgress.nextRank.id, rankProgress.nextRank).title}: ${Math.max(0, rankProgress.nextRank.minXp - xpReward.totalXpAfter)} XP`,
+                    )
+                  : tr('Maksymalny poziom', 'Max rank')}
               </span>
             </div>
           </div>
@@ -196,14 +251,14 @@ export function CourseSummaryModal({
             onClick={onRestart}
             className="flex-1 py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-display font-bold rounded-md cursor-pointer"
           >
-            Jedź ponownie
+            {tr('Jedź ponownie', 'Drive Again')}
           </button>
           <button
             type="button"
             onClick={onTitle}
             className="sm:w-44 py-2.5 bg-transparent hover:bg-slate-800/70 border border-slate-700 text-slate-300 font-medium rounded-md cursor-pointer"
           >
-            Ekran startowy
+            {tr('Ekran startowy', 'Main Menu')}
           </button>
         </div>
       </div>

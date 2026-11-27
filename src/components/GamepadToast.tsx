@@ -1,23 +1,22 @@
 import type { GamepadBrand } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 
 interface IGamepadToastProps {
   readonly toast: { readonly name: string; readonly brand: GamepadBrand } | null;
 }
 
-function getBrandLabel(brand: GamepadBrand): string {
-  if (brand === 'playstation') {
-    return 'PlayStation';
-  }
-  if (brand === 'xbox') {
-    return 'Xbox';
-  }
-  return 'Standardowy';
-}
-
 export function GamepadToast({ toast }: IGamepadToastProps) {
+  const { tr } = useI18n();
   if (!toast) {
     return null;
   }
+  const brandLabel =
+    toast.brand === 'playstation'
+      ? 'PlayStation'
+      : toast.brand === 'xbox'
+        ? 'Xbox'
+        : tr('Standardowy', 'Standard');
+
   return (
     <div
       role="status"
@@ -40,10 +39,10 @@ export function GamepadToast({ toast }: IGamepadToastProps) {
       <div className="min-w-0">
         <div className="flex items-center gap-1.5">
           <p className="font-display text-xs font-bold uppercase tracking-wide text-sky-200">
-            Podłączono kontroler
+            {tr('Podłączono kontroler', 'Controller Connected')}
           </p>
           <span className="px-1.5 py-0.5 rounded bg-sky-500/20 border border-sky-400/50 text-[9px] font-mono-tabular font-bold text-sky-200">
-            {getBrandLabel(toast.brand)}
+            {brandLabel}
           </span>
         </div>
         <p className="text-[11px] font-mono-tabular text-slate-300 truncate mt-0.5">

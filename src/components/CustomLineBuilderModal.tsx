@@ -14,6 +14,7 @@ import type {
   ICustomStationDraft,
   TrackAlignmentIntensity,
 } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 
 interface ICustomLineBuilderModalProps {
   readonly initialDraft: ICustomLineDraft;
@@ -24,12 +25,32 @@ interface ICustomLineBuilderModalProps {
 
 const INTENSITY_OPTIONS: ReadonlyArray<{
   readonly id: TrackAlignmentIntensity;
-  readonly label: string;
-  readonly hint: string;
+  readonly labelPl: string;
+  readonly labelEn: string;
+  readonly hintPl: string;
+  readonly hintEn: string;
 }> = [
-  { id: 'flat', label: 'Płasko', hint: 'Proste tunele bez łuków i wzniesień' },
-  { id: 'moderate', label: 'Umiarkowanie', hint: 'Łagodne łuki i spadki jak M1/M2' },
-  { id: 'curvy', label: 'Kręto', hint: 'Ostrzejsze zakręty (45 km/h) i strome podjazdy' },
+  {
+    id: 'flat',
+    labelPl: 'Płasko',
+    labelEn: 'Flat',
+    hintPl: 'Proste tunele bez łuków i wzniesień',
+    hintEn: 'Straight flat tunnels with no curves or grades',
+  },
+  {
+    id: 'moderate',
+    labelPl: 'Umiarkowanie',
+    labelEn: 'Moderate',
+    hintPl: 'Łagodne łuki i spadki jak M1/M2',
+    hintEn: 'Gentle curves and gradients like M1/M2',
+  },
+  {
+    id: 'curvy',
+    labelPl: 'Kręto',
+    labelEn: 'Curvy',
+    hintPl: 'Ostrzejsze zakręty (45 km/h) i strome podjazdy',
+    hintEn: 'Tighter curves (45 km/h) and steeper grades',
+  },
 ];
 
 export function CustomLineBuilderModal({
@@ -38,6 +59,7 @@ export function CustomLineBuilderModal({
   onSave,
   onClose,
 }: ICustomLineBuilderModalProps) {
+  const { tr } = useI18n();
   const [draft, setDraft] = useState<ICustomLineDraft>(initialDraft);
   const [jsonCode, setJsonCode] = useState<string>('');
   const [jsonNotice, setJsonNotice] = useState<{ readonly tone: 'ok' | 'err'; readonly text: string } | null>(null);
@@ -65,7 +87,7 @@ export function CustomLineBuilderModal({
       stations: [
         ...prev.stations,
         {
-          name: `Nowa Stacja ${nextIdx + 1}`,
+          name: tr(`Nowa Stacja ${nextIdx + 1}`, `New Station ${nextIdx + 1}`),
           wallHex: STATION_WALL_PALETTE[nextIdx % STATION_WALL_PALETTE.length].hex,
           platformLayout: nextIdx % 3 === 0 ? 'side' : 'island',
           spacingFromPrevM: 600,
@@ -90,7 +112,13 @@ export function CustomLineBuilderModal({
     if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
       navigator.clipboard.writeText(encoded).catch(() => {});
     }
-    setJsonNotice({ tone: 'ok', text: 'Wygenerowano kod JSON trasy (gotowy do udostępnienia).' });
+    setJsonNotice({
+      tone: 'ok',
+      text: tr(
+        'Wygenerowano kod JSON trasy (gotowy do udostępnienia).',
+        'Generated route JSON code (ready to share).',
+      ),
+    });
   };
 
   const handleImport = (): void => {
@@ -100,23 +128,34 @@ export function CustomLineBuilderModal({
       return;
     }
     setDraft({ ...res.draft, id: isEditing ? draft.id : res.draft.id });
-    setJsonNotice({ tone: 'ok', text: `Wczytano trasę „${res.draft.name}” (${res.draft.stations.length} stacji).` });
+    setJsonNotice({
+      tone: 'ok',
+      text: tr(
+        `Wczytano trasę „${res.draft.name}” (${res.draft.stations.length} stacji).`,
+        `Loaded route "${res.draft.name}" (${res.draft.stations.length} stations).`,
+      ),
+    });
     setErrorText(null);
   };
 
   const handleSubmit = (): void => {
     const trimmedName = draft.name.trim();
     if (trimmedName.length < 2) {
-      setErrorText('Wpisz nazwę linii (minimum 2 znaki).');
+      setErrorText(tr('Wpisz nazwę linii (minimum 2 znaki).', 'Enter a line name (minimum 2 characters).'));
       return;
     }
     if (draft.stations.length < MIN_CUSTOM_STATIONS || draft.stations.length > MAX_CUSTOM_STATIONS) {
-      setErrorText(`Trasa musi zawierać od ${MIN_CUSTOM_STATIONS} do ${MAX_CUSTOM_STATIONS} stacji.`);
+      setErrorText(
+        tr(
+          `Trasa musi zawierać od ${MIN_CUSTOM_STATIONS} do ${MAX_CUSTOM_STATIONS} stacji.`,
+          `Route must have between ${MIN_CUSTOM_STATIONS} and ${MAX_CUSTOM_STATIONS} stations.`,
+        ),
+      );
       return;
     }
     const cleanStations = draft.stations.map((st, idx) => ({
       ...st,
-      name: st.name.trim() || `Stacja ${idx + 1}`,
+      name: st.name.trim() || tr(`Stacja ${idx + 1}`, `Station ${idx + 1}`),
       spacingFromPrevM: Math.max(
         MIN_STATION_SPACING_M,
         Math.min(MAX_STATION_SPACING_M, Math.round(st.spacingFromPrevM)),
@@ -130,6 +169,8 @@ export function CustomLineBuilderModal({
     });
   };
 
+  const activeIntensity = INTENSITY_OPTIONS.find((o) => o.id === draft.alignmentIntensity);
+
   return (
     <div className="fixed inset-0 z-40 bg-[#05070c]/88 flex items-center justify-center p-3 md:p-4">
       <div
@@ -142,15 +183,17 @@ export function CustomLineBuilderModal({
         <div className="flex items-start justify-between gap-4 pb-3 border-b border-slate-800">
           <div>
             <p className="text-[10px] font-mono-tabular uppercase tracking-[0.2em] text-emerald-400">
-              Kreator Własnej Trasy · Custom Line Builder
+              {tr('Kreator Własnej Trasy · Custom Line Builder', 'Custom Line Builder · Route Editor')}
             </p>
             <h2 id="line-builder-title" className="font-display text-2xl font-bold text-slate-50">
-              {isEditing ? `Edycja linii: ${initialDraft.name}` : 'Stwórz własną linię metra'}
+              {isEditing
+                ? tr(`Edycja linii: ${initialDraft.name}`, `Edit Line: ${initialDraft.name}`)
+                : tr('Stwórz własną linię metra', 'Create Custom Metro Line')}
             </h2>
           </div>
           <button
             type="button"
-            aria-label="Zamknij kreator trasy"
+            aria-label={tr('Zamknij kreator trasy', 'Close line builder')}
             onClick={onClose}
             className="w-8 h-8 rounded border border-slate-700 bg-slate-900 hover:bg-slate-800 text-slate-300 font-mono-tabular text-sm cursor-pointer"
           >
@@ -162,11 +205,11 @@ export function CustomLineBuilderModal({
           <div className="space-y-3.5">
             <div className="rounded-md border border-slate-800 bg-[#0a0e16] p-3.5 space-y-3">
               <p className="text-[10px] font-mono-tabular uppercase tracking-[0.16em] text-amber-300 font-bold">
-                1. Parametry linii
+                {tr('1. Parametry linii', '1. Line Parameters')}
               </p>
               <div>
                 <label htmlFor="builder-line-name" className="block text-xs text-slate-300 mb-1">
-                  Nazwa linii
+                  {tr('Nazwa linii', 'Line Name')}
                 </label>
                 <input
                   id="builder-line-name"
@@ -175,14 +218,14 @@ export function CustomLineBuilderModal({
                   maxLength={36}
                   value={draft.name}
                   onChange={(e) => setDraft({ ...draft, name: e.target.value })}
-                  placeholder="np. M3 Gocław"
+                  placeholder={tr('np. M3 Gocław', 'e.g. M3 Gocław')}
                   className="w-full px-3 py-1.5 rounded bg-[#121826] border border-slate-700 text-sm text-slate-100 focus:border-emerald-400 focus:outline-none"
                 />
               </div>
 
               <div>
                 <label htmlFor="builder-line-led" className="block text-xs text-slate-300 mb-1">
-                  Kierunek na wyświetlaczu LED
+                  {tr('Kierunek na wyświetlaczu LED', 'Destination LED Sign')}
                 </label>
                 <input
                   id="builder-line-led"
@@ -191,14 +234,14 @@ export function CustomLineBuilderModal({
                   maxLength={22}
                   value={draft.destinationLed}
                   onChange={(e) => setDraft({ ...draft, destinationLed: e.target.value.toUpperCase() })}
-                  placeholder="np. M3 GOCŁAW"
+                  placeholder={tr('np. M3 GOCŁAW', 'e.g. M3 GOCŁAW')}
                   className="w-full px-3 py-1.5 rounded bg-[#121826] border border-slate-700 font-mono-tabular text-sm text-amber-300 uppercase focus:border-emerald-400 focus:outline-none"
                 />
               </div>
 
               <div>
                 <span className="block text-xs text-slate-300 mb-1.5">
-                  Kolor przewodni linii (koralik i tablice)
+                  {tr('Kolor przewodni linii (koralik i tablice)', 'Line Accent Color (strip & signage)')}
                 </span>
                 <div className="flex flex-wrap gap-1.5">
                   {LINE_COLOR_PALETTE.map((swatch) => {
@@ -223,14 +266,19 @@ export function CustomLineBuilderModal({
 
             <div className="rounded-md border border-slate-800 bg-[#0a0e16] p-3.5 space-y-3">
               <p className="text-[10px] font-mono-tabular uppercase tracking-[0.16em] text-amber-300 font-bold">
-                2. Opcje trasy i geometria toru
+                {tr('2. Opcje trasy i geometria toru', '2. Route Options & Track Geometry')}
               </p>
 
               <div className="flex items-center justify-between gap-2">
                 <div>
-                  <p className="text-xs font-medium text-slate-200">Start z odcinka naziemnego</p>
+                  <p className="text-xs font-medium text-slate-200">
+                    {tr('Start z odcinka naziemnego', 'Start from Surface Section')}
+                  </p>
                   <p className="text-[10px] text-slate-400">
-                    Zajezdnia na powierzchni + zjazd do portalu tunelu (działa deszcz)
+                    {tr(
+                      'Zajezdnia na powierzchni + zjazd do portalu tunelu (działa deszcz)',
+                      'Surface depot + descent into tunnel portal (supports rain)',
+                    )}
                   </p>
                 </div>
                 <button
@@ -245,13 +293,13 @@ export function CustomLineBuilderModal({
                       : 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-800'
                   }`}
                 >
-                  {draft.hasSurfaceStart ? 'WŁĄCZONY' : 'WYŁĄCZONY'}
+                  {draft.hasSurfaceStart ? tr('WŁĄCZONY', 'ENABLED') : tr('WYŁĄCZONY', 'DISABLED')}
                 </button>
               </div>
 
               <div>
                 <span className="block text-xs text-slate-300 mb-1.5">
-                  Intensywność zakrętów i wzniesień
+                  {tr('Intensywność zakrętów i wzniesień', 'Curve & Gradient Intensity')}
                 </span>
                 <div className="grid grid-cols-3 gap-1.5">
                   {INTENSITY_OPTIONS.map((opt) => {
@@ -269,13 +317,13 @@ export function CustomLineBuilderModal({
                             : 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-800'
                         }`}
                       >
-                        {opt.label}
+                        {tr(opt.labelPl, opt.labelEn)}
                       </button>
                     );
                   })}
                 </div>
                 <p className="text-[10px] text-slate-400 mt-1">
-                  {INTENSITY_OPTIONS.find((o) => o.id === draft.alignmentIntensity)?.hint}
+                  {activeIntensity ? tr(activeIntensity.hintPl, activeIntensity.hintEn) : ''}
                 </p>
               </div>
             </div>
@@ -283,7 +331,7 @@ export function CustomLineBuilderModal({
             <div className="rounded-md border border-slate-800 bg-[#0a0e16] p-3.5 space-y-2">
               <div className="flex items-center justify-between gap-2">
                 <p className="text-[10px] font-mono-tabular uppercase tracking-[0.16em] text-cyan-300 font-bold">
-                  Eksport / Import (JSON)
+                  {tr('Eksport / Import (JSON)', 'Export / Import (JSON)')}
                 </p>
                 <div className="flex gap-1.5">
                   <button
@@ -292,7 +340,7 @@ export function CustomLineBuilderModal({
                     onClick={handleExport}
                     className="px-2 py-1 rounded border border-cyan-500/50 bg-cyan-950/40 hover:bg-cyan-900/50 text-[10px] font-mono-tabular text-cyan-200 cursor-pointer"
                   >
-                    Eksportuj JSON
+                    {tr('Eksportuj JSON', 'Export JSON')}
                   </button>
                   <button
                     type="button"
@@ -300,7 +348,7 @@ export function CustomLineBuilderModal({
                     onClick={handleImport}
                     className="px-2 py-1 rounded border border-emerald-500/50 bg-emerald-950/40 hover:bg-emerald-900/50 text-[10px] font-mono-tabular text-emerald-200 cursor-pointer"
                   >
-                    Importuj JSON
+                    {tr('Importuj JSON', 'Import JSON')}
                   </button>
                 </div>
               </div>
@@ -309,7 +357,10 @@ export function CustomLineBuilderModal({
                 rows={2}
                 value={jsonCode}
                 onChange={(e) => setJsonCode(e.target.value)}
-                placeholder="Wklej kod JSON trasy do zaimportowania lub kliknij Eksportuj JSON..."
+                placeholder={tr(
+                  'Wklej kod JSON trasy do zaimportowania lub kliknij Eksportuj JSON...',
+                  'Paste route JSON to import or click Export JSON...',
+                )}
                 className="w-full px-2.5 py-1.5 rounded bg-[#121826] border border-slate-700 font-mono-tabular text-[11px] text-slate-200 focus:border-cyan-400 focus:outline-none resize-none"
               />
               {jsonNotice && (
@@ -329,10 +380,16 @@ export function CustomLineBuilderModal({
             <div className="flex items-center justify-between gap-2 mb-2.5">
               <div>
                 <p className="text-[10px] font-mono-tabular uppercase tracking-[0.16em] text-amber-300 font-bold">
-                  3. Lista stacji ({draft.stations.length} / {MAX_CUSTOM_STATIONS} · min. {MIN_CUSTOM_STATIONS})
+                  {tr(
+                    `3. Lista stacji (${draft.stations.length} / ${MAX_CUSTOM_STATIONS} · min. ${MIN_CUSTOM_STATIONS})`,
+                    `3. Station List (${draft.stations.length} / ${MAX_CUSTOM_STATIONS} · min. ${MIN_CUSTOM_STATIONS})`,
+                  )}
                 </p>
                 <p className="text-[10px] text-slate-400">
-                  Nazwa, kolor ścian, typ peronu (Wyspowy [Q] / Boczny [E]) oraz odstęp (400–1200 m)
+                  {tr(
+                    'Nazwa, kolor ścian, typ peronu (Wyspowy [Q] / Boczny [E]) oraz odstęp (400–1200 m)',
+                    'Name, wall color, platform type (Island [Q] / Side [E]), and spacing (400–1200 m)',
+                  )}
                 </p>
               </div>
               <button
@@ -342,7 +399,7 @@ export function CustomLineBuilderModal({
                 onClick={addStation}
                 className="px-2.5 py-1.5 rounded border border-emerald-500/60 bg-emerald-600/20 hover:bg-emerald-600/35 disabled:opacity-40 text-xs font-mono-tabular font-bold text-emerald-200 cursor-pointer shrink-0"
               >
-                + Dodaj stację
+                {tr('+ Dodaj stację', '+ Add Station')}
               </button>
             </div>
 
@@ -363,14 +420,14 @@ export function CustomLineBuilderModal({
                     type="text"
                     maxLength={32}
                     data-testid={`station-name-${idx}`}
-                    aria-label={`Nazwa stacji ${idx + 1}`}
+                    aria-label={tr(`Nazwa stacji ${idx + 1}`, `Station ${idx + 1} name`)}
                     value={station.name}
                     onChange={(e) => updateStation(idx, { name: e.target.value })}
                     className="flex-1 min-w-[130px] px-2 py-1 rounded bg-[#0a0f18] border border-slate-700 text-xs text-slate-100 focus:border-amber-400 focus:outline-none"
                   />
 
                   <select
-                    aria-label={`Kolor ścian stacji ${idx + 1}`}
+                    aria-label={tr(`Kolor ścian stacji ${idx + 1}`, `Station ${idx + 1} wall color`)}
                     data-testid={`station-color-${idx}`}
                     value={station.wallHex}
                     onChange={(e) => updateStation(idx, { wallHex: e.target.value })}
@@ -397,7 +454,9 @@ export function CustomLineBuilderModal({
                         : 'bg-amber-500/15 border-amber-400/60 text-amber-200'
                     }`}
                   >
-                    {station.platformLayout === 'side' ? 'Boczny [E]' : 'Wyspowy [Q]'}
+                    {station.platformLayout === 'side'
+                      ? tr('Boczny [E]', 'Side [E]')
+                      : tr('Wyspowy [Q]', 'Island [Q]')}
                   </button>
 
                   <div className="flex items-center gap-1">
@@ -407,7 +466,10 @@ export function CustomLineBuilderModal({
                       max={MAX_STATION_SPACING_M}
                       step={50}
                       data-testid={`station-spacing-${idx}`}
-                      aria-label={`Odległość stacji ${idx + 1} w metrach`}
+                      aria-label={tr(
+                        `Odległość stacji ${idx + 1} w metrach`,
+                        `Station ${idx + 1} distance in meters`,
+                      )}
                       value={station.spacingFromPrevM}
                       onChange={(e) =>
                         updateStation(idx, { spacingFromPrevM: Number(e.target.value) || 600 })
@@ -419,7 +481,7 @@ export function CustomLineBuilderModal({
 
                   <button
                     type="button"
-                    aria-label={`Usuń stację ${idx + 1}`}
+                    aria-label={tr(`Usuń stację ${idx + 1}`, `Remove station ${idx + 1}`)}
                     disabled={draft.stations.length <= MIN_CUSTOM_STATIONS}
                     onClick={() => removeStation(idx)}
                     className="w-6 h-6 rounded border border-slate-700 bg-slate-900 hover:bg-red-950/70 hover:border-red-500/60 disabled:opacity-30 text-xs text-slate-300 cursor-pointer shrink-0"
@@ -443,9 +505,14 @@ export function CustomLineBuilderModal({
               style={{ backgroundColor: draft.cssColor }}
             />
             <span>
-              Podgląd trasy: <strong>{draft.stations.length} stacji</strong> ·{' '}
-              <strong>{(totalDistanceM / 1000).toFixed(2)} km</strong> ·{' '}
-              {draft.hasSurfaceStart ? 'Start naziemny' : 'Tunel podziemny'}
+              {tr('Podgląd trasy:', 'Route preview:')}{' '}
+              <strong>
+                {draft.stations.length} {tr('stacji', 'stations')}
+              </strong>{' '}
+              · <strong>{(totalDistanceM / 1000).toFixed(2)} km</strong> ·{' '}
+              {draft.hasSurfaceStart
+                ? tr('Start naziemny', 'Surface start')
+                : tr('Tunel podziemny', 'Underground tunnel')}
             </span>
           </div>
           <div className="flex items-center gap-2">
@@ -454,7 +521,7 @@ export function CustomLineBuilderModal({
               onClick={onClose}
               className="px-4 py-2 rounded-md border border-slate-700 bg-slate-900 hover:bg-slate-800 text-xs font-mono-tabular text-slate-300 cursor-pointer"
             >
-              Anuluj
+              {tr('Anuluj', 'Cancel')}
             </button>
             <button
               type="button"
@@ -462,7 +529,7 @@ export function CustomLineBuilderModal({
               onClick={handleSubmit}
               className="px-6 py-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-display font-bold text-sm rounded-md cursor-pointer"
             >
-              Zapisz własną linię
+              {tr('Zapisz własną linię', 'Save Custom Line')}
             </button>
           </div>
         </div>

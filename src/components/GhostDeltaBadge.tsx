@@ -1,11 +1,13 @@
 import { formatGhostScoreDelta, formatGhostTimeDelta } from '../domain/ghostDelta';
 import type { IGhostDeltaSnapshot } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 
 interface IGhostDeltaBadgeProps {
   readonly delta: IGhostDeltaSnapshot | null;
 }
 
 export function GhostDeltaBadge({ delta }: IGhostDeltaBadgeProps) {
+  const { isEn, tr } = useI18n();
   if (!delta) {
     return null;
   }
@@ -13,6 +15,9 @@ export function GhostDeltaBadge({ delta }: IGhostDeltaBadgeProps) {
   const isPositiveOverall = delta.hasSplitComparison
     ? delta.scoreDelta > 0 || (delta.scoreDelta === 0 && delta.timeDeltaSec <= 0)
     : true;
+  const formattedScoreDelta = isEn
+    ? formatGhostScoreDelta(delta.scoreDelta).replace(' pkt', ' pts')
+    : formatGhostScoreDelta(delta.scoreDelta);
 
   return (
     <div
@@ -27,15 +32,15 @@ export function GhostDeltaBadge({ delta }: IGhostDeltaBadgeProps) {
       }`}
     >
       <span className="text-[9.5px] uppercase tracking-wider text-slate-400 font-bold">
-        vs Rekord
+        {tr('vs Rekord', 'vs Record')}
       </span>
       {delta.hasSplitComparison ? (
         <span className="font-bold" data-testid="ghost-delta-values">
-          {formatGhostScoreDelta(delta.scoreDelta)} | {formatGhostTimeDelta(delta.timeDeltaSec)}
+          {formattedScoreDelta} | {formatGhostTimeDelta(delta.timeDeltaSec)}
         </span>
       ) : (
         <span className="text-amber-300 font-semibold" data-testid="ghost-delta-target">
-          Cel: {delta.ghostBestScore} pkt
+          {tr('Cel', 'Target')}: {delta.ghostBestScore} {tr('pkt', 'pts')}
         </span>
       )}
     </div>

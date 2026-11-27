@@ -49,7 +49,7 @@ export class StationAnnouncementTracker implements IAnnouncementTracker {
       const sideSpoken = platformSide === 'right' ? 'Peron po prawej stronie.' : 'Peron po lewej stronie.';
       const displayText = platformSide ? `Stacja: ${stationName} · ${sideLabel}` : `Stacja: ${stationName}`;
       const spokenText = platformSide ? `Stacja: ${stationName}. ${sideSpoken}` : `Stacja: ${stationName}`;
-      this.push(displayText, 'arrival', spokenText);
+      this.push(displayText, 'arrival', spokenText, stationName, platformSide);
       return;
     }
     if (
@@ -59,7 +59,7 @@ export class StationAnnouncementTracker implements IAnnouncementTracker {
     ) {
       this.announcedNextIndex = stationIndex;
       const text = `Następna stacja: ${stationName}`;
-      this.push(text, 'next', text);
+      this.push(text, 'next', text, stationName, platformSide);
     }
   }
 
@@ -75,11 +75,19 @@ export class StationAnnouncementTracker implements IAnnouncementTracker {
     this.current = remainingSec <= 0 ? null : { ...this.current, remainingSec };
   }
 
-  private push(text: string, kind: 'next' | 'arrival', spokenText: string): void {
+  private push(
+    text: string,
+    kind: 'next' | 'arrival',
+    spokenText: string,
+    stationName?: string,
+    platformSide?: DoorSide,
+  ): void {
     this.current = {
       id: this.nextId,
       text,
       spokenText,
+      stationName,
+      platformSide,
       kind,
       remainingSec: ANNOUNCEMENT_DURATION_SEC,
     };

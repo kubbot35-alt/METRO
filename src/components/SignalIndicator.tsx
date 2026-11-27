@@ -1,4 +1,5 @@
 import type { ISemaphoreProgress, SignalAspect } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 
 interface ISignalIndicatorProps {
   readonly nextSignal: ISemaphoreProgress | null;
@@ -6,17 +7,21 @@ interface ISignalIndicatorProps {
   readonly highlighted?: boolean;
 }
 
-function getAspectLabel(aspect: SignalAspect, waitSec: number | null): { text: string; toneClass: string } {
+function getAspectLabel(
+  aspect: SignalAspect,
+  waitSec: number | null,
+  tr: (pl: string, en: string) => string,
+): { text: string; toneClass: string } {
   if (aspect === 'red') {
     if (waitSec !== null) {
-      return { text: `CZEKAJ ${waitSec.toFixed(1)} s`, toneClass: 'text-amber-300 font-bold' };
+      return { text: `${tr('CZEKAJ', 'WAIT')} ${waitSec.toFixed(1)} s`, toneClass: 'text-amber-300 font-bold' };
     }
-    return { text: 'STÓJ · CZERWONE', toneClass: 'text-red-400 font-bold' };
+    return { text: tr('STÓJ · CZERWONE', 'STOP · RED'), toneClass: 'text-red-400 font-bold' };
   }
   if (aspect === 'yellow') {
-    return { text: 'UWAGA · 30 km/h', toneClass: 'text-amber-400 font-bold' };
+    return { text: tr('UWAGA · 30 km/h', 'CAUTION · 30 km/h'), toneClass: 'text-amber-400 font-bold' };
   }
-  return { text: 'WOLNA DROGA', toneClass: 'text-emerald-400 font-semibold' };
+  return { text: tr('WOLNA DROGA', 'CLEAR TRACK'), toneClass: 'text-emerald-400 font-semibold' };
 }
 
 export function SignalIndicator({
@@ -24,9 +29,10 @@ export function SignalIndicator({
   atpActive,
   highlighted = false,
 }: ISignalIndicatorProps) {
+  const { tr } = useI18n();
   const aspect: SignalAspect = nextSignal?.signal.aspect ?? 'green';
   const distM = nextSignal ? Math.max(0, Math.round(nextSignal.distanceAheadM)) : null;
-  const status = getAspectLabel(aspect, nextSignal?.signal.waitRemainingSec ?? null);
+  const status = getAspectLabel(aspect, nextSignal?.signal.waitRemainingSec ?? null, tr);
 
   return (
     <div
@@ -36,8 +42,8 @@ export function SignalIndicator({
       }`}
       aria-label={
         nextSignal
-          ? `Semafor ${aspect}, odległość ${distM} metrów`
-          : 'Brak kolejnych semaforów'
+          ? tr(`Semafor ${aspect}, odległość ${distM} metrów`, `Signal ${aspect}, distance ${distM} meters`)
+          : tr('Brak kolejnych semaforów', 'No further signals')
       }
     >
       <svg width="20" height="54" viewBox="0 0 20 54" aria-hidden="true" className="shrink-0">
@@ -50,17 +56,17 @@ export function SignalIndicator({
       <div className="flex flex-col leading-tight min-w-[106px]">
         <div className="flex items-baseline justify-between gap-2">
           <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-slate-400">
-            Semafor
+            {tr('Semafor', 'Signal')}
           </span>
           <span className="font-mono-tabular text-xs font-bold text-slate-100">
             {distM !== null ? `${distM} m` : '—'}
           </span>
         </div>
         <span className={`text-[11px] font-mono-tabular mt-1 whitespace-nowrap ${status.toneClass}`}>
-          {atpActive ? 'ATP HAMOWANIE' : status.text}
+          {atpActive ? tr('ATP HAMOWANIE', 'ATP BRAKING') : status.text}
         </span>
         <span className="text-[10px] font-mono-tabular text-slate-500 mt-0.5">
-          {atpActive ? 'System bezpieczeństwa' : 'Blokada tunelu'}
+          {atpActive ? tr('System bezpieczeństwa', 'Safety interlock') : tr('Blokada tunelu', 'Tunnel block')}
         </span>
       </div>
     </div>

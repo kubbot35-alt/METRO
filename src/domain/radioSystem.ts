@@ -61,6 +61,7 @@ export class DispatcherRadioSystem implements IRadioController {
   private messageId = 0;
   private text = '';
   private spokenText = '';
+  private stationName = '';
   private category: RadioDispatchCategory = 'traffic';
   private remainingSec = 0;
   private acknowledgedCount = 0;
@@ -105,6 +106,7 @@ export class DispatcherRadioSystem implements IRadioController {
       customText ??
       'Dyspozytor Akademii: Próba łączności radiowej. Potwierdź odbiór przyciskiem [R].';
     this.spokenText = this.text.replace(/^Dyspozytor[^:]*:\s*/, 'Uwaga dyspozytor. ');
+    this.stationName = '';
     this.active = true;
     this.remainingSec = Math.max(6, windowSec);
     return true;
@@ -115,6 +117,7 @@ export class DispatcherRadioSystem implements IRadioController {
     this.messageId = 0;
     this.text = '';
     this.spokenText = '';
+    this.stationName = '';
     this.category = 'traffic';
     this.remainingSec = 0;
     this.acknowledgedCount = 0;
@@ -224,6 +227,7 @@ export class DispatcherRadioSystem implements IRadioController {
       messageId: this.messageId,
       text: this.text,
       spokenText: this.spokenText,
+      stationName: this.stationName || undefined,
       category: this.category,
       remainingSec: this.remainingSec,
       maxWindowSec: RADIO_RESPONSE_WINDOW_SEC,
@@ -237,6 +241,7 @@ export class DispatcherRadioSystem implements IRadioController {
     this.templateCursor += 1;
     this.messageId += 1;
     this.category = template.category;
+    this.stationName = stationName;
     this.text = template.buildText(stationName);
     this.spokenText = this.text.replace(/^Dyspozytor:\s*/, 'Uwaga dyspozytor. ');
     this.active = true;

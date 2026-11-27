@@ -1,5 +1,6 @@
 import { useRef, type PointerEvent as ReactPointerEvent } from 'react';
 import type { TrainVisualTheme } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 
 interface IMasterControllerSliderProps {
   readonly leverTarget: number;
@@ -16,6 +17,7 @@ export function MasterControllerSlider({
   highlighted = false,
   onLeverChange,
 }: IMasterControllerSliderProps) {
+  const { tr } = useI18n();
   const trackRef = useRef<HTMLDivElement | null>(null);
   const draggingRef = useRef<boolean>(false);
 
@@ -74,13 +76,16 @@ export function MasterControllerSlider({
   return (
     <div className="flex flex-col items-center gap-1 select-none shrink-0">
       <span className="text-[9px] font-mono-tabular uppercase tracking-wider text-emerald-400">
-        MOC
+        {tr('MOC', 'PWR')}
       </span>
       <div
         ref={trackRef}
         role="slider"
         tabIndex={0}
-        aria-label="Nastawnik jazdy i hamowania (przeciągnij góra lub dół)"
+        aria-label={tr(
+          'Nastawnik jazdy i hamowania (przeciągnij góra lub dół)',
+          'Master controller throttle and brake (drag up or down)',
+        )}
         aria-valuemin={-100}
         aria-valuemax={100}
         aria-valuenow={Math.round(clamped * 100)}
@@ -104,7 +109,7 @@ export function MasterControllerSlider({
         />
       </div>
       <span className="text-[9px] font-mono-tabular uppercase tracking-wider text-amber-400">
-        HAM
+        {tr('HAM', 'BRK')}
       </span>
     </div>
   );

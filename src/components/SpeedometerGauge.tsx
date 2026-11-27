@@ -1,4 +1,5 @@
 import type { TrainVisualTheme } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 
 interface ISpeedometerGaugeProps {
   readonly speedKmh: number;
@@ -61,6 +62,7 @@ export function SpeedometerGauge({
   inCurveLimitZone = false,
   theme,
 }: ISpeedometerGaugeProps) {
+  const { tr } = useI18n();
   const clamped = Math.max(0, Math.min(MAX_DIAL_KMH, speedKmh));
   const limitAngle = START_ANGLE_DEG + (Math.min(limitKmh, MAX_DIAL_KMH) / MAX_DIAL_KMH) * SWEEP_DEG;
   const speedAngle = START_ANGLE_DEG + (clamped / MAX_DIAL_KMH) * SWEEP_DEG;
@@ -91,7 +93,7 @@ export function SpeedometerGauge({
           className={`w-11 h-11 rounded-full border-4 flex items-center justify-center ${
             inCurveLimitZone ? 'bg-amber-300 border-slate-900' : 'bg-slate-100'
           } ${!inCurveLimitZone ? (isOverspeeding ? 'border-red-500' : 'border-red-600') : ''}`}
-          aria-label={`Ograniczenie prędkości ${limitKmh} km/h`}
+          aria-label={`${tr('Ograniczenie prędkości', 'Speed limit')} ${limitKmh} km/h`}
         >
           <span className="font-mono-tabular text-[15px] font-bold text-slate-950">{limitKmh}</span>
         </div>
@@ -106,11 +108,11 @@ export function SpeedometerGauge({
                   : 'text-slate-400'
           }`}
         >
-          {isOverspeeding ? 'ZA SZYBKO' : inCurveLimitZone ? 'ŁUK' : 'LIMIT'}
+          {isOverspeeding ? tr('ZA SZYBKO', 'OVERSPEED') : inCurveLimitZone ? tr('ŁUK', 'CURVE') : 'LIMIT'}
         </span>
         <span
           data-testid="track-grade-indicator"
-          aria-label={`Nachylenie toru ${grade.text}`}
+          aria-label={`${tr('Nachylenie toru', 'Track grade')} ${grade.text}`}
           className={`px-1.5 py-0.5 rounded text-[10px] font-mono-tabular font-bold leading-none whitespace-nowrap border ${grade.colorClass}`}
         >
           {grade.text}

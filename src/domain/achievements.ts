@@ -105,6 +105,9 @@ export function evaluateUnlockedAchievementIds(
   snapshot: ISimulationSnapshot,
   alreadyUnlocked: ReadonlySet<AchievementId>,
 ): readonly AchievementId[] {
+  if (snapshot.gameMode === 'passenger' || snapshot.atoEnabled) {
+    return [];
+  }
   const newlyUnlocked: AchievementId[] = [];
   const check = (id: AchievementId, condition: boolean): void => {
     if (condition && !alreadyUnlocked.has(id)) {

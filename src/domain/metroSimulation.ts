@@ -8,6 +8,12 @@ import {
   StationAnnouncementTracker,
   type IAnnouncementTracker,
 } from './announcementTracker';
+import {
+  canEnableAtoForMode,
+  MetroAtoController,
+  type IAtoContext,
+  type IAtoController,
+} from './atoSystem';
 import { evaluateChallengeOutcome, getChallengeSpec } from './challengeCatalog';
 import { FeedbackTracker, type IFeedbackTracker } from './feedbackTracker';
 import { MetroIncidentSystem, type IIncidentController } from './incidentSystem';
@@ -43,6 +49,7 @@ import {
 } from './trainCatalog';
 import { createInitialKinematics } from './trainPhysics';
 import type {
+  AtoStatus,
   CameraMode,
   ChallengeId,
   DoorSide,
@@ -92,6 +99,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
   private readonly weather: IWeatherController;
   private readonly academy: IAcademyController;
   private readonly tachograph: ITachographRecorder;
+  private readonly ato: IAtoController;
   private line: IMetroLineSpec = METRO_LINE_M1;
   private stations: readonly IStationSpec[];
   private speedZones: readonly ISpeedLimitZone[];
@@ -99,6 +107,8 @@ export class MetroSimulationEngine implements IMetroSimulation {
 
   private phase: GamePhase = 'title';
   private gameMode: GameModeId = 'duty';
+  private atoEnabled = false;
+  private atoStatus: AtoStatus = 'off';
   private challengeId: ChallengeId = 'inverter_fault';
   private challengeOutcome: IChallengeOutcome | null = null;
   private trainModel: ITrainModelSpec = getTrainModelSpec('inspiro');
@@ -152,6 +162,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     weather: IWeatherController = new MetroWeatherSystem(),
     academy: IAcademyController = new AcademyController(),
     tachograph: ITachographRecorder = new TachographRecorder(),
+    ato: IAtoController = new MetroAtoController(),
   ) {
     this.physics = physics;
     this.scoring = scoring;
@@ -167,6 +178,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.weather = weather;
     this.academy = academy;
     this.tachograph = tachograph;
+    this.ato = ato;
     this.traffic.setStations?.(stations);
     this.alignment = getLineTrackAlignment(this.line.id, stations);
     this.physics.setConfig?.(this.trainModel.physics);
@@ -197,11 +209,35 @@ export class MetroSimulationEngine implements IMetroSimulation {
 
   public setGameMode(mode: GameModeId): void {
     this.gameMode = mode;
+    if (!canEnableAtoForMode(mode)) {
+      this.atoEnabled = false;
+      this.atoStatus = 'off';
+    } else if (mode === 'passenger') {
+      this.atoEnabled = true;
+      this.cameraMode = 'interior';
+      this.ato.reset();
+    }
     if (mode === 'academy' && this.line.id !== ACADEMY_LINE_SPEC.id) {
       this.setMetroLineSpec(ACADEMY_LINE_SPEC);
       return;
     }
     this.applyActiveModeOverrides();
+  }
+
+  public toggleAto(): boolean {
+    if (!canEnableAtoForMode(this.gameMode)) {
+      this.feedback.push('ATO dostępne tylko w Sandbox / trybie Pasażera', 0, 'warning');
+      return false;
+    }
+    this.atoEnabled = !this.atoEnabled;
+    if (this.atoEnabled) {
+      this.ato.reset();
+      this.feedback.push('Autopilot ATO aktywny — automatyczne prowadzenie pociągu', 0, 'success');
+    } else {
+      this.atoStatus = 'off';
+      this.feedback.push('Autopilot ATO wyłączony — przejęto sterowanie ręczne', 0, 'neutral');
+    }
+    return this.atoEnabled;
   }
 
   public setChallenge(challengeId: ChallengeId): void {
@@ -264,6 +300,14 @@ export class MetroSimulationEngine implements IMetroSimulation {
       this.headlightsOn = false;
       this.academy.reset();
     }
+    if (this.gameMode === 'passenger') {
+      this.cameraMode = 'interior';
+      this.atoEnabled = true;
+      this.ato.reset();
+    } else if (!canEnableAtoForMode(this.gameMode)) {
+      this.atoEnabled = false;
+      this.atoStatus = 'off';
+    }
     this.challengeOutcome = null;
     this.applyActiveModeOverrides();
     this.phase = 'playing';
@@ -309,7 +353,9 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.activeCautionLimitKmh = null;
     this.headlightsOn = this.gameMode !== 'academy';
     this.leverTarget = 0;
-    this.cameraMode = 'cab';
+    this.cameraMode = this.gameMode === 'passenger' ? 'interior' : 'cab';
+    this.atoEnabled = this.gameMode === 'passenger';
+    this.atoStatus = 'off';
     this.cameraNotice = null;
     this.passengersCarried = 0;
     this.currentStationBoardedCount = 0;
@@ -325,6 +371,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.weather.reset();
     this.academy.reset();
     this.tachograph.reset();
+    this.ato.reset();
     this.applyActiveModeOverrides();
   }
 
@@ -334,11 +381,15 @@ export class MetroSimulationEngine implements IMetroSimulation {
       return this.idleAudioEvents();
     }
     this.elapsedTimeSec += dt;
-    this.hornActive = input.hornActive;
-    if (input.toggleHeadlightsPressed) {
+    if (input.toggleAtoPressed) {
+      this.toggleAto();
+    }
+    const effectiveInput = this.resolveEffectiveInput(input);
+    this.hornActive = effectiveInput.hornActive;
+    if (effectiveInput.toggleHeadlightsPressed) {
       this.headlightsOn = !this.headlightsOn;
     }
-    this.updateCameraState(Boolean(input.cycleCameraPressed), dt);
+    this.updateCameraState(Boolean(effectiveInput.cycleCameraPressed), dt);
     this.feedback.tick(dt);
     const prevPosM = this.kinematics.positionM;
     const prevSpeedKmh = this.kinematics.speedKmh;
@@ -350,19 +401,19 @@ export class MetroSimulationEngine implements IMetroSimulation {
       prevSpeedKmh,
       this.kinematics.serviceBrake,
       this.kinematics.emergencyBrake,
-      Boolean(input.toggleWipersPressed),
+      Boolean(effectiveInput.toggleWipersPressed),
       dt,
     );
-    const emergencyTriggered = this.advancePhysics(input, dt, weatherRes.brakeGripMultiplier);
-    this.leverTarget = this.computeLeverTarget(input);
+    const emergencyTriggered = this.advancePhysics(effectiveInput, dt, weatherRes.brakeGripMultiplier);
+    this.leverTarget = this.computeLeverTarget(effectiveInput);
     const atpTriggered = this.evaluateSignals(prevPosM, dt);
-    const incRes = this.evaluateIncidents(Boolean(input.acknowledgeCzuwakPressed), dt);
-    const radioRes = this.evaluateRadio(Boolean(input.acknowledgeRadioPressed), dt);
+    const incRes = this.evaluateIncidents(Boolean(effectiveInput.acknowledgeCzuwakPressed), dt);
+    const radioRes = this.evaluateRadio(Boolean(effectiveInput.acknowledgeRadioPressed), dt);
     const trafficRes = this.traffic.step(this.kinematics.positionM, dt);
     const brakeStopHiss = this.checkBrakeStopHiss(prevSpeedKmh);
     const overspeedWarning = this.evaluateOverspeed(dt);
     const prevStationsServed = this.stationsServed;
-    const doorRes = this.handleDoorToggle(input, incRes.doorFaultResolvedClose);
+    const doorRes = this.handleDoorToggle(effectiveInput, incRes.doorFaultResolvedClose);
     const stationServedNow = this.stationsServed > prevStationsServed;
     const boardingCompleteChime = this.updateBoarding(dt);
     this.checkStationOvershoot();
@@ -480,6 +531,8 @@ export class MetroSimulationEngine implements IMetroSimulation {
     return {
       phase: this.phase,
       gameMode: this.gameMode,
+      atoEnabled: this.atoEnabled,
+      atoStatus: this.atoEnabled ? this.atoStatus : 'off',
       challenge: activeChallenge,
       challengeOutcome: this.challengeOutcome,
       academy:
@@ -600,6 +653,64 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.radio.setAutoTrigger?.(true);
   }
 
+  private isFreeRideMode(): boolean {
+    return this.gameMode === 'sandbox' || this.gameMode === 'passenger';
+  }
+
+  private resolveEffectiveInput(input: IControlInput): IControlInput {
+    if (!this.atoEnabled || !canEnableAtoForMode(this.gameMode)) {
+      this.atoStatus = 'off';
+      return input;
+    }
+    const posM = this.kinematics.positionM;
+    const progress = this.buildStationProgress();
+    const trackSample = this.alignment.sample(posM);
+    const upcomingCurve = this.alignment.getUpcomingCurveLimit(posM, 180);
+    const weatherState = this.weather.getState();
+    const atoCtx: IAtoContext = {
+      speedKmh: this.kinematics.speedKmh,
+      speedLimitKmh: this.computeEffectiveSpeedLimit(),
+      gradePercent: trackSample.gradePercent,
+      nextSignal: this.buildNextSignalProgress(),
+      upcomingCurveLimitKmh: upcomingCurve?.limitKmh ?? null,
+      upcomingCurveDistanceM: upcomingCurve?.distanceAheadM ?? null,
+      upcomingTrackworkDistanceM: this.incidents.getUpcomingTrackworkDistance(posM),
+      activeTrackworkZone: this.incidents.getActiveTrackworkZone(posM),
+      currentStation: progress,
+      expectedPlatformSide: getStationPlatformSide(progress.station),
+      doorState: this.doorState,
+      openDoorSide: this.openDoorSide,
+      canToggleDoors: this.canToggleDoorsNow(progress),
+      boardingCompletedForCurrent: this.boardingCompleted,
+      doorFaultPhase: this.incidents.getDoorFaultState().phase,
+      czuwakActive: this.incidents.getCzuwakState().active,
+      radioActive: this.radio.getState().active,
+      headlightsOn: this.headlightsOn,
+      rainIntensity: weatherState.rainIntensity,
+      wipersOn: weatherState.wipersOn,
+      skipStations: Boolean(this.getActiveChallenge()?.skipStations),
+      isEveningOrTunnel: this.timeOfDay.id === 'evening' || trackSample.outdoorBlend < 0.35,
+    };
+    const cmd = this.ato.computeControl(atoCtx);
+    this.atoStatus = cmd.status;
+    return {
+      throttleUp: false,
+      throttleDown: false,
+      serviceBrake: false,
+      manualLeverAxis: cmd.leverAxis,
+      emergencyBrakePressed: input.emergencyBrakePressed,
+      toggleDoorsPressed: false,
+      toggleDoorsLeftPressed: Boolean(input.toggleDoorsLeftPressed) || cmd.toggleDoorsLeft,
+      toggleDoorsRightPressed: Boolean(input.toggleDoorsRightPressed) || cmd.toggleDoorsRight,
+      toggleHeadlightsPressed: Boolean(input.toggleHeadlightsPressed) || cmd.toggleHeadlights,
+      toggleWipersPressed: Boolean(input.toggleWipersPressed) || cmd.toggleWipers,
+      acknowledgeCzuwakPressed: Boolean(input.acknowledgeCzuwakPressed) || cmd.acknowledgeCzuwak,
+      acknowledgeRadioPressed: Boolean(input.acknowledgeRadioPressed) || cmd.acknowledgeRadio,
+      cycleCameraPressed: input.cycleCameraPressed,
+      hornActive: input.hornActive,
+    };
+  }
+
   private evaluateRadio(ackRadioPressed: boolean, dt: number) {
     const res = this.radio.step(
       this.stationIndex,
@@ -609,7 +720,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
       dt,
     );
     if (res.acknowledgedNow) {
-      const pts = this.gameMode === 'sandbox' ? 0 : res.bonusPoints;
+      const pts = this.isFreeRideMode() ? 0 : res.bonusPoints;
       this.score += pts;
       this.feedback.push(res.feedbackText ?? 'Radio potwierdzone', pts, 'success');
     } else if (res.expiredNow && res.feedbackText) {
@@ -651,7 +762,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     const res = this.signals.step(prevPosM, this.kinematics.positionM, this.kinematics.speedKmh, dt);
     this.activeCautionLimitKmh = res.activeCautionLimitKmh;
     if (res.redSignalViolated) {
-      if (this.gameMode === 'sandbox') {
+      if (this.isFreeRideMode()) {
         this.feedback.push('Sandbox: minięto czerwony semafor (bez kary)', 0, 'neutral');
       } else if (this.gameMode === 'academy') {
         this.atpActive = true;
@@ -685,7 +796,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
       this.feedback.push('Semafor zielony — droga wolna', 0, 'success');
     }
     return {
-      violated: this.gameMode !== 'sandbox' && res.redSignalViolated,
+      violated: !this.isFreeRideMode() && res.redSignalViolated,
       cleared: res.clearedToGreen,
     };
   }
@@ -893,8 +1004,9 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.bestStopErrorM =
       this.bestStopErrorM === null ? absOffset : Math.min(this.bestStopErrorM, absOffset);
     this.totalStopErrorM += absOffset;
-    if (this.gameMode === 'sandbox') {
-      this.feedback.push(`${evaluation.label} · Wolna jazda`, 0, evaluation.tone);
+    if (this.isFreeRideMode()) {
+      const modeTag = this.gameMode === 'passenger' ? 'Przejazd ATO' : 'Wolna jazda';
+      this.feedback.push(`${evaluation.label} · ${modeTag}`, 0, evaluation.tone);
       return;
     }
     const deviationSec = this.schedule.recordStationArrival(
@@ -1025,7 +1137,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
   }
 
   private evaluateOverspeed(dt: number): boolean {
-    if (this.gameMode === 'sandbox') {
+    if (this.isFreeRideMode()) {
       return false;
     }
     const limit = this.computeEffectiveSpeedLimit();
@@ -1050,7 +1162,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
   }
 
   private applyPenalty(points: number, text: string, tone: FeedbackTone): void {
-    if (this.gameMode === 'sandbox') {
+    if (this.isFreeRideMode()) {
       return;
     }
     this.score += points;

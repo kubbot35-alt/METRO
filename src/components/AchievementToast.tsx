@@ -1,13 +1,20 @@
+import { getLocalizedAchievement } from '../domain/i18nCatalog';
 import type { IAchievementToast } from '../domain/types';
+import { useI18n } from '../i18n/LanguageContext';
 
 interface IAchievementToastProps {
   readonly toast: IAchievementToast | null;
 }
 
 export function AchievementToast({ toast }: IAchievementToastProps) {
+  const { lang, tr } = useI18n();
   if (!toast) {
     return null;
   }
+  const loc = getLocalizedAchievement(lang, toast.spec.id, {
+    title: toast.spec.title,
+    description: toast.spec.description,
+  });
 
   return (
     <div
@@ -27,13 +34,13 @@ export function AchievementToast({ toast }: IAchievementToastProps) {
       </div>
       <div className="min-w-0">
         <p className="text-[10px] font-mono-tabular uppercase tracking-widest text-amber-400 font-bold">
-          Osiągnięcie odblokowane
+          {tr('Osiągnięcie odblokowane', 'Achievement Unlocked')}
         </p>
         <p className="font-display text-sm font-bold text-slate-50 leading-tight mt-0.5">
-          {toast.spec.title}
+          {loc.title}
         </p>
         <p className="text-[11px] text-slate-300 leading-snug mt-0.5">
-          {toast.spec.description}
+          {loc.description}
         </p>
       </div>
     </div>

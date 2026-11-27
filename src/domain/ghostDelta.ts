@@ -144,6 +144,8 @@ export class GhostRecordStorageService implements IGhostRecordService {
     if (
       snapshot.gameMode === 'sandbox' ||
       snapshot.gameMode === 'academy' ||
+      snapshot.gameMode === 'passenger' ||
+      snapshot.atoEnabled ||
       snapshot.stationSplits.length === 0
     ) {
       return { updated: false, record: this.getRecordForLine(snapshot.line.id) };
