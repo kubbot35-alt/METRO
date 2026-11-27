@@ -52,14 +52,17 @@ const _bgColor = new THREE.Color();
 const _tunnelBgColor = new THREE.Color(0x06080d);
 const _daySkyFogColor = new THREE.Color(0xc5ddf5);
 const _rainDayFogColor = new THREE.Color(0x8897a8);
+const _snowDayFogColor = new THREE.Color(0xdbe7f4);
 const _nightSkyFogColor = new THREE.Color(0x111d38);
 const _rainNightFogColor = new THREE.Color(0x1b2432);
 const _hemiTunnelSky = new THREE.Color(0x6c88ab);
 const _hemiDaySky = new THREE.Color(0xcde6ff);
 const _hemiRainDaySky = new THREE.Color(0x8ea0b5);
+const _hemiSnowDaySky = new THREE.Color(0xe2ecf8);
 const _hemiNightSky = new THREE.Color(0x3a5284);
 const _hemiTunnelGround = new THREE.Color(0x1e1812);
 const _hemiDayGround = new THREE.Color(0x4a5a44);
+const _hemiSnowGround = new THREE.Color(0xcbd5e1);
 const _hemiNightGround = new THREE.Color(0x141b2b);
 
 function detectSoftwareWebGl(): boolean {
@@ -135,7 +138,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
   private resizeObserver: ResizeObserver | null = null;
   private maxAniso = 4;
   private appliedLineSignature: string | null = null;
-  private appliedModelId: TrainModelId | null = null;
+  private appliedModelSignature: string | null = null;
   private appliedOncomingModelId: TrainModelId | null = null;
   private appliedTimeOfDayId: TimeOfDayId | null = null;
 
@@ -674,8 +677,9 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
   }
 
   private syncTrainThemes(snapshot: ISimulationSnapshot): void {
-    if (this.appliedModelId !== snapshot.trainModel.id) {
-      this.appliedModelId = snapshot.trainModel.id;
+    const modelSig = `${snapshot.trainModel.id}|${snapshot.trainModel.visual.liveryId ?? 'default'}`;
+    if (this.appliedModelSignature !== modelSig) {
+      this.appliedModelSignature = modelSig;
       this.playerTrainRig?.setTheme(snapshot.trainModel.visual);
       this.cabRig?.setTheme(snapshot.trainModel.visual.theme);
       if (this.headlight) {
@@ -726,14 +730,18 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     const isEvening = timeOfDayId === 'evening' || timeOfDayId === 'night_service';
     const isNightService = timeOfDayId === 'night_service';
     const isRain = weatherMode === 'rain';
+    const isSnow = weatherMode === 'snow';
+    const isPrecip = isRain || isSnow;
 
     const targetOutdoorBg = isEvening
-      ? isRain
+      ? isPrecip
         ? _rainNightFogColor
         : _nightSkyFogColor
-      : isRain
-        ? _rainDayFogColor
-        : _daySkyFogColor;
+      : isSnow
+        ? _snowDayFogColor
+        : isRain
+          ? _rainDayFogColor
+          : _daySkyFogColor;
     _bgColor.copy(_tunnelBgColor).lerp(targetOutdoorBg, b);
     if (this.scene.background instanceof THREE.Color) {
       this.scene.background.copy(_bgColor);
@@ -741,55 +749,69 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     if (this.scene.fog instanceof THREE.FogExp2) {
       this.scene.fog.color.copy(_bgColor);
       const outdoorFog = isEvening
-        ? isRain
+        ? isPrecip
           ? 0.0048
           : isNightService
             ? 0.0032
             : 0.0024
-        : isRain
-          ? 0.0044
-          : 0.0016;
+        : isSnow
+          ? 0.0046
+          : isRain
+            ? 0.0044
+            : 0.0016;
       const effectiveTunnelFog = tunnelFogDensity * this.fogDensityScale;
       this.scene.fog.density = THREE.MathUtils.lerp(effectiveTunnelFog, outdoorFog, b);
     }
 
     const outdoorHemiSky = isEvening
       ? _hemiNightSky
-      : isRain
-        ? _hemiRainDaySky
-        : _hemiDaySky;
-    const outdoorHemiGround = isEvening ? _hemiNightGround : _hemiDayGround;
+      : isSnow
+        ? _hemiSnowDaySky
+        : isRain
+          ? _hemiRainDaySky
+          : _hemiDaySky;
+    const outdoorHemiGround = isEvening
+      ? _hemiNightGround
+      : isSnow
+        ? _hemiSnowGround
+        : _hemiDayGround;
     this.hemiLight.color.copy(_hemiTunnelSky).lerp(outdoorHemiSky, b);
     this.hemiLight.groundColor.copy(_hemiTunnelGround).lerp(outdoorHemiGround, b);
     const outdoorAmbient = isNightService
-      ? isRain
-        ? 0.34
+      ? isPrecip
+        ? 0.38
         : 0.42
       : isEvening
-        ? isRain
-          ? 0.48
+        ? isPrecip
+          ? 0.52
           : 0.62
-        : isRain
-          ? 1.05
-          : 1.45;
+        : isSnow
+          ? 1.32
+          : isRain
+            ? 1.05
+            : 1.45;
     this.hemiLight.intensity = THREE.MathUtils.lerp(tunnelAmbientIntensity, outdoorAmbient, b);
 
     const sunTarget = isNightService
-      ? isRain
+      ? isPrecip
         ? 0.08
         : 0.22
       : isEvening
-        ? isRain
+        ? isPrecip
           ? 0.14
           : 0.42
-        : isRain
-          ? 0.62
-          : 2.35;
+        : isSnow
+          ? 0.85
+          : isRain
+            ? 0.62
+            : 2.35;
     this.sunLight.intensity = sunTarget * b;
-    this.sunLight.color.setHex(isEvening ? 0x93c5fd : isRain ? 0xcbd5e1 : 0xfff0d1);
+    this.sunLight.color.setHex(
+      isEvening ? 0x93c5fd : isSnow ? 0xe2e8f0 : isRain ? 0xcbd5e1 : 0xfff0d1,
+    );
 
     const baseEnv = isNightService ? 0.09 : isEvening ? 0.16 : 0.34;
-    const outdoorEnv = isNightService ? 0.14 : isEvening ? 0.22 : isRain ? 0.44 : 0.65;
+    const outdoorEnv = isNightService ? 0.14 : isEvening ? 0.22 : isPrecip ? 0.48 : 0.65;
     this.scene.environmentIntensity = THREE.MathUtils.lerp(baseEnv, outdoorEnv, b);
   }
 

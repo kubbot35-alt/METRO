@@ -4,7 +4,12 @@ export interface IAudioEngine {
   unlock(): void;
   setMuted(muted: boolean): void;
   isMuted(): boolean;
-  setAudioSettings?(masterVolume: number, trainVolume: number, voiceVolume: number): void;
+  setAudioSettings?(
+    masterVolume: number,
+    trainVolume: number,
+    voiceVolume: number,
+    alertsVolume?: number,
+  ): void;
   update(snapshot: ISimulationSnapshot, events: IAudioEvents): void;
   playAchievementChime(): void;
   silence(): void;

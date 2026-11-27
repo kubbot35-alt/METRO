@@ -183,13 +183,18 @@ function GeneralSettingsTab({
       </section>
 
       <section className="rounded-md border border-slate-800 bg-[#0a0d13] p-3.5 space-y-3">
-        <h3 className="text-xs font-mono-tabular uppercase tracking-[0.16em] text-amber-300 font-bold">
-          {tr('1. Dźwięk i mikser audio', '1. Audio & Volume Mixer')}
-        </h3>
+        <div className="flex items-center justify-between gap-2">
+          <h3 className="text-xs font-mono-tabular uppercase tracking-[0.16em] text-amber-300 font-bold">
+            {tr('1. Dźwięk i mikser audio (Web Audio API)', '1. Audio & Volume Mixer (Web Audio API)')}
+          </h3>
+          <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 border border-emerald-400/50 text-[9.5px] font-mono-tabular text-emerald-200">
+            {tr('Limiter Anti-Clip aktywny', 'Anti-Clip Limiter Active')}
+          </span>
+        </div>
         <VolumeSliderRow
           id="setting-master-vol"
           testId="slider-master-volume"
-          label={tr('Głośność ogólna', 'Master Volume')}
+          label={tr('Głośność główna (Master)', 'Master Volume')}
           value={settings.masterVolume}
           onChange={(v) => onUpdate({ masterVolume: v })}
         />
@@ -197,8 +202,8 @@ function GeneralSettingsTab({
           id="setting-train-vol"
           testId="slider-train-volume"
           label={tr(
-            'Dźwięki pociągu i otoczenia (silnik, tory, deszcz)',
-            'Train & Ambient Audio (motors, rails, rain)',
+            'Silniki i tory (falownik IGBT, stukot szyn, zakręty, pogłos tunelu)',
+            'Motors & Rails (IGBT inverter, rail joints, flange squeal, tunnel reverb)',
           )}
           value={settings.trainVolume}
           onChange={(v) => onUpdate({ trainVolume: v })}
@@ -206,9 +211,16 @@ function GeneralSettingsTab({
         <VolumeSliderRow
           id="setting-voice-vol"
           testId="slider-voice-volume"
-          label={tr('Głos lektora i radio dyspozytora', 'Station Announcer & Dispatch Radio')}
+          label={tr('Zapowiedzi i Gong (SIP / Interkom PA)', 'Announcements & Chime (SIP / PA Intercom)')}
           value={settings.voiceVolume}
           onChange={(v) => onUpdate({ voiceVolume: v })}
+        />
+        <VolumeSliderRow
+          id="setting-alerts-vol"
+          testId="slider-alerts-volume"
+          label={tr('Alarmy i Radio (Czuwak, ATP, syrena, dyspozytor)', 'Alerts & Radio (Czuwak, ATP, horn, dispatch)')}
+          value={settings.alertsVolume ?? 0.9}
+          onChange={(v) => onUpdate({ alertsVolume: v })}
         />
       </section>
 

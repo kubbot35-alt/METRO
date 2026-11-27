@@ -66,6 +66,9 @@ export default function App() {
       data-door-fault={snapshot.doorFault.phase}
       data-grade={snapshot.driverGrade}
       data-train={snapshot.trainModel.id}
+      data-livery={snapshot.trainModel.visual.liveryId ?? 'default'}
+      data-eco-grade={snapshot.ecoDriving.grade}
+      data-eco-kwh={snapshot.ecoDriving.netEnergyKwh.toFixed(2)}
       data-line={snapshot.line.id}
       data-direction={snapshot.line.direction ?? 'normal'}
       data-start-station={snapshot.line.startStationIndex ?? 0}
@@ -139,6 +142,7 @@ export default function App() {
           driverProfile={game.driverProfile}
           gamepadStatus={game.gamepadStatus}
           selectedModelId={snapshot.trainModel.id}
+          selectedLiveryId={game.selectedLiveryId}
           selectedTimeOfDayId={snapshot.timeOfDay.id}
           selectedWeatherMode={snapshot.weather.mode}
           selectedGameMode={snapshot.gameMode}
@@ -153,6 +157,7 @@ export default function App() {
           onEditCustomLine={(draft) => game.openLineBuilder(draft)}
           onDeleteCustomLine={game.deleteCustomLine}
           onSelectModel={game.selectTrainModel}
+          onSelectLivery={game.selectTrainLivery}
           onSelectTimeOfDay={game.selectTimeOfDay}
           onSelectWeatherMode={game.selectWeatherMode}
           onSelectGameMode={game.selectGameMode}

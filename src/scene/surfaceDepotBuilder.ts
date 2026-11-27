@@ -121,18 +121,47 @@ export function buildSurfaceDepot(
       if (lastSkyKey !== skyKey) {
         lastSkyKey = skyKey;
         const isRain = weatherMode === 'rain';
+        const isSnow = weatherMode === 'snow';
+
+        // Update surface ground, trackside ballast, roofs, and tree crowns for winter snow vs dry/rain
+        sharedMats.grass.color.setHex(isSnow ? 0xf1f5f9 : 0x3b6036);
+        sharedMats.grass.roughness = isSnow ? 0.78 : 0.95;
+        sharedMats.gravel.color.setHex(isSnow ? 0xdbe4ef : 0x52565c);
+        sharedMats.gravel.roughness = isSnow ? 0.82 : 0.94;
+        sharedMats.hangarRoof.color.setHex(isSnow ? 0xe2e8f0 : 0x334155);
+        sharedMats.foliage.color.setHex(isSnow ? 0xdbeafe : 0x2f5a32);
+        sharedMats.darkConcrete.color.setHex(isSnow ? 0x94a3b8 : 0x383f4a);
+
         if (timeOfDayId === 'evening' || timeOfDayId === 'night_service') {
           const isDeepNight = timeOfDayId === 'night_service';
-          skyUniforms.uTopColor.value.setHex(isRain ? 0x090e14 : isDeepNight ? 0x01030a : 0x020612);
-          skyUniforms.uMidColor.value.setHex(isRain ? 0x151d28 : isDeepNight ? 0x040918 : 0x071228);
-          skyUniforms.uHorizonColor.value.setHex(isRain ? 0x222c38 : isDeepNight ? 0x0b152a : 0x112040);
+          skyUniforms.uTopColor.value.setHex(
+            isSnow ? 0x0d1624 : isRain ? 0x090e14 : isDeepNight ? 0x01030a : 0x020612,
+          );
+          skyUniforms.uMidColor.value.setHex(
+            isSnow ? 0x1e2c40 : isRain ? 0x151d28 : isDeepNight ? 0x040918 : 0x071228,
+          );
+          skyUniforms.uHorizonColor.value.setHex(
+            isSnow ? 0x33465e : isRain ? 0x222c38 : isDeepNight ? 0x0b152a : 0x112040,
+          );
           skyUniforms.uSunDir.value.set(-0.26, 0.34, -0.9).normalize();
           skyUniforms.uSunColor.value.setHex(0xe2ecff);
-          skyUniforms.uSunStrength.value = isRain ? 0.06 : isDeepNight ? 0.45 : 0.85;
-          stars.visible = !isRain;
+          skyUniforms.uSunStrength.value = isRain || isSnow ? 0.08 : isDeepNight ? 0.45 : 0.85;
+          stars.visible = !isRain && !isSnow;
           sharedMats.mastLamp.emissiveIntensity = isDeepNight ? 6.0 : 5.2;
           sharedMats.hangarWindow.emissiveIntensity = isDeepNight ? 1.8 : 2.6;
           sharedMats.hangarSign.emissiveIntensity = 0.95;
+        } else if (isSnow) {
+          // Winter grey-blue Warsaw sky over snow-covered STP Kabaty
+          skyUniforms.uTopColor.value.setHex(0x5b728e);
+          skyUniforms.uMidColor.value.setHex(0x8fa6c0);
+          skyUniforms.uHorizonColor.value.setHex(0xdbe7f4);
+          skyUniforms.uSunDir.value.set(0.32, 0.32, -0.88).normalize();
+          skyUniforms.uSunColor.value.setHex(0xf1f5f9);
+          skyUniforms.uSunStrength.value = 0.25;
+          stars.visible = false;
+          sharedMats.mastLamp.emissiveIntensity = 2.1;
+          sharedMats.hangarWindow.emissiveIntensity = 1.35;
+          sharedMats.hangarSign.emissiveIntensity = 0.65;
         } else if (isRain) {
           // Overcast Warsaw rainy morning sky
           skyUniforms.uTopColor.value.setHex(0x475569);

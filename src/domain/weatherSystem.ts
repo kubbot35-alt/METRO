@@ -25,7 +25,9 @@ export interface IWeatherController {
 }
 
 const WET_TUNNEL_CARRYOVER_M = 150;
+const SNOW_TUNNEL_CARRYOVER_M = 200;
 const WET_RAIL_GRIP_MULTIPLIER = 0.83; // ~20% longer braking distance on wet rails
+const SNOW_RAIL_GRIP_MULTIPLIER = 0.76; // ~31% longer braking distance on snowy/icy rails
 const WIPER_ANGULAR_SPEED_RAD_S = 3.1;
 
 export class MetroWeatherSystem implements IWeatherController {
@@ -35,6 +37,8 @@ export class MetroWeatherSystem implements IWeatherController {
   private wiperPhaseRad = 0;
   private lastCycleHalf = 0;
   private rainIntensity = 0;
+  private snowIntensity = 0;
+  private frostIntensity = 0;
   private wetRailsActive = false;
   private wheelSlipActive = false;
 
@@ -42,8 +46,16 @@ export class MetroWeatherSystem implements IWeatherController {
     this.mode = mode;
     if (mode === 'clear') {
       this.rainIntensity = 0;
+      this.snowIntensity = 0;
+      this.frostIntensity = 0;
       this.wetRailsActive = false;
       this.wheelSlipActive = false;
+    } else if (mode === 'rain') {
+      this.snowIntensity = 0;
+      this.frostIntensity = 0;
+    } else if (mode === 'snow') {
+      this.rainIntensity = 0;
+      this.frostIntensity = Math.max(this.frostIntensity, 0.42);
     }
   }
 
@@ -57,6 +69,8 @@ export class MetroWeatherSystem implements IWeatherController {
     this.wiperPhaseRad = 0;
     this.lastCycleHalf = 0;
     this.rainIntensity = 0;
+    this.snowIntensity = 0;
+    this.frostIntensity = this.mode === 'snow' ? 0.42 : 0;
     this.wetRailsActive = false;
     this.wheelSlipActive = false;
   }
@@ -76,15 +90,38 @@ export class MetroWeatherSystem implements IWeatherController {
     }
 
     const dt = Math.max(0, Math.min(dtSec, 0.05));
+    const clampedOutdoor = Math.max(0, Math.min(1, outdoorBlend));
     const isRain = this.mode === 'rain';
-    this.rainIntensity = isRain ? Math.max(0, Math.min(1, outdoorBlend)) : 0;
+    const isSnow = this.mode === 'snow';
 
-    // Wet rails on STP Kabaty surface section and the first 150 m inside the tunnel
+    this.rainIntensity = isRain ? clampedOutdoor : 0;
+    this.snowIntensity = isSnow ? clampedOutdoor : 0;
+
+    if (isSnow) {
+      if (this.wipersOn) {
+        this.frostIntensity = Math.max(0.06, this.frostIntensity - dt * 0.35);
+      } else if (clampedOutdoor > 0.05) {
+        const targetFrost = Math.min(0.85, 0.32 + clampedOutdoor * 0.48);
+        this.frostIntensity = Math.min(
+          targetFrost,
+          this.frostIntensity + dt * (0.12 + clampedOutdoor * 0.14),
+        );
+      } else {
+        // Slowly thaws inside the warmer underground tunnel
+        this.frostIntensity = Math.max(0, this.frostIntensity - dt * 0.06);
+      }
+    } else {
+      this.frostIntensity = 0;
+    }
+
+    // Slippery rails on STP Kabaty surface section and the first 150 m (rain) or 200 m (snow) inside the tunnel
+    const carryoverM = isSnow ? SNOW_TUNNEL_CARRYOVER_M : WET_TUNNEL_CARRYOVER_M;
     this.wetRailsActive =
-      isRain && hasSurfaceStart && positionM <= M1_TUNNEL_PORTAL_M + WET_TUNNEL_CARRYOVER_M;
+      (isRain || isSnow) && hasSurfaceStart && positionM <= M1_TUNNEL_PORTAL_M + carryoverM;
 
-    const hardBraking = emergencyBrake || serviceBrake >= 0.45;
-    this.wheelSlipActive = this.wetRailsActive && hardBraking && speedKmh >= 6;
+    const slipThreshold = isSnow ? 0.35 : 0.45;
+    const hardBraking = emergencyBrake || serviceBrake >= slipThreshold;
+    this.wheelSlipActive = this.wetRailsActive && hardBraking && speedKmh >= 5;
 
     let wiperSweepTick = false;
     if (this.wipersOn) {
@@ -105,9 +142,15 @@ export class MetroWeatherSystem implements IWeatherController {
       this.wiperPhaseRad = 0;
     }
 
+    const brakeGripMultiplier = !this.wetRailsActive
+      ? 1.0
+      : isSnow
+        ? SNOW_RAIL_GRIP_MULTIPLIER
+        : WET_RAIL_GRIP_MULTIPLIER;
+
     return {
       wiperSweepTick,
-      brakeGripMultiplier: this.wetRailsActive ? WET_RAIL_GRIP_MULTIPLIER : 1.0,
+      brakeGripMultiplier,
       state: this.getState(),
     };
   }
@@ -118,6 +161,8 @@ export class MetroWeatherSystem implements IWeatherController {
       wipersOn: this.wipersOn,
       wiperPhaseRad: this.wiperPhaseRad,
       rainIntensity: this.rainIntensity,
+      snowIntensity: this.snowIntensity,
+      frostIntensity: Number(this.frostIntensity.toFixed(3)),
       wetRailsActive: this.wetRailsActive,
       wheelSlipActive: this.wheelSlipActive,
     };

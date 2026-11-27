@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { DoorSide, MetroLineId } from '../domain/types';
+import type { DoorSide, ITrainVisualProfile, MetroLineId } from '../domain/types';
 import {
   SERIA81_CAR_GAP,
   SERIA81_CAR_LENGTH,
@@ -13,6 +13,7 @@ import { createSeria81DestBoard } from './seria81Textures';
 
 export interface ISeria81ConsistBuild {
   readonly group: THREE.Group;
+  setVisualProfile?(visual: ITrainVisualProfile): void;
   setDoorsOpen(openSide: DoorSide | null, dtSec: number): void;
   setHeadlights(on: boolean): void;
   setLine(lineId: MetroLineId, destinationLed: string): void;
@@ -80,6 +81,12 @@ export function buildSeria81Consist(maxAnisotropy: number): ISeria81ConsistBuild
   let rightDoorProgress = 0;
   return {
     group,
+    setVisualProfile: (visual: ITrainVisualProfile): void => {
+      mats.upperBody.color.setHex(visual.bodyHex);
+      mats.roofNavy.color.setHex(visual.roofHex);
+      mats.warsawRed.color.setHex(visual.stripeHex);
+      mats.warsawYellow.color.setHex(visual.noseHex);
+    },
     setDoorsOpen: (openSide: DoorSide | null, dtSec: number): void => {
       const safeDt = Math.max(dtSec, 0.016);
       leftDoorProgress = THREE.MathUtils.damp(

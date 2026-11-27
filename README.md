@@ -3,7 +3,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?logo=typescript&logoColor=white)
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![Three.js](https://img.shields.io/badge/Three.js-WebGL2-000000?logo=threedotjs&logoColor=white)
-![Vite](https://img.shields.io/badge/Vite-6.x-646CFF?logo=vite&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-8.x-646CFF?logo=vite&logoColor=white)
 ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.x-06B6D4?logo=tailwindcss&logoColor=white)
 
 ---
@@ -124,26 +124,41 @@ Gracz wciela się w maszynistę prowadzącego jeden z trzech kultowych składów
 
 ---
 
-## 🚀 Instalacja i uruchomienie (Installation & Setup)
+## 🚀 Instalacja i uruchomienie po sklonowaniu w IDE (Installation & Setup)
 
-Projekt korzysta z narzędzia **Vite** oraz menedżera pakietów **npm** (lub **bun**).
+Projekt korzysta z bundlera **Vite 8** oraz menedżera pakietów **npm** (w repozytorium znajduje się również `bun.lock` dla **Bun**).
 
 ### Wymagania wstępne
-- **Node.js** w wersji `18.x` lub nowszej (`20.x+` zalecane)
+- **Node.js** w wersji `>= 20.19.0` lub `>= 22.12.0` (wymagane przez silnik **Vite 8**)
 - Przeglądarka wspierająca **WebGL2**, **Web Audio API** oraz **Web Speech API** (Chrome, Edge, Firefox, Safari)
 
-### Kroki instalacji
+### Kroki instalacji po `git clone` w lokalnym IDE (VS Code / WebStorm / Cursor)
 
-1. **Sklonuj repozytorium:**
+1. **Sklonuj repozytorium i otwórz katalog projektu w IDE:**
    ```bash
    git clone https://github.com/TWOJ-LOGIN/metro-m1.git
    cd metro-m1
    ```
 
-2. **Zainstaluj zależności:**
-   ```bash
-   npm install
-   ```
+2. **Zainstaluj zależności (wybierz wariant odpowiedni dla swojego środowiska):**
+
+   - **Wariant A — Zalecany przy szybkim uruchomieniu w IDE (`--omit=dev`):**
+     Wszystkie pakiety niezbędne do uruchomienia serwera deweloperskiego i bundlera (`vite`, `@vitejs/plugin-react`, `@tailwindcss/vite`, `three`, `react`) znajdują się w głównych `dependencies`. Użycie flagi `--omit=dev` pomija instalację opcjonalnych narzędzi z `devDependencies` i zapobiega konfliktom `ERESOLVE` w starszych środowiskach npm:
+     ```bash
+     npm install --omit=dev
+     ```
+
+   - **Wariant B — Pełna instalacja z narzędziami deweloperskimi (`typescript`, `tsx`, `@types/*`):**
+     Jeśli chcesz uruchamiać w IDE lokalny kompilator `tsc --noEmit` oraz testy jednostkowe `tsx`:
+     ```bash
+     npm install
+     ```
+     *(W przypadku wystąpienia konfliktu wersji peer-dependencies w Twojej wersji npm użyj: `npm install --legacy-peer-deps`)*
+
+   - **Wariant C — Instalacja za pomocą Bun (z użyciem `bun.lock`):**
+     ```bash
+     bun install
+     ```
 
 3. **Uruchom serwer deweloperski Vite (domyślnie na porcie `3000`):**
    ```bash
@@ -151,16 +166,16 @@ Projekt korzysta z narzędzia **Vite** oraz menedżera pakietów **npm** (lub **
    ```
    Następnie otwórz w przeglądarce adres: `http://localhost:3000`
 
-4. **Uruchom testy jednostkowe warstwy domenowej oraz sprawdzanie typów TypeScript:**
-   ```bash
-   npm run lint
-   npx tsx --test src/domain/*.test.ts
-   ```
-
-5. **Zbuduj wersję produkcyjną:**
+4. **Zbuduj wersję produkcyjną i uruchom podgląd:**
    ```bash
    npm run build
    npm run preview
+   ```
+
+5. **Sprawdzanie typów TypeScript oraz testy jednostkowe warstwy domenowej** *(wymaga pełnej instalacji z Wariantu B lub C)*:
+   ```bash
+   npm run lint
+   npx tsx --test src/domain/*.test.ts
    ```
 
 ---

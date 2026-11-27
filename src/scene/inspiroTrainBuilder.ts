@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { DoorSide, MetroLineId } from '../domain/types';
+import type { DoorSide, ITrainVisualProfile, MetroLineId } from '../domain/types';
 import {
   INSPIRO_CAR_GAP,
   INSPIRO_CAR_LENGTH,
@@ -13,6 +13,7 @@ import { createInspiroLedDisplay } from './inspiroTextures';
 
 export interface IInspiroConsistBuild {
   readonly group: THREE.Group;
+  setVisualProfile?(visual: ITrainVisualProfile): void;
   setDoorsOpen(openSide: DoorSide | null, dtSec: number): void;
   setHeadlights(on: boolean): void;
   setLine(lineId: MetroLineId, destinationLed: string): void;
@@ -73,6 +74,12 @@ export function buildInspiroConsist(maxAnisotropy: number): IInspiroConsistBuild
   let rightDoorProgress = 0;
   return {
     group,
+    setVisualProfile: (visual: ITrainVisualProfile): void => {
+      mats.silverBody.color.setHex(visual.bodyHex);
+      mats.roofSilver.color.setHex(visual.roofHex);
+      mats.warsawRed.color.setHex(visual.stripeHex);
+      mats.warsawYellow.color.setHex(visual.noseHex);
+    },
     setDoorsOpen: (openSide: DoorSide | null, dtSec: number): void => {
       const safeDt = Math.max(dtSec, 0.016);
       leftDoorProgress = THREE.MathUtils.damp(

@@ -16,8 +16,10 @@ import {
 } from './atoSystem';
 import { evaluateChallengeOutcome, getChallengeSpec } from './challengeCatalog';
 import { PassengerComfortSystem, type IPassengerComfortController } from './comfortSystem';
+import { EcoDrivingSystem, type IEcoDrivingController } from './ecoDrivingSystem';
 import { FeedbackTracker, type IFeedbackTracker } from './feedbackTracker';
 import { MetroIncidentSystem, type IIncidentController } from './incidentSystem';
+import { applyLiveryToTrainSpec } from './trainLiveryCatalog';
 import {
   LightingAndSparksSystem,
   type ILightingAndSparksController,
@@ -94,6 +96,7 @@ import type {
   MetroLineId,
   PaAnnouncementId,
   TimeOfDayId,
+  TrainLiveryId,
   TrainModelId,
   WeatherModeId,
 } from './types';
@@ -120,6 +123,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
   private readonly lighting: ILightingAndSparksController;
   private readonly nightInspection: INightInspectionController;
   private readonly comfort: IPassengerComfortController;
+  private readonly ecoDriving: IEcoDrivingController;
   private readonly paIntercom: IPaIntercomController;
   private readonly turnaround: ITurnaroundController;
   private line: IMetroLineSpec = METRO_LINE_M1;
@@ -133,7 +137,8 @@ export class MetroSimulationEngine implements IMetroSimulation {
   private atoStatus: AtoStatus = 'off';
   private challengeId: ChallengeId = 'inverter_fault';
   private challengeOutcome: IChallengeOutcome | null = null;
-  private trainModel: ITrainModelSpec = getTrainModelSpec('inspiro');
+  private selectedLiveryId: TrainLiveryId = 'default';
+  private trainModel: ITrainModelSpec = applyLiveryToTrainSpec(getTrainModelSpec('inspiro'), 'default');
   private timeOfDay: ITimeOfDaySpec = RUSH_HOUR_SPEC;
   private timeOfDayConfigured = false;
   private cameraMode: CameraMode = 'cab';
@@ -171,6 +176,9 @@ export class MetroSimulationEngine implements IMetroSimulation {
   private pendingPaAudio = false;
   private pendingCabSwitchChime = false;
   private activeScheduleStartClockSec: number | null = null;
+  private prevContactorNotch = 0;
+  private prevAirBrakeHeld = false;
+  private turnoutThudCooldownSec = 0;
 
   public constructor(
     physics: ITrainPhysicsModel,
@@ -193,6 +201,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     comfort: IPassengerComfortController = new PassengerComfortSystem(),
     paIntercom: IPaIntercomController = new PaIntercomSystem(),
     turnaround: ITurnaroundController = new TerminusTurnaroundSystem(),
+    ecoDriving: IEcoDrivingController = new EcoDrivingSystem(),
   ) {
     this.physics = physics;
     this.scoring = scoring;
@@ -212,6 +221,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.lighting = lighting;
     this.nightInspection = nightInspection;
     this.comfort = comfort;
+    this.ecoDriving = ecoDriving;
     this.paIntercom = paIntercom;
     this.turnaround = turnaround;
     this.traffic.setStations?.(stations);
@@ -469,8 +479,15 @@ export class MetroSimulationEngine implements IMetroSimulation {
   }
 
   public setTrainModel(modelId: TrainModelId): void {
-    this.trainModel = getTrainModelSpec(modelId);
+    const baseSpec = getTrainModelSpec(modelId);
+    this.trainModel = applyLiveryToTrainSpec(baseSpec, this.selectedLiveryId);
     this.physics.setConfig?.(this.trainModel.physics);
+  }
+
+  public setTrainLivery(liveryId: TrainLiveryId): void {
+    this.selectedLiveryId = liveryId;
+    const baseSpec = getTrainModelSpec(this.trainModel.id);
+    this.trainModel = applyLiveryToTrainSpec(baseSpec, liveryId);
   }
 
   public setTimeOfDay(timeOfDayId: TimeOfDayId): void {
@@ -565,8 +582,12 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.ato.reset();
     this.nightInspection.reset();
     this.comfort.reset();
+    this.ecoDriving.reset();
     this.paIntercom.reset();
     this.turnaround.reset();
+    this.prevContactorNotch = 0;
+    this.prevAirBrakeHeld = false;
+    this.turnoutThudCooldownSec = 0;
     this.applyActiveModeOverrides();
   }
 
@@ -675,6 +696,33 @@ export class MetroSimulationEngine implements IMetroSimulation {
       this.score += pts;
       this.feedback.push('Kultura jazdy: przygaszono długie światła', pts, 'success');
     }
+    this.ecoDriving.step({
+      kinematics: this.kinematics,
+      physicsConfig: this.trainModel.physics,
+      trainModelId: this.trainModel.id,
+      dtSec: dt,
+    });
+    const contactorNotch = Math.round(this.leverTarget * 4);
+    const contactorClick =
+      this.trainModel.id === 'seria81' && contactorNotch !== this.prevContactorNotch;
+    this.prevContactorNotch = contactorNotch;
+
+    const airBrakeHeldNow = this.kinematics.serviceBrake > 0.25 || this.kinematics.emergencyBrake;
+    const airReleaseHiss =
+      this.trainModel.id === 'seria81' && this.prevAirBrakeHeld && !airBrakeHeldNow;
+    this.prevAirBrakeHeld = airBrakeHeldNow;
+
+    this.turnoutThudCooldownSec = Math.max(0, this.turnoutThudCooldownSec - dt);
+    let turnoutThud = false;
+    if (
+      postSample.turnoutSwayFactor > 0.22 &&
+      this.kinematics.speedKmh > 12 &&
+      this.turnoutThudCooldownSec <= 0
+    ) {
+      turnoutThud = true;
+      this.turnoutThudCooldownSec = Math.max(1.2, 22 / Math.max(15, this.kinematics.speedKmh));
+    }
+
     const nightRes = this.evaluateNightInspection();
     const brakeStopHiss = this.checkBrakeStopHiss(prevSpeedKmh);
     const overspeedWarning = this.evaluateOverspeed(dt);
@@ -785,6 +833,9 @@ export class MetroSimulationEngine implements IMetroSimulation {
       nightCrewViolationBuzz: nightRes.violatedNow,
       paAnnouncementTriggered: paAudioNow,
       cabSwitchChime: cabSwitchChimeNow,
+      contactorClick,
+      airReleaseHiss,
+      turnoutThud,
     };
   }
 
@@ -859,6 +910,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
       lightingEffects: this.lighting.getState(),
       nightInspection: this.nightInspection.getState(),
       comfort: this.comfort.getState(),
+      ecoDriving: this.ecoDriving.getState(),
       paIntercom: this.paIntercom.getState(),
       turnaround: this.turnaround.getState(posM),
       leverTarget: this.leverTarget,

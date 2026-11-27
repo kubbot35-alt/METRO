@@ -159,6 +159,7 @@ export function calculateCourseXp(
   const baseXp = isAcademyCompleted ? 250 : 80;
   const distanceXp = isAcademyCompleted ? 0 : Math.round(routeKm * 45);
   const scoreXp = isAcademyCompleted ? 0 : Math.max(0, Math.round(snapshot.score / 12));
+  const ecoXp = isAcademyCompleted ? 0 : Math.max(0, snapshot.ecoDriving?.xpBonus ?? 0);
   const isPassengerOrAto = snapshot.gameMode === 'passenger' || snapshot.atoEnabled;
   const modeMultiplier = isPassengerOrAto
     ? 0
@@ -176,7 +177,7 @@ export function calculateCourseXp(
     ? 0
     : isAcademyCompleted
       ? 250
-      : Math.max(40, Math.round((baseXp + distanceXp + scoreXp) * modeMultiplier));
+      : Math.max(40, Math.round((baseXp + distanceXp + scoreXp + ecoXp) * modeMultiplier));
   const previousRank = getRankForXp(currentXp);
   const totalXpAfter = currentXp + gainedXp;
   const newRank = getRankForXp(totalXpAfter);
@@ -186,6 +187,7 @@ export function calculateCourseXp(
     baseXp,
     distanceXp,
     scoreXp,
+    ecoXp,
     modeMultiplier,
     previousRank,
     newRank,

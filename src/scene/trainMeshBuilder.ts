@@ -26,20 +26,27 @@ export function buildMetroConsist(
   const inspiro = buildInspiroConsist(maxAnisotropy);
   const varsovia = buildVarsoviaConsist(maxAnisotropy);
 
-  const applyThemeVisibility = (theme: ITrainVisualProfile['theme']): void => {
-    seria81.group.visible = theme === 'retro';
-    inspiro.group.visible = theme === 'modern';
-    varsovia.group.visible = theme === 'varsovia';
+  const applyThemeVisibility = (v: ITrainVisualProfile): void => {
+    seria81.group.visible = v.theme === 'retro';
+    inspiro.group.visible = v.theme === 'modern';
+    varsovia.group.visible = v.theme === 'varsovia';
+    if (v.theme === 'retro') {
+      seria81.setVisualProfile?.(v);
+    } else if (v.theme === 'modern') {
+      inspiro.setVisualProfile?.(v);
+    } else if (v.theme === 'varsovia') {
+      varsovia.setVisualProfile?.(v);
+    }
   };
 
-  applyThemeVisibility(visual.theme);
+  applyThemeVisibility(visual);
   group.add(seria81.group, inspiro.group, varsovia.group);
   scene.add(group);
 
   return {
     group,
     setTheme: (next: ITrainVisualProfile): void => {
-      applyThemeVisibility(next.theme);
+      applyThemeVisibility(next);
     },
     setDoorsOpen: (openSide: DoorSide | null, dtSec: number): void => {
       inspiro.setDoorsOpen(openSide, dtSec);

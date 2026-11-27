@@ -11,6 +11,12 @@ import { METRO_LINE_CATALOG } from '../domain/routeData';
 import { getRouteStartOptions } from '../domain/routeVariant';
 import { TIME_OF_DAY_CATALOG } from '../domain/timeOfDayCatalog';
 import { TRAIN_CATALOG } from '../domain/trainCatalog';
+import {
+  getLiveriesForTrain,
+  getRequiredRankTitle,
+  isLiverySelectable,
+  isLiveryUnlockedByRank,
+} from '../domain/trainLiveryCatalog';
 import type {
   ChallengeId,
   GameModeId,
@@ -25,6 +31,7 @@ import type {
   MetroLineId,
   RouteDirection,
   TimeOfDayId,
+  TrainLiveryId,
   TrainModelId,
   WeatherModeId,
 } from '../domain/types';
@@ -40,6 +47,7 @@ interface ITitleOverlayProps {
   readonly driverProfile: IDriverProfileStats;
   readonly gamepadStatus: IGamepadStatus;
   readonly selectedModelId: TrainModelId;
+  readonly selectedLiveryId: TrainLiveryId;
   readonly selectedTimeOfDayId: TimeOfDayId;
   readonly selectedWeatherMode: WeatherModeId;
   readonly selectedGameMode: GameModeId;
@@ -54,6 +62,7 @@ interface ITitleOverlayProps {
   readonly onEditCustomLine: (draft: ICustomLineDraft) => void;
   readonly onDeleteCustomLine: (id: string) => void;
   readonly onSelectModel: (modelId: TrainModelId) => void;
+  readonly onSelectLivery: (liveryId: TrainLiveryId) => void;
   readonly onSelectTimeOfDay: (timeOfDayId: TimeOfDayId) => void;
   readonly onSelectWeatherMode: (mode: WeatherModeId) => void;
   readonly onSelectGameMode: (mode: GameModeId) => void;
@@ -114,6 +123,7 @@ export function TitleOverlay({
   driverProfile,
   gamepadStatus,
   selectedModelId,
+  selectedLiveryId,
   selectedTimeOfDayId,
   selectedWeatherMode,
   selectedGameMode,
@@ -128,6 +138,7 @@ export function TitleOverlay({
   onEditCustomLine,
   onDeleteCustomLine,
   onSelectModel,
+  onSelectLivery,
   onSelectTimeOfDay,
   onSelectWeatherMode,
   onSelectGameMode,
@@ -396,7 +407,7 @@ export function TitleOverlay({
 
           <div className="mb-2.5">
             <p className="text-[10px] font-mono-tabular uppercase tracking-[0.18em] text-slate-400 mb-1">
-              {tr('2. Wybierz skład metra', '2. Select Train Model')}
+              {tr('2. Wybierz skład metra i malowanie (Zajezdnia)', '2. Select Train Model & Livery (Depot)')}
             </p>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
               {TRAIN_CATALOG.map((spec) => (
@@ -408,13 +419,120 @@ export function TitleOverlay({
                 />
               ))}
             </div>
+
+            <div
+              data-testid="train-livery-selector"
+              className="mt-2 rounded-lg border border-slate-700/80 bg-[#0b1019]/95 px-2.5 py-2 flex flex-col gap-1.5"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10px] font-mono-tabular uppercase tracking-wider text-amber-300 font-bold">
+                  {tr('Zajezdnia · Malowanie składu (Odblokowywane za rangi XP):', 'Depot · Train Livery (Unlocked by XP Rank):')}
+                </span>
+                {selectedGameMode === 'sandbox' && (
+                  <span className="px-1.5 py-0.5 rounded bg-cyan-500/20 border border-cyan-400/60 text-cyan-200 text-[9px] font-mono-tabular font-bold">
+                    {tr('SANDBOX: PODGLĄD WSZYSTKICH MALOWAŃ', 'SANDBOX: ALL LIVERIES PREVIEWABLE')}
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {getLiveriesForTrain(selectedModelId).map((livery) => {
+                  const unlockedByRank = isLiveryUnlockedByRank(
+                    livery.id,
+                    rankProgress.currentRank.id,
+                  );
+                  const selectable = isLiverySelectable(
+                    livery.id,
+                    selectedModelId,
+                    rankProgress.currentRank.id,
+                    selectedGameMode,
+                  );
+                  const isSelected = selectedLiveryId === livery.id;
+                  const reqRankTitle = getRequiredRankTitle(livery.requiredRankId, lang);
+                  return (
+                    <button
+                      key={livery.id}
+                      type="button"
+                      data-testid={`select-livery-${livery.id}`}
+                      data-unlocked={unlockedByRank ? '1' : '0'}
+                      aria-pressed={isSelected}
+                      disabled={!selectable}
+                      onClick={(e) => {
+                        e.currentTarget.blur();
+                        if (selectable) {
+                          onSelectLivery(livery.id);
+                        }
+                      }}
+                      title={
+                        unlockedByRank
+                          ? lang === 'en'
+                            ? livery.subtitleEn
+                            : livery.subtitle
+                          : `${tr('Wymagana ranga', 'Required rank')}: ${reqRankTitle}`
+                      }
+                      className={`text-left rounded-md border px-2.5 py-1.5 transition-colors flex items-center justify-between gap-2 ${
+                        isSelected
+                          ? 'border-amber-400 bg-[#231b0e]/95 text-slate-50 shadow'
+                          : selectable
+                            ? 'border-slate-700 bg-[#101622]/90 hover:border-slate-500 text-slate-200 cursor-pointer'
+                            : 'border-slate-800/80 bg-[#0a0e16]/70 text-slate-500 cursor-not-allowed'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="flex items-center -space-x-1 shrink-0" aria-hidden="true">
+                          {livery.swatchColors.map((hex, idx) => (
+                            <span
+                              key={idx}
+                              className="w-3.5 h-3.5 rounded-full border border-slate-950"
+                              style={{ backgroundColor: hex }}
+                            />
+                          ))}
+                        </span>
+                        <div className="min-w-0">
+                          <span className="block font-display text-xs font-bold truncate leading-tight">
+                            {lang === 'en' ? livery.nameEn : livery.name}
+                          </span>
+                          <span className="block text-[9.5px] font-mono-tabular text-slate-400 truncate">
+                            {unlockedByRank
+                              ? lang === 'en'
+                                ? livery.subtitleEn
+                                : livery.subtitle
+                              : selectedGameMode === 'sandbox'
+                                ? tr(`Podgląd (${reqRankTitle})`, `Preview (${reqRankTitle})`)
+                                : `${tr('Od rangi', 'Rank')}: ${reqRankTitle}`}
+                          </span>
+                        </div>
+                      </div>
+                      <span
+                        className={`text-[8.5px] font-mono-tabular font-bold px-1.5 py-0.5 rounded shrink-0 whitespace-nowrap ${
+                          isSelected
+                            ? 'bg-amber-500/25 text-amber-200 border border-amber-400/60'
+                            : unlockedByRank
+                              ? 'bg-emerald-500/15 text-emerald-300'
+                              : selectedGameMode === 'sandbox'
+                                ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/50'
+                                : 'bg-slate-900 text-slate-400 border border-slate-700'
+                        }`}
+                      >
+                        {isSelected
+                          ? tr('AKTYWNE', 'ACTIVE')
+                          : unlockedByRank
+                            ? tr('ODBLOK.', 'READY')
+                            : selectedGameMode === 'sandbox'
+                              ? 'SANDBOX'
+                              : tr('ZABLOK.', 'LOCKED')}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           </div>
 
           <div className="mb-2.5">
             <p className="text-[10px] font-mono-tabular uppercase tracking-[0.18em] text-slate-400 mb-1">
               {tr('3. Pora dnia i pogoda (STP Kabaty)', '3. Time of Day & Weather (STP Kabaty)')}
             </p>
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {TIME_OF_DAY_CATALOG.map((tod) => (
                 <TimeOfDayCard
                   key={tod.id}
@@ -444,6 +562,17 @@ export function TitleOverlay({
                 )}
                 selected={selectedWeatherMode === 'rain'}
                 onSelect={() => onSelectWeatherMode('rain')}
+              />
+              <WeatherModeCard
+                mode="snow"
+                title={tr('Śnieg (Zima)', 'Snow (Winter)')}
+                badge={tr('ZIMA · LÓD', 'SNOW · ICE')}
+                description={tr(
+                  'Śnieg na STP Kabaty, szron na szybie [X] i oblodzone szyny (+30% hamowania, 200 m w tunelu).',
+                  'Winter snow at STP Kabaty, windshield frost [X], and icy rails (+30% braking, 200m into tunnel).',
+                )}
+                selected={selectedWeatherMode === 'snow'}
+                onSelect={() => onSelectWeatherMode('snow')}
               />
             </div>
           </div>
@@ -944,10 +1073,13 @@ function WeatherModeCard({
   readonly onSelect: () => void;
 }) {
   const isRain = mode === 'rain';
+  const isSnow = mode === 'snow';
   const activeStyles = selected
-    ? isRain
-      ? 'border-cyan-400 bg-[#0d1c27]/95 shadow-lg'
-      : 'border-amber-400 bg-[#20190f]/95 shadow-lg'
+    ? isSnow
+      ? 'border-sky-300 bg-[#101e30]/95 shadow-lg'
+      : isRain
+        ? 'border-cyan-400 bg-[#0d1c27]/95 shadow-lg'
+        : 'border-amber-400 bg-[#20190f]/95 shadow-lg'
     : 'border-slate-700/80 bg-[#0d1118]/90 hover:border-slate-500';
 
   return (
@@ -962,13 +1094,15 @@ function WeatherModeCard({
       className={`text-left rounded-lg border-2 p-2 transition-colors cursor-pointer flex flex-col gap-0.5 ${activeStyles}`}
     >
       <div className="flex items-center justify-between gap-1.5">
-        <span className="font-display text-sm font-bold text-slate-50">{title}</span>
+        <span className="font-display text-xs xl:text-sm font-bold text-slate-50 truncate">{title}</span>
         <span
-          className={`text-[10px] font-mono-tabular font-bold px-1.5 py-0.5 rounded ${
+          className={`text-[9.5px] font-mono-tabular font-bold px-1.5 py-0.5 rounded shrink-0 ${
             selected
-              ? isRain
-                ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/50'
-                : 'bg-amber-500/20 text-amber-200 border border-amber-400/50'
+              ? isSnow
+                ? 'bg-sky-400/25 text-sky-100 border border-sky-300/60'
+                : isRain
+                  ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-400/50'
+                  : 'bg-amber-500/20 text-amber-200 border border-amber-400/50'
               : 'bg-slate-800 text-slate-300'
           }`}
         >

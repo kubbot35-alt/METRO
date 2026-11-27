@@ -14,12 +14,13 @@ interface IGlassDrop {
   alpha: number;
   streak: number;
   dripSpeed: number;
+  isSnowflake: boolean;
   alive: boolean;
 }
 
 const CANVAS_W = 512;
 const CANVAS_H = 256;
-const MAX_GLASS_DROPS = 155;
+const MAX_GLASS_DROPS = 165;
 
 export function buildWindshieldRainOverlay(): IWindshieldRainOverlay {
   const canvas = document.createElement('canvas');
@@ -50,13 +51,14 @@ export function buildWindshieldRainOverlay(): IWindshieldRainOverlay {
     alpha: 0,
     streak: 0,
     dripSpeed: 10,
+    isSnowflake: false,
     alive: false,
   }));
 
   let prevWiperPhase = 0;
   let redrawAccumSec = 0;
   let mistAlpha = 0;
-  let initializedForRain = false;
+  let initializedForMode: 'clear' | 'rain' | 'snow' = 'clear';
 
   const clearDropsAlongSweep = (
     theme: TrainVisualTheme,
@@ -74,7 +76,6 @@ export function buildWindshieldRainOverlay(): IWindshieldRainOverlay {
       const px = CANVAS_W * 0.56;
       const py = CANVAS_H * 1.02;
       const maxRad = CANVAS_H * 0.84;
-      // Angle sweeps from right-flat (+1.28 rad from up) to left (-1.12 rad from up)
       const angMin = THREE.MathUtils.lerp(1.28, -1.12, maxP);
       const angMax = THREE.MathUtils.lerp(1.28, -1.12, minP);
       wipeSector(drops, px, py, maxRad, angMin - 0.09, angMax + 0.09);
@@ -97,39 +98,42 @@ export function buildWindshieldRainOverlay(): IWindshieldRainOverlay {
     update: (snapshot: ISimulationSnapshot, dtSec: number): void => {
       const safeDt = Math.max(0.004, Math.min(dtSec, 0.05));
       const rain = snapshot.weather.rainIntensity;
+      const snow = snapshot.weather.snowIntensity ?? 0;
+      const frost = snapshot.weather.frostIntensity ?? 0;
+      const precip = Math.max(rain, snow);
+      const isSnowMode = snapshot.weather.mode === 'snow';
       const wipersOn = snapshot.weather.wipersOn;
       const phase = snapshot.weather.wiperPhaseRad;
       const theme = snapshot.trainModel.visual.theme;
 
-      if (rain > 0.05 && !initializedForRain) {
-        initializedForRain = true;
-        // Pre-seed visible raindrops immediately on rain start so glass looks wet right away
-        for (let i = 0; i < 95; i += 1) {
-          spawnDrop(drops[i], true);
+      if (precip > 0.05 && initializedForMode !== snapshot.weather.mode) {
+        initializedForMode = snapshot.weather.mode;
+        for (let i = 0; i < 85; i += 1) {
+          spawnDrop(drops[i], true, isSnowMode);
         }
-        mistAlpha = 0.22;
+        mistAlpha = isSnowMode ? 0.16 : 0.22;
         redrawAccumSec = 0.05;
-      } else if (rain <= 0.01 && snapshot.weather.mode === 'clear') {
-        initializedForRain = false;
+      } else if (precip <= 0.01 && snapshot.weather.mode === 'clear') {
+        initializedForMode = 'clear';
       }
 
-      // Spawn new drops while in outdoor rain
-      if (rain > 0.04) {
-        const spawnBudget = Math.ceil(rain * (1.2 + snapshot.kinematics.speedKmh * 0.03));
+      // Spawn new drops or snowflakes while in outdoor precipitation
+      if (precip > 0.04) {
+        const spawnBudget = Math.ceil(precip * (1.2 + snapshot.kinematics.speedKmh * 0.03));
         let spawned = 0;
         for (let i = 0; i < drops.length && spawned < spawnBudget; i += 1) {
           if (!drops[i].alive && Math.random() < 0.35) {
-            spawnDrop(drops[i], false);
+            spawnDrop(drops[i], false, isSnowMode);
             spawned += 1;
           }
         }
-        const targetMist = wipersOn ? 0.04 : Math.min(0.26, 0.08 + rain * 0.2);
+        const targetMist = wipersOn ? 0.03 : Math.min(0.24, 0.07 + precip * 0.18);
         mistAlpha += (targetMist - mistAlpha) * Math.min(1, safeDt * 1.4);
       } else {
         mistAlpha = Math.max(0, mistAlpha - safeDt * 0.09);
       }
 
-      // Update drop gravity / evaporation
+      // Update drop gravity / snowflake melting
       let aliveCount = 0;
       const speedPush = 1 + snapshot.kinematics.speedKmh * 0.015;
       for (let i = 0; i < drops.length; i += 1) {
@@ -137,10 +141,15 @@ export function buildWindshieldRainOverlay(): IWindshieldRainOverlay {
         if (!d.alive) {
           continue;
         }
-        d.y += d.dripSpeed * speedPush * safeDt;
-        d.streak = Math.min(22, d.streak + d.dripSpeed * 0.4 * safeDt);
-        if (rain <= 0.02) {
-          d.alpha -= safeDt * 0.16;
+        if (d.isSnowflake) {
+          d.y += d.dripSpeed * 0.25 * safeDt;
+          d.alpha -= safeDt * (precip <= 0.02 ? 0.18 : 0.045);
+        } else {
+          d.y += d.dripSpeed * speedPush * safeDt;
+          d.streak = Math.min(22, d.streak + d.dripSpeed * 0.4 * safeDt);
+          if (rain <= 0.02) {
+            d.alpha -= safeDt * 0.16;
+          }
         }
         if (d.y > CANVAS_H + 14 || d.alpha <= 0.02) {
           d.alive = false;
@@ -149,13 +158,13 @@ export function buildWindshieldRainOverlay(): IWindshieldRainOverlay {
         }
       }
 
-      // Physically wipe drops inside the moving wiper blade arc
+      // Physically wipe drops & snowflakes inside the moving wiper blade arc
       if (Math.abs(phase - prevWiperPhase) > 0.001) {
         clearDropsAlongSweep(theme, prevWiperPhase, phase);
       }
       prevWiperPhase = phase;
 
-      const hasVisibleWetness = aliveCount > 0 || mistAlpha > 0.01;
+      const hasVisibleWetness = aliveCount > 0 || mistAlpha > 0.01 || frost > 0.02;
       mesh.visible = hasVisibleWetness;
       if (!hasVisibleWetness) {
         return;
@@ -169,7 +178,27 @@ export function buildWindshieldRainOverlay(): IWindshieldRainOverlay {
 
       ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
       if (mistAlpha > 0.01) {
-        ctx.fillStyle = `rgba(182, 204, 224, ${mistAlpha.toFixed(3)})`;
+        ctx.fillStyle = isSnowMode
+          ? `rgba(219, 234, 254, ${(mistAlpha * 0.75).toFixed(3)})`
+          : `rgba(182, 204, 224, ${mistAlpha.toFixed(3)})`;
+        ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+      }
+
+      // Winter edge frost vignette around windshield borders (reduced when wipers [X] are active)
+      if (frost > 0.02) {
+        const frostAlpha = Math.min(0.65, frost * 0.72);
+        const radGrad = ctx.createRadialGradient(
+          CANVAS_W * 0.5,
+          CANVAS_H * 0.54,
+          CANVAS_H * 0.34,
+          CANVAS_W * 0.5,
+          CANVAS_H * 0.5,
+          CANVAS_W * 0.58,
+        );
+        radGrad.addColorStop(0, 'rgba(241, 245, 249, 0)');
+        radGrad.addColorStop(0.68, `rgba(226, 238, 252, ${(frostAlpha * 0.25).toFixed(3)})`);
+        radGrad.addColorStop(1, `rgba(241, 248, 255, ${frostAlpha.toFixed(3)})`);
+        ctx.fillStyle = radGrad;
         ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
       }
 
@@ -178,6 +207,24 @@ export function buildWindshieldRainOverlay(): IWindshieldRainOverlay {
         if (!d.alive) {
           continue;
         }
+        if (d.isSnowflake) {
+          // Crystalline white snowflake spec on cab glass
+          ctx.fillStyle = `rgba(248, 250, 252, ${(d.alpha * 0.9).toFixed(3)})`;
+          ctx.beginPath();
+          ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2);
+          ctx.fill();
+
+          ctx.strokeStyle = `rgba(224, 242, 254, ${(d.alpha * 0.75).toFixed(3)})`;
+          ctx.lineWidth = 1.0;
+          ctx.beginPath();
+          ctx.moveTo(d.x - d.r * 1.45, d.y);
+          ctx.lineTo(d.x + d.r * 1.45, d.y);
+          ctx.moveTo(d.x, d.y - d.r * 1.45);
+          ctx.lineTo(d.x, d.y + d.r * 1.45);
+          ctx.stroke();
+          continue;
+        }
+
         // Translucent wet streak trail
         if (d.streak > 3) {
           ctx.strokeStyle = `rgba(205, 226, 245, ${(d.alpha * 0.34).toFixed(3)})`;
@@ -213,13 +260,14 @@ export function buildWindshieldRainOverlay(): IWindshieldRainOverlay {
   };
 }
 
-function spawnDrop(target: IGlassDrop, preSeed: boolean): void {
+function spawnDrop(target: IGlassDrop, preSeed: boolean, isSnowflake: boolean): void {
   target.x = 18 + Math.random() * (CANVAS_W - 36);
   target.y = preSeed ? Math.random() * (CANVAS_H - 16) : Math.random() * (CANVAS_H * 0.85);
-  target.r = 2.6 + Math.random() * 4.2;
-  target.alpha = 0.55 + Math.random() * 0.4;
-  target.streak = preSeed ? Math.random() * 14 : 0;
-  target.dripSpeed = 6 + Math.random() * 16;
+  target.r = isSnowflake ? 2.0 + Math.random() * 2.8 : 2.6 + Math.random() * 4.2;
+  target.alpha = 0.6 + Math.random() * 0.36;
+  target.streak = !isSnowflake && preSeed ? Math.random() * 14 : 0;
+  target.dripSpeed = isSnowflake ? 3 + Math.random() * 6 : 6 + Math.random() * 16;
+  target.isSnowflake = isSnowflake;
   target.alive = true;
 }
 
@@ -243,7 +291,6 @@ function wipeSector(
     if (r2 > maxR2 || dy < 0) {
       continue;
     }
-    // Angle relative to straight up (+Y): positive = right, negative = left
     const ang = Math.atan2(dx, dy);
     if (ang >= minAngRad && ang <= maxAngRad) {
       d.alive = false;

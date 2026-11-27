@@ -210,15 +210,33 @@ export function CourseSummaryModal({
             value={`${snapshot.stationsServed} / ${snapshot.totalStations}`}
           />
           <SummaryTile
+            testId="summary-eco-tile"
+            label={tr('Eco-Driving (Energia)', 'Eco-Driving (Energy)')}
+            value={`${snapshot.ecoDriving.grade} · ${snapshot.ecoDriving.netEnergyKwh.toFixed(1)} kWh`}
+            sub={
+              snapshot.ecoDriving.xpBonus > 0
+                ? tr(
+                    `Bonus +${snapshot.ecoDriving.xpBonus} XP · Rekup. -${snapshot.ecoDriving.regeneratedKwh.toFixed(1)} kWh`,
+                    `Bonus +${snapshot.ecoDriving.xpBonus} XP · Regen -${snapshot.ecoDriving.regeneratedKwh.toFixed(1)} kWh`,
+                  )
+                : tr(
+                    `Rekuperacja: -${snapshot.ecoDriving.regeneratedKwh.toFixed(1)} kWh`,
+                    `Regenerated: -${snapshot.ecoDriving.regeneratedKwh.toFixed(1)} kWh`,
+                  )
+            }
+          />
+          <SummaryTile
             label={tr('Wykroczenia', 'Violations')}
             value={String(totalViolations)}
             sub={`V:${snapshot.overspeedViolations} · S:${snapshot.redSignalViolations} · C:${snapshot.czuwakViolations}`}
           />
-          <SummaryTile label={tr('Czas kursu', 'Run Time')} value={formatDuration(snapshot.elapsedTimeSec)} />
           <SummaryTile
-            label={tr('Odcinki / PA', 'Legs / PA')}
-            value={tr(`Kurs #${snapshot.turnaround.legsCompleted + 1}`, `Leg #${snapshot.turnaround.legsCompleted + 1}`)}
-            sub={tr(`Interkom PA: ${snapshot.paIntercom.announcementsUsedCount}`, `PA used: ${snapshot.paIntercom.announcementsUsedCount}`)}
+            label={tr('Czas / Odcinki', 'Time / Legs')}
+            value={formatDuration(snapshot.elapsedTimeSec)}
+            sub={tr(
+              `Kurs #${snapshot.turnaround.legsCompleted + 1} · PA: ${snapshot.paIntercom.announcementsUsedCount}`,
+              `Leg #${snapshot.turnaround.legsCompleted + 1} · PA: ${snapshot.paIntercom.announcementsUsedCount}`,
+            )}
           />
         </div>
 
@@ -251,7 +269,17 @@ export function CourseSummaryModal({
                   {getLocalizedRank(lang, rankProgress.currentRank.id, rankProgress.currentRank).title}
                 </span>
               </div>
-              <span className="font-bold text-emerald-300">+{xpReward.gainedXp} XP</span>
+              <div className="flex items-center gap-2">
+                {xpReward.ecoXp > 0 && (
+                  <span
+                    data-testid="summary-eco-xp-bonus"
+                    className="px-1.5 py-0.5 rounded bg-emerald-500/20 border border-emerald-400/60 text-emerald-200 text-[10px] font-bold"
+                  >
+                    Eco {snapshot.ecoDriving.grade}: +{xpReward.ecoXp} XP
+                  </span>
+                )}
+                <span className="font-bold text-emerald-300">+{xpReward.gainedXp} XP</span>
+              </div>
             </div>
             <div className="w-full h-2 bg-slate-800 rounded overflow-hidden">
               <div

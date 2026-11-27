@@ -40,7 +40,7 @@ export type AtoStatus =
 
 export type ChallengeId = 'inverter_fault' | 'technical_run' | 'black_series' | 'night_service';
 
-export type WeatherModeId = 'clear' | 'rain';
+export type WeatherModeId = 'clear' | 'rain' | 'snow';
 
 export type GraphicsQualityId = 'low' | 'medium' | 'high';
 
@@ -121,6 +121,8 @@ export interface IWeatherState {
   readonly wipersOn: boolean;
   readonly wiperPhaseRad: number;
   readonly rainIntensity: number;
+  readonly snowIntensity: number;
+  readonly frostIntensity: number;
   readonly wetRailsActive: boolean;
   readonly wheelSlipActive: boolean;
 }
@@ -165,6 +167,7 @@ export interface IGameSettings {
   readonly masterVolume: number;
   readonly trainVolume: number;
   readonly voiceVolume: number;
+  readonly alertsVolume: number;
   readonly graphicsQuality: GraphicsQualityId;
   readonly cabFovDeg: number;
   readonly showFps: boolean;
@@ -406,6 +409,7 @@ export interface ICourseXpReward {
   readonly baseXp: number;
   readonly distanceXp: number;
   readonly scoreXp: number;
+  readonly ecoXp: number;
   readonly modeMultiplier: number;
   readonly previousRank: IDriverRankSpec;
   readonly newRank: IDriverRankSpec;
@@ -453,6 +457,13 @@ export interface ITrainAudioProfile {
   readonly brakeSquealScale?: number;
 }
 
+export type TrainLiveryId =
+  | 'default'
+  | 'retro_1995'
+  | 'jubilee'
+  | 'stealth_night'
+  | 'golden_legend';
+
 export interface ITrainVisualProfile {
   readonly bodyHex: number;
   readonly stripeHex: number;
@@ -460,6 +471,35 @@ export interface ITrainVisualProfile {
   readonly noseHex: number;
   readonly cabAccentHex: number;
   readonly theme: TrainVisualTheme;
+  readonly liveryId?: TrainLiveryId;
+}
+
+export interface ITrainLiverySpec {
+  readonly id: TrainLiveryId;
+  readonly name: string;
+  readonly nameEn: string;
+  readonly subtitle: string;
+  readonly subtitleEn: string;
+  readonly swatchColors: readonly [string, string, string];
+  readonly requiredRankId: DriverRankId;
+  readonly supportedTrains: readonly TrainModelId[];
+  readonly visualOverrides: Partial<Record<TrainModelId, Partial<ITrainVisualProfile>>>;
+}
+
+export type EcoDrivingGrade = 'A+' | 'A' | 'B' | 'C' | 'D';
+
+export interface IEcoDrivingState {
+  readonly currentPowerKw: number;
+  readonly consumedKwh: number;
+  readonly regeneratedKwh: number;
+  readonly netEnergyKwh: number;
+  readonly coastingDistanceM: number;
+  readonly coastingRatio: number;
+  readonly ecoScorePercent: number;
+  readonly grade: EcoDrivingGrade;
+  readonly xpBonus: number;
+  readonly regeneratingActive: boolean;
+  readonly coastingActive: boolean;
 }
 
 export interface IPhotoFilterSpec {
@@ -781,6 +821,9 @@ export interface IAudioEvents {
   readonly nightCrewViolationBuzz?: boolean;
   readonly paAnnouncementTriggered?: boolean;
   readonly cabSwitchChime?: boolean;
+  readonly contactorClick?: boolean;
+  readonly airReleaseHiss?: boolean;
+  readonly turnoutThud?: boolean;
 }
 
 export interface ISimulationSnapshot {
@@ -817,6 +860,7 @@ export interface ISimulationSnapshot {
   readonly lightingEffects: ILightingAndSparksState;
   readonly nightInspection: INightInspectionState;
   readonly comfort: IPassengerComfortState;
+  readonly ecoDriving: IEcoDrivingState;
   readonly paIntercom: IPaIntercomState;
   readonly turnaround: ITurnaroundState;
   readonly leverTarget: number;
@@ -862,6 +906,7 @@ export interface IMetroSimulation {
   setChallenge?(challengeId: ChallengeId): void;
   setWeatherMode?(mode: WeatherModeId): void;
   setTrainModel(modelId: TrainModelId): void;
+  setTrainLivery?(liveryId: TrainLiveryId): void;
   setTimeOfDay(timeOfDayId: TimeOfDayId): void;
   triggerSandboxOncomingTrain(): void;
   cycleSandboxNextSignal(): void;

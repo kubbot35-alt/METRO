@@ -5,6 +5,7 @@ import {
   getRankProgress,
 } from '../domain/driverProfile';
 import { getLocalizedRank } from '../domain/i18nCatalog';
+import { TRAIN_LIVERIES } from '../domain/trainLiveryCatalog';
 import type { IDriverProfileStats } from '../domain/types';
 import { useI18n } from '../i18n/LanguageContext';
 
@@ -166,13 +167,19 @@ export function DriverProfileModal({
 
         <div className="rounded-md border border-slate-800 bg-[#0a0d13] p-3.5 mb-4">
           <p className="text-[10px] font-mono-tabular uppercase tracking-[0.16em] text-amber-300 font-bold mb-2">
-            {tr('Ścieżka awansu maszynisty', 'Driver Promotion Path')}
+            {tr(
+              'Ścieżka awansu maszynisty i odblokowania Zajezdni',
+              'Driver Promotion Path & Depot Livery Unlocks',
+            )}
           </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
             {DRIVER_RANKS.map((rank, idx) => {
               const unlocked = profile.xp >= rank.minXp;
               const isCurrent = rank.id === progress.currentRank.id;
               const loc = getLocalizedRank(lang, rank.id, rank);
+              const unlockedLivery = TRAIN_LIVERIES.find(
+                (item) => item.requiredRankId === rank.id,
+              );
               return (
                 <div
                   key={rank.id}
@@ -191,6 +198,22 @@ export function DriverProfileModal({
                   <p className="font-display text-xs font-bold text-slate-100 mt-0.5 leading-tight">
                     {loc.title}
                   </p>
+                  {unlockedLivery && (
+                    <div className="flex items-center gap-1 mt-1 pt-1 border-t border-slate-800/80">
+                      <span className="flex items-center -space-x-1 shrink-0" aria-hidden="true">
+                        {unlockedLivery.swatchColors.map((hex, sIdx) => (
+                          <span
+                            key={sIdx}
+                            className="w-2.5 h-2.5 rounded-full border border-slate-950"
+                            style={{ backgroundColor: hex }}
+                          />
+                        ))}
+                      </span>
+                      <span className="text-[9.5px] font-mono-tabular text-emerald-300 truncate">
+                        {lang === 'en' ? unlockedLivery.nameEn : unlockedLivery.name}
+                      </span>
+                    </div>
+                  )}
                 </div>
               );
             })}

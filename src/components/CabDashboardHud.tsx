@@ -1,10 +1,12 @@
 import { canEnableAtoForMode } from '../domain/atoSystem';
+import { trainSupportsRegeneration } from '../domain/ecoDrivingSystem';
 import { localizeAtoStatus } from '../domain/i18nDynamic';
 import { getStationPlatformSide } from '../domain/trackGeometry';
 import type { ISimulationSnapshot } from '../domain/types';
 import { useI18n } from '../i18n/LanguageContext';
 import { ComfortGaugeWidget } from './ComfortGaugeWidget';
 import { CzuwakIndicator } from './CzuwakIndicator';
+import { EcoDrivingWidget } from './EcoDrivingWidget';
 import { MasterControllerSlider } from './MasterControllerSlider';
 import { RadioDispatchModule } from './RadioDispatchModule';
 import { ScheduleIndicator } from './ScheduleIndicator';
@@ -64,6 +66,7 @@ export function CabDashboardHud({
   const isRetro = theme === 'retro';
   const isVarsovia = theme === 'varsovia';
   const atoAllowed = canEnableAtoForMode(snapshot.gameMode);
+  const supportsRegen = trainSupportsRegeneration(snapshot.trainModel.id);
   const panelClasses = isRetro
     ? 'bg-[#15201c]/95 border-[#4c6b5f]'
     : isVarsovia
@@ -145,6 +148,7 @@ export function CabDashboardHud({
 
           <div className={`border-l ${dividerClass} pl-2 flex items-center gap-1.5 shrink-0`}>
             <ComfortGaugeWidget comfort={snapshot.comfort} compact />
+            <EcoDrivingWidget eco={snapshot.ecoDriving} supportsRegen={supportsRegen} compact />
             {onTogglePaPanel && (
               <button
                 type="button"
@@ -529,6 +533,8 @@ export function CabDashboardHud({
               </div>
             </div>
 
+            <EcoDrivingWidget eco={snapshot.ecoDriving} supportsRegen={supportsRegen} />
+
             <div className="grid grid-cols-4 gap-1">
               <CzuwakIndicator
                 czuwak={snapshot.czuwak}
@@ -551,7 +557,9 @@ export function CabDashboardHud({
                 className={`px-1 py-1 rounded text-[10px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer flex items-center justify-center gap-1 border ${
                   snapshot.weather.wipersOn
                     ? 'bg-sky-500/25 border-sky-400 text-sky-200 hover:bg-sky-500/35'
-                    : snapshot.weather.rainIntensity > 0.1
+                    : snapshot.weather.rainIntensity > 0.1 ||
+                        snapshot.weather.snowIntensity > 0.1 ||
+                        snapshot.weather.frostIntensity > 0.15
                       ? 'bg-amber-500/15 border-amber-400/70 text-amber-200 hover:bg-amber-500/25'
                       : 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-800'
                 }`}

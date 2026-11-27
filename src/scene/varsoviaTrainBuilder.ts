@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { DoorSide, MetroLineId } from '../domain/types';
+import type { DoorSide, ITrainVisualProfile, MetroLineId } from '../domain/types';
 import type { IInspiroConsistBuild } from './inspiroTrainBuilder';
 import {
   VARSOVIA_CAR_GAP,
@@ -65,6 +65,17 @@ export function buildVarsoviaConsist(maxAnisotropy: number): IInspiroConsistBuil
   let rightDoorProgress = 0;
   return {
     group,
+    setVisualProfile: (visual: ITrainVisualProfile): void => {
+      mats.whiteBody.color.setHex(visual.bodyHex);
+      mats.roofGray.color.setHex(visual.roofHex);
+      mats.warsawRed.color.setHex(visual.stripeHex);
+      mats.warsawYellow.color.setHex(visual.noseHex);
+      const isStealth = visual.liveryId === 'stealth_night';
+      mats.whiteBody.roughness = isStealth ? 0.56 : 0.24;
+      mats.warsawRed.emissive.setHex(isStealth ? 0xff1e42 : 0x000000);
+      mats.warsawRed.emissiveIntensity = isStealth ? 1.15 : 0;
+      mats.smileLedFrontMat.emissive.setHex(isStealth ? 0xff2a55 : 0xe0f7ff);
+    },
     setDoorsOpen: (openSide: DoorSide | null, dtSec: number): void => {
       const safeDt = Math.max(dtSec, 0.016);
       leftDoorProgress = THREE.MathUtils.damp(leftDoorProgress, openSide === 'left' ? 1 : 0, 7.5, safeDt);

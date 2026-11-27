@@ -9,7 +9,11 @@ import {
   CustomLineStorageService,
   type ICustomLineService,
 } from '../domain/customLines';
-import { DriverProfileService, type IDriverProfileService } from '../domain/driverProfile';
+import {
+  DriverProfileService,
+  getRankForXp,
+  type IDriverProfileService,
+} from '../domain/driverProfile';
 import {
   computeGhostDelta,
   GhostRecordStorageService,
@@ -29,6 +33,13 @@ import { getMetroLineSpec, METRO_LINE_M1 } from '../domain/routeData';
 import { compileRouteVariant } from '../domain/routeVariant';
 import { MetroScoringRules } from '../domain/scoringRules';
 import { SettingsStorageService, type ISettingsService } from '../domain/settingsService';
+import {
+  isLiverySelectable,
+  isLiveryUnlockedByRank,
+  TrainLiveryStorageService,
+  type ITrainLiveryStorageService,
+  type SelectedLiveryMap,
+} from '../domain/trainLiveryCatalog';
 import { MetroTrainPhysics } from '../domain/trainPhysics';
 import { buildReturnLegLineSpec } from '../domain/turnaroundSystem';
 import type {
@@ -59,6 +70,7 @@ import type {
   PhotoFilterId,
   RouteDirection,
   TimeOfDayId,
+  TrainLiveryId,
   TrainModelId,
   WeatherModeId,
 } from '../domain/types';
@@ -107,6 +119,7 @@ export interface IMetroGameController {
   readonly cctvPreviewOpen: boolean;
   readonly cctvChannel: CctvPreviewChannel;
   readonly paPanelOpen: boolean;
+  readonly selectedLiveryId: TrainLiveryId;
   togglePaPanel: () => void;
   closePaPanel: () => void;
   triggerPaAnnouncement: (id: PaAnnouncementId) => void;
@@ -124,6 +137,7 @@ export interface IMetroGameController {
   selectChallenge: (challengeId: ChallengeId) => void;
   selectWeatherMode: (mode: WeatherModeId) => void;
   selectTrainModel: (modelId: TrainModelId) => void;
+  selectTrainLivery: (liveryId: TrainLiveryId) => void;
   selectTimeOfDay: (timeOfDayId: TimeOfDayId) => void;
   triggerSandboxOncomingTrain: () => void;
   cycleSandboxNextSignal: () => void;
@@ -188,6 +202,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
   const customLineServiceRef = useRef<ICustomLineService | null>(null);
   const driverProfileServiceRef = useRef<IDriverProfileService | null>(null);
   const ghostRecordServiceRef = useRef<IGhostRecordService | null>(null);
+  const liveryServiceRef = useRef<ITrainLiveryStorageService | null>(null);
   const rendererRef = useRef<IMetroSceneRenderer | null>(null);
   const audioRef = useRef<IAudioEngine | null>(null);
   const speechRef = useRef<ISpeechAnnouncer | null>(null);
@@ -226,9 +241,18 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
   if (!ghostRecordServiceRef.current) {
     ghostRecordServiceRef.current = new GhostRecordStorageService();
   }
+  if (!liveryServiceRef.current) {
+    liveryServiceRef.current = new TrainLiveryStorageService();
+  }
   if (!simRef.current) {
     const initialSim = new MetroSimulationEngine(new MetroTrainPhysics(), new MetroScoringRules());
     initialSim.setTimeOfDay('rush');
+    const savedLiveries = liveryServiceRef.current.load();
+    const initialRankId = getRankForXp(driverProfileServiceRef.current.load().xp).id;
+    const initialLivery = savedLiveries[initialSim.getSnapshot().trainModel.id] ?? 'default';
+    if (isLiveryUnlockedByRank(initialLivery, initialRankId)) {
+      initialSim.setTrainLivery(initialLivery);
+    }
     if (hasAutostartParam()) {
       initialSim.start();
     }
@@ -236,6 +260,10 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
   }
 
   const [snapshot, setSnapshot] = useState<ISimulationSnapshot>(() => simRef.current!.getSnapshot());
+  const [selectedLiveries, setSelectedLiveries] = useState<SelectedLiveryMap>(() =>
+    liveryServiceRef.current!.load(),
+  );
+  const selectedLiveriesRef = useRef<SelectedLiveryMap>(selectedLiveries);
   const [settings, setSettings] = useState<IGameSettings>(() => settingsServiceRef.current!.load());
   const settingsRef = useRef<IGameSettings>(settings);
   const [customLines, setCustomLines] = useState<readonly ICustomLineDraft[]>(() =>
@@ -492,7 +520,23 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
 
   const selectGameMode = useCallback(
     (mode: GameModeId): void => {
-      simRef.current?.setGameMode(mode);
+      const sim = simRef.current;
+      if (!sim) {
+        return;
+      }
+      sim.setGameMode(mode);
+      const modelId = sim.getSnapshot().trainModel.id;
+      const desiredLivery = selectedLiveriesRef.current[modelId] ?? 'default';
+      const rankId = getRankForXp(driverProfileServiceRef.current!.load().xp).id;
+      const effectiveLivery: TrainLiveryId = isLiverySelectable(
+        desiredLivery,
+        modelId,
+        rankId,
+        mode,
+      )
+        ? desiredLivery
+        : 'default';
+      sim.setTrainLivery?.(effectiveLivery);
       syncNow();
     },
     [syncNow],
@@ -605,7 +649,12 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
       const saved = settingsServiceRef.current!.save(next);
       settingsRef.current = saved;
       setSettings(saved);
-      audioRef.current?.setAudioSettings?.(saved.masterVolume, saved.trainVolume, saved.voiceVolume);
+      audioRef.current?.setAudioSettings?.(
+        saved.masterVolume,
+        saved.trainVolume,
+        saved.voiceVolume,
+        saved.alertsVolume,
+      );
       rendererRef.current?.applySettings?.(saved);
       const snap = simRef.current?.getSnapshot();
       if (snap && rendererRef.current) {
@@ -637,7 +686,44 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
 
   const selectTrainModel = useCallback(
     (modelId: TrainModelId): void => {
-      simRef.current?.setTrainModel(modelId);
+      const sim = simRef.current;
+      if (!sim) {
+        return;
+      }
+      sim.setTrainModel(modelId);
+      const mode = sim.getSnapshot().gameMode;
+      const desiredLivery = selectedLiveriesRef.current[modelId] ?? 'default';
+      const rankId = getRankForXp(driverProfileServiceRef.current!.load().xp).id;
+      const effectiveLivery: TrainLiveryId = isLiverySelectable(
+        desiredLivery,
+        modelId,
+        rankId,
+        mode,
+      )
+        ? desiredLivery
+        : 'default';
+      sim.setTrainLivery?.(effectiveLivery);
+      syncNow();
+    },
+    [syncNow],
+  );
+
+  const selectTrainLivery = useCallback(
+    (liveryId: TrainLiveryId): void => {
+      const sim = simRef.current;
+      if (!sim) {
+        return;
+      }
+      const snap = sim.getSnapshot();
+      const modelId = snap.trainModel.id;
+      const rankId = getRankForXp(driverProfileServiceRef.current!.load().xp).id;
+      if (!isLiverySelectable(liveryId, modelId, rankId, snap.gameMode)) {
+        return;
+      }
+      const updated = liveryServiceRef.current!.saveForTrain(modelId, liveryId);
+      selectedLiveriesRef.current = updated;
+      setSelectedLiveries(updated);
+      sim.setTrainLivery?.(liveryId);
       syncNow();
     },
     [syncNow],
@@ -757,6 +843,10 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     const currentChallengeId = currentSnap?.challenge?.id ?? 'inverter_fault';
     const currentWeatherMode = currentSnap?.weather.mode ?? 'clear';
     const currentModelId = currentSnap?.trainModel.id ?? 'inspiro';
+    const currentLiveryId =
+      currentSnap?.trainModel.visual.liveryId ??
+      selectedLiveriesRef.current[currentModelId] ??
+      'default';
     const currentTimeOfDayId = currentSnap?.timeOfDay.id ?? 'rush';
     simRef.current?.reset();
     audioRef.current?.silence();
@@ -787,10 +877,21 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     freshSim.setWeatherMode?.(currentWeatherMode);
     freshSim.setGameMode(restoredMode);
     freshSim.setTrainModel(currentModelId);
+    const freshProfile = driverProfileServiceRef.current!.load();
+    const freshRankId = getRankForXp(freshProfile.xp).id;
+    const effectiveLivery: TrainLiveryId = isLiverySelectable(
+      currentLiveryId,
+      currentModelId,
+      freshRankId,
+      restoredMode,
+    )
+      ? currentLiveryId
+      : 'default';
+    freshSim.setTrainLivery(effectiveLivery);
     freshSim.setTimeOfDay(currentTimeOfDayId);
     simRef.current = freshSim;
     setLeaderboard(leaderboardServiceRef.current!.getTopEntries());
-    setDriverProfile(driverProfileServiceRef.current!.load());
+    setDriverProfile(freshProfile);
     syncNow();
   }, [syncNow]);
 
@@ -1232,6 +1333,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
       settingsRef.current.masterVolume,
       settingsRef.current.trainVolume,
       settingsRef.current.voiceVolume,
+      settingsRef.current.alertsVolume,
     );
     sceneRenderer.mount(container);
     input.attach({
@@ -1421,6 +1523,12 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
             Boolean(latestAudio.paAnnouncementTriggered) || Boolean(nextAudio.paAnnouncementTriggered),
           cabSwitchChime:
             Boolean(latestAudio.cabSwitchChime) || Boolean(nextAudio.cabSwitchChime),
+          contactorClick:
+            Boolean(latestAudio.contactorClick) || Boolean(nextAudio.contactorClick),
+          airReleaseHiss:
+            Boolean(latestAudio.airReleaseHiss) || Boolean(nextAudio.airReleaseHiss),
+          turnoutThud:
+            Boolean(latestAudio.turnoutThud) || Boolean(nextAudio.turnoutThud),
         };
         remaining -= subDt;
       }
@@ -1514,13 +1622,16 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
       if (snap.phase === 'playing') {
         const activeLang = settingsRef.current.language;
         const speechVol = settingsRef.current.masterVolume * settingsRef.current.voiceVolume;
+        const radioVol =
+          settingsRef.current.masterVolume *
+          (settingsRef.current.alertsVolume ?? settingsRef.current.voiceVolume);
         if (latestAudio.radioDispatchTriggered && snap.radio.active) {
           const localizedRadio = localizeRadioDispatch(activeLang, snap.radio);
           speech.announce(
             10000 + snap.radio.messageId,
             localizedRadio.spokenText,
             audio.isMuted(),
-            speechVol,
+            radioVol,
             activeLang,
           );
         } else if (snap.announcement) {
@@ -1682,6 +1793,10 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     cctvPreviewOpen,
     cctvChannel,
     paPanelOpen,
+    selectedLiveryId:
+      snapshot.trainModel.visual.liveryId ??
+      selectedLiveries[snapshot.trainModel.id] ??
+      'default',
     togglePaPanel,
     closePaPanel,
     triggerPaAnnouncement,
@@ -1699,6 +1814,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     selectChallenge,
     selectWeatherMode,
     selectTrainModel,
+    selectTrainLivery,
     selectTimeOfDay,
     triggerSandboxOncomingTrain,
     cycleSandboxNextSignal,
