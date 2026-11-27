@@ -121,16 +121,17 @@ export function buildSurfaceDepot(
       if (lastSkyKey !== skyKey) {
         lastSkyKey = skyKey;
         const isRain = weatherMode === 'rain';
-        if (timeOfDayId === 'evening') {
-          skyUniforms.uTopColor.value.setHex(isRain ? 0x0c1118 : 0x020612);
-          skyUniforms.uMidColor.value.setHex(isRain ? 0x1a2330 : 0x071228);
-          skyUniforms.uHorizonColor.value.setHex(isRain ? 0x2b3644 : 0x112040);
+        if (timeOfDayId === 'evening' || timeOfDayId === 'night_service') {
+          const isDeepNight = timeOfDayId === 'night_service';
+          skyUniforms.uTopColor.value.setHex(isRain ? 0x090e14 : isDeepNight ? 0x01030a : 0x020612);
+          skyUniforms.uMidColor.value.setHex(isRain ? 0x151d28 : isDeepNight ? 0x040918 : 0x071228);
+          skyUniforms.uHorizonColor.value.setHex(isRain ? 0x222c38 : isDeepNight ? 0x0b152a : 0x112040);
           skyUniforms.uSunDir.value.set(-0.26, 0.34, -0.9).normalize();
           skyUniforms.uSunColor.value.setHex(0xe2ecff);
-          skyUniforms.uSunStrength.value = isRain ? 0.08 : 0.85;
+          skyUniforms.uSunStrength.value = isRain ? 0.06 : isDeepNight ? 0.45 : 0.85;
           stars.visible = !isRain;
-          sharedMats.mastLamp.emissiveIntensity = 5.2;
-          sharedMats.hangarWindow.emissiveIntensity = 2.6;
+          sharedMats.mastLamp.emissiveIntensity = isDeepNight ? 6.0 : 5.2;
+          sharedMats.hangarWindow.emissiveIntensity = isDeepNight ? 1.8 : 2.6;
           sharedMats.hangarSign.emissiveIntensity = 0.95;
         } else if (isRain) {
           // Overcast Warsaw rainy morning sky

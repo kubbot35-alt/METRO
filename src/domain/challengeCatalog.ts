@@ -58,6 +58,25 @@ export const CHALLENGE_CATALOG: readonly IChallengeSpec[] = [
     czuwakMaxSec: 32,
     rewardAchievementId: 'challenge_black_series',
   },
+  {
+    id: 'night_service',
+    title: 'Nocny Serwis (Inspekcja)',
+    shortLabel: '02:30 · Ekipy ≤20 km/h + Klakson',
+    badge: '02:30 SERWIS',
+    description:
+      'Nocna przerwa techniczna bez pasażerów, przygaszone stacje z lampami awaryjnymi i losowe ekipy torowe. Mijaj każdą ekipę ≤ 20 km/h po nadaniu klaksonu [H].',
+    objectiveSummary: '02:30 · Brak pasażerów · Ekipy torowe: ≤ 20 km/h + Klakson [H]',
+    tractionMultiplier: 1.0,
+    skipStations: true,
+    stationPassLimitKmh: null,
+    maxAllowedDelaySec: null,
+    forceTimeOfDay: 'night_service',
+    redSignalProbability: 0.14,
+    doorFaultProbability: 0,
+    czuwakMinSec: null,
+    czuwakMaxSec: null,
+    rewardAchievementId: 'night_inspector',
+  },
 ];
 
 export function getChallengeSpec(id: ChallengeId): IChallengeSpec {
@@ -74,6 +93,9 @@ export interface IChallengeEvalInput {
   readonly redSignalViolations: number;
   readonly overspeedViolations: number;
   readonly czuwakViolations: number;
+  readonly nightCrewTotal?: number;
+  readonly nightCrewPassed?: number;
+  readonly nightCrewViolated?: number;
 }
 
 export function evaluateChallengeOutcome(input: IChallengeEvalInput): IChallengeOutcome {
@@ -120,6 +142,28 @@ export function evaluateChallengeOutcome(input: IChallengeEvalInput): IChallenge
     return {
       passed: true,
       reason: 'Bezpieczny przejazd techniczny przez całą trasę zgodnie z limitami.',
+    };
+  }
+
+  if (challenge.id === 'night_service') {
+    const total = input.nightCrewTotal ?? 0;
+    const passed = input.nightCrewPassed ?? 0;
+    const violated = input.nightCrewViolated ?? 0;
+    if (violated > 0) {
+      return {
+        passed: false,
+        reason: `Naruszenie zasad BHP przy ekipach torowych (${violated} z ${total}) — wymagane ≤ 20 km/h i klakson [H].`,
+      };
+    }
+    if (input.redSignalViolations > 0 || input.czuwakViolations > 0) {
+      return {
+        passed: false,
+        reason: 'Naruszenie sygnalizacji ATP lub czuwaka podczas nocnej inspekcji tunelu.',
+      };
+    }
+    return {
+      passed: true,
+      reason: `Bezbłędna inspekcja nocna! Wszystkie punkty kontrolne (${passed}/${total}) zaliczone bezpiecznie.`,
     };
   }
 

@@ -88,8 +88,14 @@ const SHORTCUTS: readonly IShortcutEntry[] = [
   {
     keyPl: 'L',
     keyEn: 'L',
-    actionPl: 'Reflektory przednie (włącz / wyłącz)',
-    actionEn: 'Front headlights (on / off)',
+    actionPl: 'Reflektory przednie (Wył. → Krótkie → Długie)',
+    actionEn: 'Front headlights (Off → Low → High beams)',
+  },
+  {
+    keyPl: 'K',
+    keyEn: 'K',
+    actionPl: 'Lampka sufitowa w kabinie (włącz / wyłącz)',
+    actionEn: 'Cab ceiling dome light (on / off)',
   },
   { keyPl: 'H', keyEn: 'H', actionPl: 'Klakson', actionEn: 'Horn' },
   { keyPl: 'M', keyEn: 'M', actionPl: 'Wyciszenie dźwięków', actionEn: 'Mute audio' },

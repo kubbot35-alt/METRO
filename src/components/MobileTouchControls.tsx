@@ -15,6 +15,7 @@ interface IMobileTouchControlsProps {
   readonly onEmergencyBrake: () => void;
   readonly onCycleCamera: () => void;
   readonly onToggleHeadlights: () => void;
+  readonly onToggleCabLight: () => void;
   readonly onToggleAto: () => void;
   readonly onHornChange: (active: boolean) => void;
 }
@@ -29,6 +30,7 @@ export function MobileTouchControls({
   onEmergencyBrake,
   onCycleCamera,
   onToggleHeadlights,
+  onToggleCabLight,
   onToggleAto,
   onHornChange,
 }: IMobileTouchControlsProps) {
@@ -104,21 +106,36 @@ export function MobileTouchControls({
       className="fixed inset-x-0 bottom-[58px] top-[100px] z-20 pointer-events-none flex items-end justify-between px-2 pb-1 sm:px-3 touch-none select-none"
     >
       <div className="pointer-events-auto flex flex-col items-center gap-1 bg-[#0a1019]/90 border border-slate-700/85 rounded-xl px-2 py-1.5 shadow-2xl touch-none">
-        <button
-          type="button"
-          data-testid="touch-ato-btn"
-          aria-pressed={snapshot.atoEnabled}
-          onClick={() => tapAction(onToggleAto)}
-          className={`w-full px-1.5 py-1 rounded-md border text-[9.5px] font-mono-tabular font-bold whitespace-nowrap touch-none cursor-pointer ${
-            snapshot.atoEnabled
-              ? 'bg-emerald-500 border-emerald-200 text-slate-950'
-              : atoAllowed
-                ? 'bg-slate-800 border-emerald-500/60 text-emerald-200 active:bg-slate-700'
-                : 'bg-slate-900 border-slate-700 text-slate-500'
-          }`}
-        >
-          {snapshot.atoEnabled ? 'ATO ON' : 'ATO'}
-        </button>
+        <div className="w-full flex items-center gap-1">
+          <button
+            type="button"
+            data-testid="touch-ato-btn"
+            aria-pressed={snapshot.atoEnabled}
+            onClick={() => tapAction(onToggleAto)}
+            className={`flex-1 px-1 py-1 rounded-md border text-[9px] font-mono-tabular font-bold whitespace-nowrap touch-none cursor-pointer ${
+              snapshot.atoEnabled
+                ? 'bg-emerald-500 border-emerald-200 text-slate-950'
+                : atoAllowed
+                  ? 'bg-slate-800 border-emerald-500/60 text-emerald-200 active:bg-slate-700'
+                  : 'bg-slate-900 border-slate-700 text-slate-500'
+            }`}
+          >
+            ATO
+          </button>
+          <button
+            type="button"
+            data-testid="touch-cab-light-btn"
+            aria-pressed={snapshot.cabLightOn}
+            onClick={() => tapAction(onToggleCabLight)}
+            className={`px-1.5 py-1 rounded-md border text-[9px] font-mono-tabular font-bold whitespace-nowrap touch-none cursor-pointer ${
+              snapshot.cabLightOn
+                ? 'bg-amber-400 border-amber-200 text-slate-950'
+                : 'bg-slate-800 border-slate-600 text-slate-300'
+            }`}
+          >
+            {tr('KAB', 'CAB')}
+          </button>
+        </div>
 
         <span className="text-[9px] font-mono-tabular font-bold uppercase tracking-wider text-emerald-300 leading-none">
           {tr('MOC +', 'PWR +')}
@@ -241,12 +258,18 @@ export function MobileTouchControls({
           data-testid="touch-headlights"
           onClick={() => tapAction(onToggleHeadlights)}
           className={`min-h-[38px] [@media(min-height:560px)]:min-h-[44px] px-1.5 py-1 rounded-lg border text-[10px] font-mono-tabular font-bold whitespace-nowrap touch-none cursor-pointer ${
-            snapshot.headlightsOn
-              ? 'bg-amber-500/25 border-amber-400 text-amber-200'
-              : 'bg-slate-800 border-slate-600 text-slate-300'
+            snapshot.headlightMode === 'high'
+              ? 'bg-sky-400/30 border-sky-300 text-sky-100'
+              : snapshot.headlightMode === 'low'
+                ? 'bg-amber-500/25 border-amber-400 text-amber-200'
+                : 'bg-slate-800 border-slate-600 text-slate-300'
           } ${academyHighlight === 'headlights' ? hlRing : ''}`}
         >
-          {tr('ŚWIATŁA', 'LIGHTS')}
+          {snapshot.headlightMode === 'high'
+            ? tr('DŁUGIE', 'HIGH')
+            : snapshot.headlightMode === 'low'
+              ? tr('KRÓTKIE', 'LOW')
+              : tr('ŚWIATŁA', 'LIGHTS')}
         </button>
 
         <button

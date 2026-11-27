@@ -10,6 +10,7 @@ export interface ICabMotionState {
   readonly targetFov: number;
   readonly leverAngleRad: number;
   readonly headlightIntensity: number;
+  readonly cabDomeIntensity: number;
 }
 
 export interface ICabMotionController {
@@ -18,7 +19,8 @@ export interface ICabMotionController {
 
 const BASE_PITCH_RAD = -0.035;
 const MAX_LEVER_ANGLE_RAD = 0.62;
-const HEADLIGHT_ON_INTENSITY = 148;
+const HEADLIGHT_LOW_INTENSITY = 148;
+const HEADLIGHT_HIGH_INTENSITY = 310;
 
 export class MetroCabMotionController implements ICabMotionController {
   private bobPhase = 0;
@@ -28,7 +30,8 @@ export class MetroCabMotionController implements ICabMotionController {
   private bankRoll = 0;
   private turnoutLat = 0;
   private leverAngle = 0;
-  private headlightIntensity = HEADLIGHT_ON_INTENSITY;
+  private headlightIntensity = HEADLIGHT_LOW_INTENSITY;
+  private cabDomeIntensity = 0.55;
 
   public step(snapshot: ISimulationSnapshot, dtSec: number): ICabMotionState {
     const dt = Math.max(0, Math.min(dtSec, 0.1));
@@ -65,8 +68,16 @@ export class MetroCabMotionController implements ICabMotionController {
     const targetLever = -snapshot.leverTarget * MAX_LEVER_ANGLE_RAD;
     this.leverAngle = THREE.MathUtils.damp(this.leverAngle, targetLever, 9.5, dt);
 
-    const targetLight = snapshot.headlightsOn ? HEADLIGHT_ON_INTENSITY : 0;
+    const targetLight =
+      snapshot.headlightMode === 'high'
+        ? HEADLIGHT_HIGH_INTENSITY
+        : snapshot.headlightMode === 'low'
+          ? HEADLIGHT_LOW_INTENSITY
+          : 0;
     this.headlightIntensity = THREE.MathUtils.damp(this.headlightIntensity, targetLight, 14, dt);
+
+    const targetCabDome = snapshot.cabLightOn ? 3.2 : 0.55;
+    this.cabDomeIntensity = THREE.MathUtils.damp(this.cabDomeIntensity, targetCabDome, 12, dt);
 
     return {
       offsetX: swayX,
@@ -77,6 +88,7 @@ export class MetroCabMotionController implements ICabMotionController {
       targetFov: 64 + speedRatio * 7.5,
       leverAngleRad: this.leverAngle,
       headlightIntensity: this.headlightIntensity,
+      cabDomeIntensity: this.cabDomeIntensity,
     };
   }
 }

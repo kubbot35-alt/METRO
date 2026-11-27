@@ -9,6 +9,7 @@ export class KeyboardInputController implements IInputController {
   private doorRightQueued = false;
   private emergencyBrakeQueued = false;
   private headlightsToggleQueued = false;
+  private cabLightToggleQueued = false;
   private wipersToggleQueued = false;
   private czuwakAckQueued = false;
   private radioAckQueued = false;
@@ -45,6 +46,7 @@ export class KeyboardInputController implements IInputController {
       toggleDoorsLeftPressed: this.doorLeftQueued,
       toggleDoorsRightPressed: this.doorRightQueued,
       toggleHeadlightsPressed: this.headlightsToggleQueued,
+      toggleCabLightPressed: this.cabLightToggleQueued,
       toggleWipersPressed: this.wipersToggleQueued,
       acknowledgeCzuwakPressed: this.czuwakAckQueued,
       acknowledgeRadioPressed: this.radioAckQueued,
@@ -58,6 +60,7 @@ export class KeyboardInputController implements IInputController {
     this.doorRightQueued = false;
     this.emergencyBrakeQueued = false;
     this.headlightsToggleQueued = false;
+    this.cabLightToggleQueued = false;
     this.wipersToggleQueued = false;
     this.czuwakAckQueued = false;
     this.radioAckQueued = false;
@@ -89,6 +92,11 @@ export class KeyboardInputController implements IInputController {
   public triggerHeadlightsToggle(): void {
     this.callbacks?.onFirstInteraction();
     this.headlightsToggleQueued = true;
+  }
+
+  public triggerCabLightToggle(): void {
+    this.callbacks?.onFirstInteraction();
+    this.cabLightToggleQueued = true;
   }
 
   public triggerWipersToggle(): void {
@@ -137,6 +145,7 @@ export class KeyboardInputController implements IInputController {
     this.doorRightQueued = false;
     this.emergencyBrakeQueued = false;
     this.headlightsToggleQueued = false;
+    this.cabLightToggleQueued = false;
     this.wipersToggleQueued = false;
     this.czuwakAckQueued = false;
     this.radioAckQueued = false;
@@ -216,6 +225,8 @@ export class KeyboardInputController implements IInputController {
       this.emergencyBrakeQueued = true;
     } else if (code === 'KeyL') {
       this.headlightsToggleQueued = true;
+    } else if (code === 'KeyK') {
+      this.cabLightToggleQueued = true;
     } else if (code === 'KeyX') {
       this.wipersToggleQueued = true;
     } else if (code === 'KeyC') {

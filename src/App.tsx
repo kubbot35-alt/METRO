@@ -48,7 +48,12 @@ export default function App() {
       data-platform-layout={getStationPlatformLayout(snapshot.currentStation.station)}
       data-signal={snapshot.nextSignal?.signal.aspect ?? 'none'}
       data-atp={snapshot.atpActive ? '1' : '0'}
-      data-headlights={snapshot.headlightsOn ? 'on' : 'off'}
+      data-headlights={snapshot.headlightMode}
+      data-cab-light={snapshot.cabLightOn ? 'on' : 'off'}
+      data-dim-prompt={snapshot.lightingEffects.dimHighBeamPromptActive ? '1' : '0'}
+      data-spark-id={snapshot.lightingEffects.sparkEventId}
+      data-night-service={snapshot.nightInspection.active ? '1' : '0'}
+      data-night-crews={`${snapshot.nightInspection.passedCount}/${snapshot.nightInspection.totalCount}`}
       data-passengers={snapshot.passengersCarried}
       data-lever={snapshot.leverTarget.toFixed(2)}
       data-announcement={snapshot.announcement?.text ?? ''}
@@ -178,6 +183,7 @@ export default function App() {
               onEmergencyBrake={game.triggerEmergencyBrake}
               onCycleCamera={game.cycleCamera}
               onToggleHeadlights={game.toggleHeadlights}
+              onToggleCabLight={game.toggleCabLight}
               onToggleAto={game.toggleAto}
               onHornChange={game.setHornActive}
             />
@@ -188,6 +194,7 @@ export default function App() {
             onToggleDoorsLeft={game.toggleDoorsLeft}
             onToggleDoorsRight={game.toggleDoorsRight}
             onToggleHeadlights={game.toggleHeadlights}
+            onToggleCabLight={game.toggleCabLight}
             onToggleWipers={game.toggleWipers}
             onToggleAto={game.toggleAto}
             onAcknowledgeCzuwak={game.acknowledgeCzuwak}

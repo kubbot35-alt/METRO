@@ -207,7 +207,11 @@ function syncCrowds(
   dtSec: number,
   densityMultiplier: number,
 ): void {
-  if (snapshot.challenge?.skipStations) {
+  if (
+    snapshot.challenge?.skipStations ||
+    snapshot.nightInspection.active ||
+    snapshot.timeOfDay.passengerMultiplier <= 0
+  ) {
     for (let i = 0; i < crowds.length; i += 1) {
       crowds[i].playerUnits.forEach((u) => {
         u.group.visible = false;

@@ -91,8 +91,8 @@ const MODE_OPTIONS: ReadonlyArray<{
     id: 'challenge',
     titlePl: 'Wyzwania',
     titleEn: 'Challenges',
-    badgePl: '3 SCENARIUSZE',
-    badgeEn: '3 SCENARIOS',
+    badgePl: '4 SCENARIUSZE',
+    badgeEn: '4 SCENARIOS',
     descPl: 'Scenariusze specjalne z osobnymi odznakami w Osiągnięciach.',
     descEn: 'Special scenarios with dedicated badges in Achievements.',
   },
@@ -321,7 +321,7 @@ export function TitleOverlay({
             <p className="text-[10px] font-mono-tabular uppercase tracking-[0.18em] text-slate-400 mb-1">
               {tr('3. Pora dnia i pogoda (STP Kabaty)', '3. Time of Day & Weather (STP Kabaty)')}
             </p>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2">
               {TIME_OF_DAY_CATALOG.map((tod) => (
                 <TimeOfDayCard
                   key={tod.id}
@@ -412,7 +412,7 @@ export function TitleOverlay({
             {selectedGameMode === 'challenge' && (
               <div
                 data-testid="challenge-selector"
-                className="mt-2 grid grid-cols-1 md:grid-cols-3 gap-2"
+                className="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2"
               >
                 {CHALLENGE_CATALOG.map((challenge) => (
                   <ChallengeScenarioCard
@@ -541,8 +541,8 @@ export function TitleOverlay({
       <div className="w-full flex items-center justify-center gap-3 mt-1.5 relative">
         <p className="text-xs font-mono-tabular text-slate-300 tracking-wide text-center bg-[#090b0f]/85 px-4 py-1.5 rounded border border-slate-800/80">
           {tr(
-            'W / S Moc · Spacja Hamulec · B Awaryjny · Q / E Drzwi L/P · A Autopilot · V Kamera (4) · F Foto · R Radio · X Wycieraczki · C Czuwak · L Światła',
-            'W / S Throttle · Space Brake · B Emergency · Q / E Doors L/R · A Autopilot · V Camera (4) · F Photo · R Radio · X Wipers · C Czuwak · L Lights',
+            'W / S Moc · Spacja Hamulec · B Awaryjny · Q / E Drzwi · A ATO · V Kamera · F Foto · R Radio · X Wycier. · C Czuwak · L Światła · K Kabina',
+            'W / S Power · Space Brake · B E-Brake · Q / E Doors · A ATO · V Camera · F Photo · R Radio · X Wipers · C Czuwak · L Lights · K Cab',
           )}
         </p>
         {gamepadStatus.connected && (
@@ -792,10 +792,13 @@ function TimeOfDayCard({
   const { lang } = useI18n();
   const loc = getLocalizedTimeOfDay(lang, spec.id, spec);
   const isEvening = spec.id === 'evening';
+  const isNightService = spec.id === 'night_service';
   const activeStyles = selected
-    ? isEvening
-      ? 'border-sky-400 bg-[#101929]/95 shadow-lg'
-      : 'border-amber-400 bg-[#20190f]/95 shadow-lg'
+    ? isNightService
+      ? 'border-orange-400 bg-[#21130b]/95 shadow-lg'
+      : isEvening
+        ? 'border-sky-400 bg-[#101929]/95 shadow-lg'
+        : 'border-amber-400 bg-[#20190f]/95 shadow-lg'
     : 'border-slate-700/80 bg-[#0d1118]/90 hover:border-slate-500';
 
   return (
@@ -809,14 +812,18 @@ function TimeOfDayCard({
       }}
       className={`text-left rounded-lg border-2 p-2 transition-colors cursor-pointer flex flex-col gap-0.5 ${activeStyles}`}
     >
-      <div className="flex items-center justify-between gap-2">
-        <span className="font-display text-sm font-bold text-slate-50">{loc.name}</span>
+      <div className="flex items-center justify-between gap-1.5">
+        <span className="font-display text-xs xl:text-sm font-bold text-slate-50 leading-tight truncate">
+          {loc.name}
+        </span>
         <span
-          className={`text-[11px] font-mono-tabular font-bold px-2 py-0.5 rounded ${
+          className={`text-[10px] font-mono-tabular font-bold px-1.5 py-0.5 rounded shrink-0 ${
             selected
-              ? isEvening
-                ? 'bg-sky-500/20 text-sky-200 border border-sky-400/50'
-                : 'bg-amber-500/20 text-amber-200 border border-amber-400/50'
+              ? isNightService
+                ? 'bg-orange-500/25 text-orange-200 border border-orange-400/60'
+                : isEvening
+                  ? 'bg-sky-500/20 text-sky-200 border border-sky-400/50'
+                  : 'bg-amber-500/20 text-amber-200 border border-amber-400/50'
               : 'bg-slate-800 text-slate-300'
           }`}
         >

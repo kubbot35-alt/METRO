@@ -14,7 +14,9 @@ export type PhotoFilterId = 'normal' | 'cinematic' | 'vhs' | 'noir';
 
 export type CameraMode = 'cab' | 'mirror' | 'exterior' | 'interior';
 
-export type TimeOfDayId = 'rush' | 'evening';
+export type TimeOfDayId = 'rush' | 'evening' | 'night_service';
+
+export type HeadlightMode = 'off' | 'low' | 'high';
 
 export type MetroLineId = string;
 
@@ -32,7 +34,7 @@ export type AtoStatus =
   | 'boarding'
   | 'departing';
 
-export type ChallengeId = 'inverter_fault' | 'technical_run' | 'black_series';
+export type ChallengeId = 'inverter_fault' | 'technical_run' | 'black_series' | 'night_service';
 
 export type WeatherModeId = 'clear' | 'rain';
 
@@ -61,7 +63,8 @@ export type AchievementId =
   | 'challenge_inverter_fault'
   | 'challenge_technical_run'
   | 'challenge_black_series'
-  | 'academy_license';
+  | 'academy_license'
+  | 'night_inspector';
 
 export interface IAchievementSpec {
   readonly id: AchievementId;
@@ -94,7 +97,7 @@ export interface IChallengeOutcome {
   readonly reason: string;
 }
 
-export type RadioDispatchCategory = 'traffic' | 'platform' | 'slippery';
+export type RadioDispatchCategory = 'traffic' | 'platform' | 'slippery' | 'inspection';
 
 export interface IRadioDispatchState {
   readonly active: boolean;
@@ -116,6 +119,40 @@ export interface IWeatherState {
   readonly rainIntensity: number;
   readonly wetRailsActive: boolean;
   readonly wheelSlipActive: boolean;
+}
+
+export interface ILightingAndSparksState {
+  readonly headlightMode: HeadlightMode;
+  readonly cabLightOn: boolean;
+  readonly dimHighBeamPromptActive: boolean;
+  readonly highBeamCourtesyCount: number;
+  readonly sparkIntensity: number;
+  readonly sparkSide: DoorSide;
+  readonly sparkEventId: number;
+}
+
+export type NightCrewStatus = 'upcoming' | 'approaching' | 'passed_ok' | 'violated';
+
+export interface INightCrewCheckpoint {
+  readonly id: number;
+  readonly distanceM: number;
+  readonly side: DoorSide;
+  readonly locationKind: 'tunnel' | 'station';
+  readonly locationLabel: string;
+  readonly status: NightCrewStatus;
+  readonly hornSounded: boolean;
+  readonly maxPassSpeedKmh: number;
+}
+
+export interface INightInspectionState {
+  readonly active: boolean;
+  readonly checkpoints: readonly INightCrewCheckpoint[];
+  readonly activeApproachCrew: INightCrewCheckpoint | null;
+  readonly activeApproachDistanceM: number | null;
+  readonly speedSafeNow: boolean;
+  readonly totalCount: number;
+  readonly passedCount: number;
+  readonly violatedCount: number;
 }
 
 export type TouchControlsMode = 'auto' | 'on' | 'off';
@@ -570,6 +607,7 @@ export interface IControlInput {
   readonly toggleDoorsLeftPressed?: boolean;
   readonly toggleDoorsRightPressed?: boolean;
   readonly toggleHeadlightsPressed?: boolean;
+  readonly toggleCabLightPressed?: boolean;
   readonly toggleWipersPressed?: boolean;
   readonly acknowledgeCzuwakPressed?: boolean;
   readonly acknowledgeRadioPressed?: boolean;
@@ -668,6 +706,10 @@ export interface IAudioEvents {
   readonly radioAckChime?: boolean;
   readonly wiperSweepTick?: boolean;
   readonly academyStepCompleted?: boolean;
+  readonly thirdRailSparkCrackle?: boolean;
+  readonly highBeamDimBonusChime?: boolean;
+  readonly nightCrewClearedChime?: boolean;
+  readonly nightCrewViolationBuzz?: boolean;
 }
 
 export interface ISimulationSnapshot {
@@ -699,6 +741,10 @@ export interface ISimulationSnapshot {
   readonly nextSignal: ISemaphoreProgress | null;
   readonly atpActive: boolean;
   readonly headlightsOn: boolean;
+  readonly headlightMode: HeadlightMode;
+  readonly cabLightOn: boolean;
+  readonly lightingEffects: ILightingAndSparksState;
+  readonly nightInspection: INightInspectionState;
   readonly leverTarget: number;
   readonly passengersCarried: number;
   readonly currentStationBoardedCount: number;
@@ -746,6 +792,8 @@ export interface IMetroSimulation {
   triggerSandboxOncomingTrain(): void;
   cycleSandboxNextSignal(): void;
   toggleAto?(): boolean;
+  toggleCabLight?(): boolean;
+  cycleHeadlightMode?(): HeadlightMode;
   start(): void;
   pause(): void;
   resume(): void;

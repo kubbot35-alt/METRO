@@ -16,6 +16,10 @@ import {
 import { buildStationHallShell, type IHallMaterials } from './stationHallBuilder';
 import type { ISceneResources } from './types';
 
+export interface IMetroStationsRig extends ISceneResources {
+  setNightServiceMode(active: boolean, dtSec: number): void;
+}
+
 interface ISharedStationMats extends IHallMaterials, IStationFurnitureMaterials {}
 
 export function buildMetroStations(
@@ -24,7 +28,7 @@ export function buildMetroStations(
   stations: readonly IStationSpec[],
   maxAnisotropy: number,
   lineSpec?: Pick<IMetroLineSpec, 'id' | 'badgeCode' | 'destinationLed' | 'oppositeDestinationLed' | 'cssColor'>,
-): ISceneResources {
+): IMetroStationsRig {
   const disposables: Array<{ dispose(): void }> = [];
   const root = new THREE.Group();
   root.name = 'MetroStationsGroup';
@@ -53,12 +57,49 @@ export function buildMetroStations(
     ...Object.values(sharedMats),
   );
 
+  const nightGroups: THREE.Group[] = [];
+  const accentGlowMats: THREE.MeshStandardMaterial[] = [];
+  const signMats: THREE.MeshStandardMaterial[] = [];
+
   stations.forEach((station) => {
-    const stationGroup = createSingleStation(station, alignment, lineBadge, sharedMats, maxAnisotropy, disposables);
-    root.add(stationGroup);
+    const built = createSingleStation(station, alignment, lineBadge, sharedMats, maxAnisotropy, disposables);
+    root.add(built.group);
+    nightGroups.push(built.nightGroup);
+    accentGlowMats.push(built.accentGlowMat);
+    signMats.push(built.signMat);
   });
 
+  let nightClock = 0;
+  let lastNightActive = false;
+
   return {
+    setNightServiceMode: (active, dtSec) => {
+      if (active !== lastNightActive) {
+        lastNightActive = active;
+        sharedMats.lightStrip.color.setHex(active ? 0x1e293b : 0xffffff);
+        sharedMats.lightStrip.emissive.setHex(active ? 0x0f172a : 0xe0f2fe);
+        sharedMats.lightStrip.emissiveIntensity = active ? 0.04 : 2.6;
+        sharedMats.clockScreenPlayer.emissiveIntensity = active ? 0.14 : 1.05;
+        sharedMats.clockScreenOpposite.emissiveIntensity = active ? 0.14 : 1.05;
+        sharedMats.stopStrip.emissiveIntensity = active ? 0.45 : 1.9;
+        sharedMats.stopBoard.emissiveIntensity = active ? 0.35 : 0.9;
+        accentGlowMats.forEach((m) => {
+          m.emissiveIntensity = active ? 0.16 : 1.15;
+        });
+        signMats.forEach((m) => {
+          m.emissiveIntensity = active ? 0.24 : 0.82;
+        });
+        nightGroups.forEach((ng) => {
+          ng.visible = active;
+        });
+      }
+      if (active) {
+        nightClock += Math.max(0, Math.min(dtSec, 0.1));
+        const pulse = Math.sin(nightClock * 8.5) > -0.1 ? 1 : 0.15;
+        sharedMats.yellowBeacon.emissiveIntensity = 0.35 + pulse * 3.8;
+        sharedMats.yellowBeaconHalo.opacity = 0.12 + pulse * 0.42;
+      }
+    },
     dispose: () => {
       scene.remove(root);
       disposables.forEach((d) => d.dispose());
@@ -82,6 +123,26 @@ function createSharedStationMaterials(
       emissive: 0xe0f2fe,
       emissiveIntensity: 2.6,
       roughness: 0.15,
+    }),
+    emergencyLamp: new THREE.MeshStandardMaterial({
+      color: 0xfef3c7,
+      emissive: 0xf59e0b,
+      emissiveIntensity: 1.55,
+      roughness: 0.25,
+    }),
+    yellowBeacon: new THREE.MeshStandardMaterial({
+      color: 0xfacc15,
+      emissive: 0xf59e0b,
+      emissiveIntensity: 3.6,
+      roughness: 0.2,
+    }),
+    yellowBeaconHalo: new THREE.MeshBasicMaterial({
+      color: 0xfbbf24,
+      transparent: true,
+      opacity: 0.42,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      fog: false,
     }),
     stopStrip: new THREE.MeshStandardMaterial({
       color: 0x10b981,
@@ -147,7 +208,12 @@ function createSingleStation(
   mats: ISharedStationMats,
   maxAnisotropy: number,
   disposables: Array<{ dispose(): void }>,
-): THREE.Group {
+): {
+  readonly group: THREE.Group;
+  readonly nightGroup: THREE.Group;
+  readonly accentGlowMat: THREE.MeshStandardMaterial;
+  readonly signMat: THREE.MeshStandardMaterial;
+} {
   const group = new THREE.Group();
   const frame = alignment.sample(station.distanceM);
   group.position.set(frame.x, frame.y, frame.z);
@@ -177,7 +243,7 @@ function createSingleStation(
   });
   disposables.push(wallTex, wallMat, signTex, signMat, accentGlowMat);
 
-  buildStationHallShell(
+  const nightGroup = buildStationHallShell(
     group,
     localStation,
     layout,
@@ -190,5 +256,5 @@ function createSingleStation(
     disposables,
   );
   addPlatformFurniture(group, localStation, layout, centerZ, mats, disposables);
-  return group;
+  return { group, nightGroup, accentGlowMat, signMat };
 }

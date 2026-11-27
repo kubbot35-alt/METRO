@@ -19,6 +19,7 @@ export interface IInputController {
   triggerDoorRightToggle(): void;
   triggerEmergencyBrake(): void;
   triggerHeadlightsToggle(): void;
+  triggerCabLightToggle(): void;
   triggerWipersToggle(): void;
   triggerCzuwakAck(): void;
   triggerRadioAck(): void;

@@ -176,7 +176,22 @@ export function CourseSummaryModal({
             label={tr('Łączny wynik', 'Total Score')}
             value={`${Math.round(snapshot.score)} ${tr('pkt', 'pts')}`}
           />
-          <SummaryTile label={tr('Pasażerowie', 'Passengers')} value={String(snapshot.passengersCarried)} />
+          {snapshot.nightInspection.active ? (
+            <SummaryTile
+              label={tr('Ekipy serwisowe', 'Track Crews')}
+              value={`${snapshot.nightInspection.passedCount} / ${snapshot.nightInspection.totalCount}`}
+              sub={
+                snapshot.nightInspection.violatedCount > 0
+                  ? tr(
+                      `Naruszenia BHP: ${snapshot.nightInspection.violatedCount}`,
+                      `Safety violations: ${snapshot.nightInspection.violatedCount}`,
+                    )
+                  : tr('Bezpieczna inspekcja', 'Safe inspection')
+              }
+            />
+          ) : (
+            <SummaryTile label={tr('Pasażerowie', 'Passengers')} value={String(snapshot.passengersCarried)} />
+          )}
           <SummaryTile label={tr('Śr. punktualność', 'Avg. Punctuality')} value={punctualityText} />
           <SummaryTile
             label={tr('Obsłużone stacje', 'Stations Served')}

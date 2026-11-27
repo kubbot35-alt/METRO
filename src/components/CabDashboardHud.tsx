@@ -16,6 +16,7 @@ interface ICabDashboardHudProps {
   readonly onToggleDoorsLeft: () => void;
   readonly onToggleDoorsRight: () => void;
   readonly onToggleHeadlights: () => void;
+  readonly onToggleCabLight: () => void;
   readonly onToggleWipers: () => void;
   readonly onToggleAto: () => void;
   readonly onAcknowledgeCzuwak: () => void;
@@ -32,6 +33,7 @@ export function CabDashboardHud({
   onToggleDoorsLeft,
   onToggleDoorsRight,
   onToggleHeadlights,
+  onToggleCabLight,
   onToggleWipers,
   onToggleAto,
   onAcknowledgeCzuwak,
@@ -229,20 +231,24 @@ export function CabDashboardHud({
             <span
               data-testid="platform-side-hint"
               className={`px-1.5 py-0.5 rounded text-[9.5px] font-mono-tabular font-bold uppercase tracking-wide whitespace-nowrap shrink-0 border ${
-                snapshot.challenge?.skipStations
-                  ? 'bg-fuchsia-500/20 border-fuchsia-400/80 text-fuchsia-200'
-                  : currentStation.inStopZone
-                    ? 'bg-emerald-500/25 border-emerald-400 text-emerald-200'
-                    : approachingStation
-                      ? 'bg-amber-500/20 border-amber-400/80 text-amber-200'
-                      : 'bg-slate-800/90 border-slate-700 text-slate-300'
+                snapshot.nightInspection.active
+                  ? 'bg-orange-500/20 border-orange-400/80 text-orange-200'
+                  : snapshot.challenge?.skipStations
+                    ? 'bg-fuchsia-500/20 border-fuchsia-400/80 text-fuchsia-200'
+                    : currentStation.inStopZone
+                      ? 'bg-emerald-500/25 border-emerald-400 text-emerald-200'
+                      : approachingStation
+                        ? 'bg-amber-500/20 border-amber-400/80 text-amber-200'
+                        : 'bg-slate-800/90 border-slate-700 text-slate-300'
               }`}
             >
-              {snapshot.challenge?.skipStations
-                ? `${tr('PRZEJAZD', 'PASS')} ≤ ${snapshot.challenge.stationPassLimitKmh ?? 40}`
-                : isLeftPlatform
-                  ? tr('◀ Peron L [Q]', '◀ Platf. L [Q]')
-                  : tr('Peron P [E] ▶', 'Platf. R [E] ▶')}
+              {snapshot.nightInspection.active
+                ? tr('INSPEKCJA 02:30', 'NIGHT SERVICE')
+                : snapshot.challenge?.skipStations
+                  ? `${tr('PRZEJAZD', 'PASS')} ≤ ${snapshot.challenge.stationPassLimitKmh ?? 40}`
+                  : isLeftPlatform
+                    ? tr('◀ Peron L [Q]', '◀ Platf. L [Q]')
+                    : tr('Peron P [E] ▶', 'Platf. R [E] ▶')}
             </span>
           </div>
 
@@ -382,13 +388,15 @@ export function CabDashboardHud({
             </button>
           </div>
           <span className="text-[10px] text-slate-400 font-mono-tabular">
-            {snapshot.challenge?.skipStations
-              ? tr('Przejazd techniczny — bez postojów', 'Technical run — non-stop')
-              : doorFault.phase === 'resetting'
-                ? `${tr('Reset drzwi', 'Door reset')}: ${doorFault.remainingSec.toFixed(1)} s`
-                : snapshot.gameMode === 'sandbox'
-                  ? tr('Q Lewe · E Prawe · O Auto', 'Q Left · E Right · O Auto')
-                  : tr('0 km/h · Otwórz po stronie peronu', '0 km/h · Open platform side')}
+            {snapshot.nightInspection.active
+              ? tr('Nocny serwis · Ekipy ≤ 20 km/h + [H]', 'Night service · Crews ≤ 20 km/h + [H]')
+              : snapshot.challenge?.skipStations
+                ? tr('Przejazd techniczny — bez postojów', 'Technical run — non-stop')
+                : doorFault.phase === 'resetting'
+                  ? `${tr('Reset drzwi', 'Door reset')}: ${doorFault.remainingSec.toFixed(1)} s`
+                  : snapshot.gameMode === 'sandbox'
+                    ? tr('Q Lewe · E Prawe · O Auto', 'Q Left · E Right · O Auto')
+                    : tr('0 km/h · Otwórz po stronie peronu', '0 km/h · Open platform side')}
           </span>
         </div>
 
@@ -405,6 +413,29 @@ export function CabDashboardHud({
             <div className="flex items-center justify-between text-xs font-mono-tabular gap-2">
               <div className="flex items-center gap-1.5">
                 <span className="text-slate-400 uppercase">{tr('Nastawnik', 'Controller')}</span>
+                <button
+                  type="button"
+                  data-testid="cab-light-toggle"
+                  aria-pressed={snapshot.cabLightOn}
+                  title={tr('Lampka sufitowa w kabinie [K]', 'Cab ceiling light [K]')}
+                  onClick={(e) => {
+                    e.currentTarget.blur();
+                    onToggleCabLight();
+                  }}
+                  className={`px-1.5 py-0.5 rounded text-[9.5px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer flex items-center gap-1 border ${
+                    snapshot.cabLightOn
+                      ? 'bg-amber-400/25 border-amber-300 text-amber-200 hover:bg-amber-400/35'
+                      : 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                      snapshot.cabLightOn ? 'bg-amber-300' : 'bg-slate-600'
+                    }`}
+                    aria-hidden="true"
+                  />
+                  <span>{tr('Kabina [K]', 'Cab [K]')}</span>
+                </button>
                 {snapshot.challenge && snapshot.challenge.tractionMultiplier < 1 && (
                   <span className="px-1 py-0.5 rounded bg-amber-500/20 border border-amber-400/60 text-amber-300 text-[9px] font-bold">
                     {tr('MOC', 'PWR')} {Math.round(snapshot.challenge.tractionMultiplier * 100)}%
@@ -480,21 +511,36 @@ export function CabDashboardHud({
                 data-testid="headlights-toggle"
                 data-academy-highlight={academyHighlight === 'headlights' ? '1' : '0'}
                 aria-pressed={snapshot.headlightsOn}
+                title={tr('Przełącz reflektory: Wył. / Krótkie / Długie [L]', 'Cycle headlights: Off / Low / High [L]')}
                 onClick={(e) => {
                   e.currentTarget.blur();
                   onToggleHeadlights();
                 }}
                 className={`px-1 py-1 rounded text-[10px] font-mono-tabular font-semibold whitespace-nowrap cursor-pointer flex items-center justify-center gap-1 border ${
-                  snapshot.headlightsOn
-                    ? 'bg-amber-500/20 border-amber-400/70 text-amber-200 hover:bg-amber-500/30'
-                    : 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-800'
+                  snapshot.headlightMode === 'high'
+                    ? 'bg-sky-400/30 border-sky-300 text-sky-100 hover:bg-sky-400/40 shadow-[0_0_10px_rgba(56,189,248,0.45)]'
+                    : snapshot.headlightMode === 'low'
+                      ? 'bg-amber-500/20 border-amber-400/70 text-amber-200 hover:bg-amber-500/30'
+                      : 'bg-slate-900 border-slate-700 text-slate-400 hover:bg-slate-800'
                 } ${academyHighlight === 'headlights' ? highlightRing : ''}`}
               >
                 <span
-                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${snapshot.headlightsOn ? 'bg-amber-300' : 'bg-slate-600'}`}
+                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                    snapshot.headlightMode === 'high'
+                      ? 'bg-sky-300'
+                      : snapshot.headlightMode === 'low'
+                        ? 'bg-amber-300'
+                        : 'bg-slate-600'
+                  }`}
                   aria-hidden="true"
                 />
-                <span>{tr('Światła [L]', 'Lights [L]')}</span>
+                <span>
+                  {snapshot.headlightMode === 'high'
+                    ? tr('Długie [L]', 'High [L]')
+                    : snapshot.headlightMode === 'low'
+                      ? tr('Krótkie [L]', 'Low [L]')
+                      : tr('Światła [L]', 'Lights [L]')}
+                </span>
               </button>
               <button
                 type="button"

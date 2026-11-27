@@ -13,7 +13,11 @@ export interface IRadioController {
   setStations(stations: readonly IStationSpec[]): void;
   setEnabled(enabled: boolean): void;
   setAutoTrigger?(enabled: boolean): void;
-  forceTriggerDispatch?(customText?: string, windowSec?: number): boolean;
+  forceTriggerDispatch?(
+    customText?: string,
+    windowSec?: number,
+    category?: RadioDispatchCategory,
+  ): boolean;
   reset(): void;
   step(
     stationIndex: number,
@@ -96,19 +100,23 @@ export class DispatcherRadioSystem implements IRadioController {
     this.autoTrigger = enabled;
   }
 
-  public forceTriggerDispatch(customText?: string, windowSec: number = 15): boolean {
-    if (this.active) {
+  public forceTriggerDispatch(
+    customText?: string,
+    windowSec: number = 15,
+    category: RadioDispatchCategory = 'traffic',
+  ): boolean {
+    if (this.active && category !== 'inspection') {
       return false;
     }
     this.messageId += 1;
-    this.category = 'traffic';
+    this.category = category;
     this.text =
       customText ??
       'Dyspozytor Akademii: Próba łączności radiowej. Potwierdź odbiór przyciskiem [R].';
     this.spokenText = this.text.replace(/^Dyspozytor[^:]*:\s*/, 'Uwaga dyspozytor. ');
     this.stationName = '';
     this.active = true;
-    this.remainingSec = Math.max(6, windowSec);
+    this.remainingSec = Math.max(5.5, windowSec);
     return true;
   }
 

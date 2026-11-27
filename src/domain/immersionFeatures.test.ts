@@ -33,13 +33,19 @@ test('Warsaw Metro M1 route has 12 real stations from Kabaty to Centrum and 24 s
   }
 });
 
-test('headlights default to ON and toggle cleanly via L input', () => {
+test('headlights default to LOW and cycle low -> high -> off -> low via L input', () => {
   const sim = new MetroSimulationEngine(new MetroTrainPhysics(), new MetroScoringRules());
   sim.start();
   assert.equal(sim.getSnapshot().headlightsOn, true);
+  assert.equal(sim.getSnapshot().headlightMode, 'low');
   sim.step(makeInput({ toggleHeadlightsPressed: true }), 0.05);
+  assert.equal(sim.getSnapshot().headlightMode, 'high');
+  assert.equal(sim.getSnapshot().headlightsOn, true);
+  sim.step(makeInput({ toggleHeadlightsPressed: true }), 0.05);
+  assert.equal(sim.getSnapshot().headlightMode, 'off');
   assert.equal(sim.getSnapshot().headlightsOn, false);
   sim.step(makeInput({ toggleHeadlightsPressed: true }), 0.05);
+  assert.equal(sim.getSnapshot().headlightMode, 'low');
   assert.equal(sim.getSnapshot().headlightsOn, true);
 });
 

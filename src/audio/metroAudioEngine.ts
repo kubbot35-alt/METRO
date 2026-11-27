@@ -190,6 +190,22 @@ export class MetroAudioEngine implements IAudioEngine {
     if (events.wiperSweepTick) {
       this.playWiperSwish();
     }
+    if (events.thirdRailSparkCrackle) {
+      this.playElectricSparkCrackle();
+    }
+    if (events.highBeamDimBonusChime) {
+      this.playTone(740, 0.09, 0.11, 'sine', 0.0);
+      this.playTone(987.77, 0.16, 0.12, 'sine', 0.085);
+    }
+    if (events.nightCrewClearedChime) {
+      this.playTone(659.25, 0.1, 0.13, 'triangle', 0.0);
+      this.playTone(880, 0.12, 0.13, 'triangle', 0.09);
+      this.playTone(1174.66, 0.2, 0.14, 'sine', 0.18);
+    }
+    if (events.nightCrewViolationBuzz) {
+      this.playTone(220, 0.18, 0.18, 'sawtooth', 0.0);
+      this.playTone(185, 0.26, 0.18, 'sawtooth', 0.18);
+    }
   }
 
   private playDoorClosingBeeps(): void {
@@ -224,6 +240,13 @@ export class MetroAudioEngine implements IAudioEngine {
     // Gentle damped rubber-on-glass swish + subtle mechanical relay click
     this.playNoiseBurst(0.22, 620, 0.045, 0.0, this.trainGain);
     this.playTone(145, 0.045, 0.025, 'sine', 0.0, this.trainGain);
+  }
+
+  private playElectricSparkCrackle(): void {
+    // Sharp high-voltage third-rail arc crackle + brief 100Hz/3.6kHz snap
+    this.playNoiseBurst(0.045, 4200, 0.13, 0.0, this.trainGain);
+    this.playNoiseBurst(0.06, 2600, 0.09, 0.032, this.trainGain);
+    this.playTone(185, 0.05, 0.065, 'sawtooth', 0.0, this.trainGain);
   }
 
   private playTone(

@@ -9,6 +9,9 @@ export interface IHallMaterials {
   readonly stopStrip: THREE.MeshStandardMaterial;
   readonly stopBoard: THREE.MeshStandardMaterial;
   readonly portalConcrete: THREE.MeshStandardMaterial;
+  readonly emergencyLamp: THREE.MeshStandardMaterial;
+  readonly yellowBeacon: THREE.MeshStandardMaterial;
+  readonly yellowBeaconHalo: THREE.MeshBasicMaterial;
 }
 
 export const ISLAND_HALL_LEFT_WALL_X = -13.2;
@@ -33,7 +36,7 @@ export function buildStationHallShell(
   signMat: THREE.MeshStandardMaterial,
   mats: IHallMaterials,
   disposables: Array<{ dispose(): void }>,
-): void {
+): THREE.Group {
   const leftWallX = layout === 'island' ? ISLAND_HALL_LEFT_WALL_X : SIDE_HALL_LEFT_WALL_X;
   const rightWallX = layout === 'island' ? ISLAND_HALL_RIGHT_WALL_X : SIDE_HALL_RIGHT_WALL_X;
   const spanW = rightWallX - leftWallX;
@@ -73,6 +76,44 @@ export function buildStationHallShell(
 
   addStopZoneVisuals(group, station, layout, mats, disposables);
   addStationWallSigns(group, station, leftWallX, rightWallX, layout, signMat, disposables);
+  const nightGroup = buildNightServiceFixtures(layout, centerZ, mats, disposables);
+  nightGroup.visible = false;
+  group.add(nightGroup);
+  return nightGroup;
+}
+
+function buildNightServiceFixtures(
+  layout: PlatformLayout,
+  centerZ: number,
+  mats: IHallMaterials,
+  disposables: Array<{ dispose(): void }>,
+): THREE.Group {
+  const nightGroup = new THREE.Group();
+  const emergGeo = new THREE.BoxGeometry(0.42, 0.14, 1.8);
+  const poleGeo = new THREE.CylinderGeometry(0.05, 0.08, 1.35, 8);
+  const domeGeo = new THREE.CylinderGeometry(0.11, 0.13, 0.22, 10);
+  const haloGeo = new THREE.SphereGeometry(0.45, 10, 10);
+  disposables.push(emergGeo, poleGeo, domeGeo, haloGeo);
+
+  const lampX = layout === 'island' ? ISLAND_PLATFORM_CENTER_X : SIDE_RIGHT_PLATFORM_CENTER_X - 1.2;
+  [-34, 0, 34].forEach((zOff) => {
+    const lamp = new THREE.Mesh(emergGeo, mats.emergencyLamp);
+    lamp.position.set(lampX, 5.26, centerZ + zOff);
+    nightGroup.add(lamp);
+  });
+
+  const beaconX = layout === 'island' ? -2.35 : 2.35;
+  [-42, 6, 44].forEach((zOff) => {
+    const pole = new THREE.Mesh(poleGeo, mats.column);
+    pole.position.set(beaconX, 1.08 + 0.675, centerZ + zOff);
+    const dome = new THREE.Mesh(domeGeo, mats.yellowBeacon);
+    dome.position.set(beaconX, 1.08 + 1.44, centerZ + zOff);
+    const halo = new THREE.Mesh(haloGeo, mats.yellowBeaconHalo);
+    halo.position.set(beaconX, 1.08 + 1.44, centerZ + zOff);
+    nightGroup.add(pole, dome, halo);
+  });
+
+  return nightGroup;
 }
 
 function addIslandPlatformAndPortals(

@@ -17,6 +17,14 @@ import {
 import { evaluateChallengeOutcome, getChallengeSpec } from './challengeCatalog';
 import { FeedbackTracker, type IFeedbackTracker } from './feedbackTracker';
 import { MetroIncidentSystem, type IIncidentController } from './incidentSystem';
+import {
+  LightingAndSparksSystem,
+  type ILightingAndSparksController,
+} from './lightingAndSparksSystem';
+import {
+  NightInspectionSystem,
+  type INightInspectionController,
+} from './nightInspectionSystem';
 import { DispatcherRadioSystem, type IRadioController } from './radioSystem';
 import { TachographRecorder, type ITachographRecorder } from './tachographSystem';
 import { MetroWeatherSystem, type IWeatherController } from './weatherSystem';
@@ -57,6 +65,7 @@ import type {
   FeedbackTone,
   GameModeId,
   GamePhase,
+  HeadlightMode,
   IAudioEvents,
   ICameraNotice,
   IChallengeOutcome,
@@ -100,6 +109,8 @@ export class MetroSimulationEngine implements IMetroSimulation {
   private readonly academy: IAcademyController;
   private readonly tachograph: ITachographRecorder;
   private readonly ato: IAtoController;
+  private readonly lighting: ILightingAndSparksController;
+  private readonly nightInspection: INightInspectionController;
   private line: IMetroLineSpec = METRO_LINE_M1;
   private stations: readonly IStationSpec[];
   private speedZones: readonly ISpeedLimitZone[];
@@ -141,7 +152,6 @@ export class MetroSimulationEngine implements IMetroSimulation {
   private hornActive = false;
   private atpActive = false;
   private activeCautionLimitKmh: number | null = null;
-  private headlightsOn = true;
   private leverTarget = 0;
   private passengersCarried = 0;
   private currentStationBoardedCount = 0;
@@ -163,6 +173,8 @@ export class MetroSimulationEngine implements IMetroSimulation {
     academy: IAcademyController = new AcademyController(),
     tachograph: ITachographRecorder = new TachographRecorder(),
     ato: IAtoController = new MetroAtoController(),
+    lighting: ILightingAndSparksController = new LightingAndSparksSystem(),
+    nightInspection: INightInspectionController = new NightInspectionSystem(stations),
   ) {
     this.physics = physics;
     this.scoring = scoring;
@@ -179,6 +191,8 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.academy = academy;
     this.tachograph = tachograph;
     this.ato = ato;
+    this.lighting = lighting;
+    this.nightInspection = nightInspection;
     this.traffic.setStations?.(stations);
     this.alignment = getLineTrackAlignment(this.line.id, stations);
     this.physics.setConfig?.(this.trainModel.physics);
@@ -203,6 +217,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.incidents.setStations?.(nextLine.stations);
     this.traffic.setStations?.(nextLine.stations);
     this.radio.setStations(nextLine.stations);
+    this.nightInspection.setStations(nextLine.stations);
     this.announcements.reset();
     this.applyActiveModeOverrides();
   }
@@ -238,6 +253,43 @@ export class MetroSimulationEngine implements IMetroSimulation {
       this.feedback.push('Autopilot ATO wyłączony — przejęto sterowanie ręczne', 0, 'neutral');
     }
     return this.atoEnabled;
+  }
+
+  public cycleHeadlightMode(): HeadlightMode {
+    const result = this.lighting.step({
+      playerPositionM: this.kinematics.positionM,
+      speedKmh: this.kinematics.speedKmh,
+      throttle: this.kinematics.throttle,
+      serviceBrake: this.kinematics.serviceBrake,
+      emergencyBrake: this.kinematics.emergencyBrake,
+      netAccelerationMs2: this.kinematics.netAccelerationMs2,
+      turnoutSwayFactor: 0,
+      oncomingTrain: this.traffic.getState(),
+      toggleHeadlightsPressed: true,
+      toggleCabLightPressed: false,
+      dtSec: 0,
+    });
+    const mode = this.lighting.getState().headlightMode;
+    if (result.dimCourtesyBonusAwarded) {
+      const pts = this.gameMode !== 'sandbox' && this.gameMode !== 'passenger' ? result.courtesyBonusPoints : 0;
+      this.score = Math.max(0, this.score + pts);
+      this.feedback.push('Przygaszono długie przed pociągiem z naprzeciwka', pts, 'success');
+    } else {
+      const label =
+        mode === 'high'
+          ? 'Światła długie (drogowe)'
+          : mode === 'low'
+            ? 'Światła krótkie (mijania)'
+            : 'Reflektory wyłączone';
+      this.feedback.push(label, 0, 'neutral');
+    }
+    return mode;
+  }
+
+  public toggleCabLight(): boolean {
+    const next = this.lighting.toggleCabLight();
+    this.feedback.push(next ? 'Lampka kabiny: WŁ.' : 'Lampka kabiny: WYŁ.', 0, 'neutral');
+    return next;
   }
 
   public setChallenge(challengeId: ChallengeId): void {
@@ -297,7 +349,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
       this.reset();
     }
     if (this.gameMode === 'academy') {
-      this.headlightsOn = false;
+      this.lighting.setHeadlightMode('off');
       this.academy.reset();
     }
     if (this.gameMode === 'passenger') {
@@ -351,7 +403,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.hornActive = false;
     this.atpActive = false;
     this.activeCautionLimitKmh = null;
-    this.headlightsOn = this.gameMode !== 'academy';
+    this.lighting.reset(this.gameMode === 'academy' ? 'off' : 'low');
     this.leverTarget = 0;
     this.cameraMode = this.gameMode === 'passenger' ? 'interior' : 'cab';
     this.atoEnabled = this.gameMode === 'passenger';
@@ -372,6 +424,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.academy.reset();
     this.tachograph.reset();
     this.ato.reset();
+    this.nightInspection.reset();
     this.applyActiveModeOverrides();
   }
 
@@ -386,9 +439,6 @@ export class MetroSimulationEngine implements IMetroSimulation {
     }
     const effectiveInput = this.resolveEffectiveInput(input);
     this.hornActive = effectiveInput.hornActive;
-    if (effectiveInput.toggleHeadlightsPressed) {
-      this.headlightsOn = !this.headlightsOn;
-    }
     this.updateCameraState(Boolean(effectiveInput.cycleCameraPressed), dt);
     this.feedback.tick(dt);
     const prevPosM = this.kinematics.positionM;
@@ -410,6 +460,26 @@ export class MetroSimulationEngine implements IMetroSimulation {
     const incRes = this.evaluateIncidents(Boolean(effectiveInput.acknowledgeCzuwakPressed), dt);
     const radioRes = this.evaluateRadio(Boolean(effectiveInput.acknowledgeRadioPressed), dt);
     const trafficRes = this.traffic.step(this.kinematics.positionM, dt);
+    const postSample = this.alignment.sample(this.kinematics.positionM);
+    const lightRes = this.lighting.step({
+      playerPositionM: this.kinematics.positionM,
+      speedKmh: this.kinematics.speedKmh,
+      throttle: this.kinematics.throttle,
+      serviceBrake: this.kinematics.serviceBrake,
+      emergencyBrake: this.kinematics.emergencyBrake,
+      netAccelerationMs2: this.kinematics.netAccelerationMs2,
+      turnoutSwayFactor: postSample.turnoutSwayFactor,
+      oncomingTrain: this.traffic.getState(),
+      toggleHeadlightsPressed: Boolean(effectiveInput.toggleHeadlightsPressed),
+      toggleCabLightPressed: Boolean(effectiveInput.toggleCabLightPressed),
+      dtSec: dt,
+    });
+    if (lightRes.dimCourtesyBonusAwarded) {
+      const pts = this.isFreeRideMode() ? 0 : lightRes.courtesyBonusPoints;
+      this.score += pts;
+      this.feedback.push('Kultura jazdy: przygaszono długie światła', pts, 'success');
+    }
+    const nightRes = this.evaluateNightInspection();
     const brakeStopHiss = this.checkBrakeStopHiss(prevSpeedKmh);
     const overspeedWarning = this.evaluateOverspeed(dt);
     const prevStationsServed = this.stationsServed;
@@ -418,8 +488,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
     const boardingCompleteChime = this.updateBoarding(dt);
     this.checkStationOvershoot();
     const progress = this.buildStationProgress();
-    const activeChallenge = this.getActiveChallenge();
-    if (!activeChallenge?.skipStations) {
+    if (!this.shouldSkipPassengerStations()) {
       this.announcements.update(
         progress.stationIndex,
         progress.station.name,
@@ -431,13 +500,13 @@ export class MetroSimulationEngine implements IMetroSimulation {
     }
 
     let czuwakAlertTriggered = incRes.czuwakAlertTriggered;
-    let radioDispatchTriggered = radioRes.dispatchTriggered;
+    let radioDispatchTriggered = radioRes.dispatchTriggered || nightRes.radioTriggered;
     let academyStepCompleted = false;
     if (this.gameMode === 'academy') {
       const academyRes = this.academy.step({
         positionM: this.kinematics.positionM,
         speedKmh: this.kinematics.speedKmh,
-        headlightsOn: this.headlightsOn,
+        headlightsOn: this.lighting.getState().headlightMode !== 'off',
         hornActive: this.hornActive,
         redSignalClearedNow: atpTriggered.cleared,
         czuwakActive: this.incidents.getCzuwakState().active,
@@ -507,6 +576,10 @@ export class MetroSimulationEngine implements IMetroSimulation {
       radioAckChime: radioRes.acknowledgedNow,
       wiperSweepTick: weatherRes.wiperSweepTick,
       academyStepCompleted,
+      thirdRailSparkCrackle: lightRes.sparkTriggeredNow,
+      highBeamDimBonusChime: lightRes.dimCourtesyBonusAwarded,
+      nightCrewClearedChime: nightRes.clearedNow,
+      nightCrewViolationBuzz: nightRes.violatedNow,
     };
   }
 
@@ -575,7 +648,11 @@ export class MetroSimulationEngine implements IMetroSimulation {
       signals: this.signals.getSignals(),
       nextSignal: this.buildNextSignalProgress(),
       atpActive: this.atpActive,
-      headlightsOn: this.headlightsOn,
+      headlightsOn: this.lighting.getState().headlightMode !== 'off',
+      headlightMode: this.lighting.getState().headlightMode,
+      cabLightOn: this.lighting.getState().cabLightOn,
+      lightingEffects: this.lighting.getState(),
+      nightInspection: this.nightInspection.getState(),
       leverTarget: this.leverTarget,
       passengersCarried: this.passengersCarried,
       currentStationBoardedCount: this.currentStationBoardedCount,
@@ -628,6 +705,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
       });
       this.radio.setEnabled(true);
       this.radio.setAutoTrigger?.(false);
+      this.nightInspection.setActive(false);
       return;
     }
     const challenge = this.getActiveChallenge();
@@ -635,6 +713,8 @@ export class MetroSimulationEngine implements IMetroSimulation {
       this.timeOfDay = getTimeOfDaySpec(challenge.forceTimeOfDay);
       this.timeOfDayConfigured = true;
     }
+    const isNightService = this.isNightServiceActive();
+    this.nightInspection.setActive(isNightService);
     const redProb = challenge?.redSignalProbability ?? this.timeOfDay.redSignalProbability;
     this.signals.setRedProbability?.(redProb);
     this.traffic.setSpawnIntervalRange?.(
@@ -644,13 +724,61 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.schedule.configure?.(this.timeOfDay.startClockSec, this.timeOfDay.boardingDurationSec);
     this.incidents.setEnabled?.(this.gameMode !== 'sandbox');
     this.incidents.configureOverrides?.({
-      doorFaultProbability: challenge?.doorFaultProbability ?? null,
+      doorFaultProbability: isNightService ? 0 : challenge?.doorFaultProbability ?? null,
       czuwakMinSec: challenge?.czuwakMinSec ?? null,
       czuwakMaxSec: challenge?.czuwakMaxSec ?? null,
-      disableTrackwork: false,
+      disableTrackwork: isNightService,
     });
     this.radio.setEnabled(true);
-    this.radio.setAutoTrigger?.(true);
+    this.radio.setAutoTrigger?.(!isNightService);
+  }
+
+  private isNightServiceActive(): boolean {
+    return this.timeOfDay.id === 'night_service' || this.getActiveChallenge()?.id === 'night_service';
+  }
+
+  private shouldSkipPassengerStations(): boolean {
+    return Boolean(this.getActiveChallenge()?.skipStations) || this.isNightServiceActive();
+  }
+
+  private evaluateNightInspection(): {
+    readonly clearedNow: boolean;
+    readonly violatedNow: boolean;
+    readonly radioTriggered: boolean;
+  } {
+    const res = this.nightInspection.step(
+      this.kinematics.positionM,
+      this.kinematics.speedKmh,
+      this.hornActive,
+    );
+    if (res.clearedCheckpoint) {
+      const pts = this.isFreeRideMode() ? 0 : res.pointsDelta;
+      this.score += pts;
+      this.feedback.push(
+        `Punkt kontrolny #${res.clearedCheckpoint.id} zaliczony — ekipa torowa bezpieczna`,
+        pts,
+        'success',
+      );
+      const radioTriggered = res.radioConfirmText
+        ? Boolean(this.radio.forceTriggerDispatch?.(res.radioConfirmText, 6.5, 'inspection'))
+        : false;
+      return { clearedNow: true, violatedNow: false, radioTriggered };
+    }
+    if (res.violatedCheckpoint) {
+      const reasonText =
+        res.violationReason === 'both'
+          ? 'Przekroczono 20 km/h i brak klaksonu [H]!'
+          : res.violationReason === 'speed'
+            ? 'Przekroczono 20 km/h przy ekipie torowej!'
+            : 'Brak sygnału ostrzegawczego klaksonem [H]!';
+      this.applyPenalty(
+        res.pointsDelta,
+        `BHP Ekipa #${res.violatedCheckpoint.id}: ${reasonText}`,
+        'danger',
+      );
+      return { clearedNow: false, violatedNow: true, radioTriggered: false };
+    }
+    return { clearedNow: false, violatedNow: false, radioTriggered: false };
   }
 
   private isFreeRideMode(): boolean {
@@ -685,11 +813,11 @@ export class MetroSimulationEngine implements IMetroSimulation {
       doorFaultPhase: this.incidents.getDoorFaultState().phase,
       czuwakActive: this.incidents.getCzuwakState().active,
       radioActive: this.radio.getState().active,
-      headlightsOn: this.headlightsOn,
+      headlightsOn: this.lighting.getState().headlightMode !== 'off',
       rainIntensity: weatherState.rainIntensity,
       wipersOn: weatherState.wipersOn,
-      skipStations: Boolean(this.getActiveChallenge()?.skipStations),
-      isEveningOrTunnel: this.timeOfDay.id === 'evening' || trackSample.outdoorBlend < 0.35,
+      skipStations: this.shouldSkipPassengerStations(),
+      isEveningOrTunnel: this.timeOfDay.id !== 'rush' || trackSample.outdoorBlend < 0.35,
     };
     const cmd = this.ato.computeControl(atoCtx);
     this.atoStatus = cmd.status;
@@ -703,6 +831,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
       toggleDoorsLeftPressed: Boolean(input.toggleDoorsLeftPressed) || cmd.toggleDoorsLeft,
       toggleDoorsRightPressed: Boolean(input.toggleDoorsRightPressed) || cmd.toggleDoorsRight,
       toggleHeadlightsPressed: Boolean(input.toggleHeadlightsPressed) || cmd.toggleHeadlights,
+      toggleCabLightPressed: input.toggleCabLightPressed,
       toggleWipersPressed: Boolean(input.toggleWipersPressed) || cmd.toggleWipers,
       acknowledgeCzuwakPressed: Boolean(input.acknowledgeCzuwakPressed) || cmd.acknowledgeCzuwak,
       acknowledgeRadioPressed: Boolean(input.acknowledgeRadioPressed) || cmd.acknowledgeRadio,
@@ -1058,7 +1187,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
   }
 
   private getEffectiveWaitingPassengers(station: IStationSpec): number {
-    if (this.getActiveChallenge()?.skipStations) {
+    if (this.shouldSkipPassengerStations()) {
       return 0;
     }
     if (!this.timeOfDayConfigured) {
@@ -1085,13 +1214,16 @@ export class MetroSimulationEngine implements IMetroSimulation {
     if (!station || this.doorState === 'open') {
       return;
     }
-    const activeChallenge = this.getActiveChallenge();
-    if (activeChallenge?.skipStations) {
+    if (this.shouldSkipPassengerStations()) {
       if (this.kinematics.positionM >= station.distanceM + 18) {
         this.stationsServed += 1;
-        this.score += 100;
+        const pts = this.isFreeRideMode() ? 0 : this.isNightServiceActive() ? 50 : 100;
+        this.score += pts;
         this.recordCurrentStationTelemetry();
-        this.feedback.push(`Przejazd techniczny przez stację ${station.name}`, 100, 'success');
+        const label = this.isNightServiceActive()
+          ? `Inspekcja nocna: minięto stację ${station.name}`
+          : `Przejazd techniczny przez stację ${station.name}`;
+        this.feedback.push(label, pts, 'success');
         this.advanceToNextStation();
       }
       return;
@@ -1112,6 +1244,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
       const challenge = this.getActiveChallenge();
       if (challenge) {
         const sched = this.schedule.getSnapshot(this.stationIndex, this.kinematics.positionM, this.elapsedTimeSec);
+        const nightState = this.nightInspection.getState();
         this.challengeOutcome = evaluateChallengeOutcome({
           challenge,
           stationsServed: this.stationsServed,
@@ -1122,6 +1255,9 @@ export class MetroSimulationEngine implements IMetroSimulation {
           redSignalViolations: this.redSignalViolations,
           overspeedViolations: this.overspeedViolations,
           czuwakViolations: this.czuwakViolations,
+          nightCrewTotal: nightState.totalCount,
+          nightCrewPassed: nightState.passedCount,
+          nightCrewViolated: nightState.violatedCount,
         });
       }
       this.tachograph.recordFinalSample(
@@ -1191,7 +1327,7 @@ export class MetroSimulationEngine implements IMetroSimulation {
   }
 
   private canToggleDoorsNow(progress: IStationProgress): boolean {
-    if (this.getActiveChallenge()?.skipStations) {
+    if (this.shouldSkipPassengerStations()) {
       return false;
     }
     return this.doorState === 'open' || (this.kinematics.speedKmh <= STOPPED_SPEED_KMH && progress.inStopZone);
@@ -1241,6 +1377,10 @@ export class MetroSimulationEngine implements IMetroSimulation {
       radioAckChime: false,
       wiperSweepTick: false,
       academyStepCompleted: false,
+      thirdRailSparkCrackle: false,
+      highBeamDimBonusChime: false,
+      nightCrewClearedChime: false,
+      nightCrewViolationBuzz: false,
     };
   }
 }

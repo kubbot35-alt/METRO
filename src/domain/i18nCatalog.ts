@@ -81,6 +81,14 @@ const CHALLENGE_EN: Record<ChallengeId, ILocalizedChallengeSpec> = {
       'Peak rush hour, frequent red signals, double door-fault chance, and faster Czuwak vigilance checks.',
     objectiveSummary: 'Rush hour · Frequent red signals, door faults & Czuwak',
   },
+  night_service: {
+    title: 'Night Service (Inspection)',
+    shortLabel: '02:30 · Crews ≤20 km/h + Horn',
+    badge: '02:30 SERVICE',
+    description:
+      'Overnight maintenance window with no passengers, dimmed stations with warning beacons, and track crews. Pass every crew at ≤ 20 km/h after sounding the horn [H].',
+    objectiveSummary: '02:30 · No passengers · Track crews: ≤ 20 km/h + Horn [H]',
+  },
 };
 
 const ACHIEVEMENT_EN: Record<AchievementId, ILocalizedTitleDesc> = {
@@ -135,6 +143,10 @@ const ACHIEVEMENT_EN: Record<AchievementId, ILocalizedTitleDesc> = {
   academy_license: {
     title: 'Train Driver License',
     description: 'Complete all 5 steps of the Driver Academy interactive tutorial.',
+  },
+  night_inspector: {
+    title: 'Night Inspector',
+    description: 'Complete a Night Service (02:30) inspection run flawlessly (all crews ≤ 20 km/h + horn, 0 violations).',
   },
 };
 
@@ -292,6 +304,13 @@ export function getLocalizedTimeOfDay(
       name: 'Rush Hour',
       description:
         'Crowded platforms, frequent oncoming trains, higher red-signal risk, and longer boarding (7 s).',
+    };
+  }
+  if (id === 'night_service') {
+    return {
+      name: 'Night Service',
+      description:
+        '02:30 maintenance window: empty dark stations with emergency beacons and track crews (≤ 20 km/h + horn).',
     };
   }
   return {

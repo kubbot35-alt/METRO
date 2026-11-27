@@ -99,6 +99,12 @@ export const ACHIEVEMENT_CATALOG: readonly IAchievementSpec[] = [
     description: 'Ukończ wszystkie 5 etapów szkolenia w Akademii Maszynisty.',
     category: 'milestone',
   },
+  {
+    id: 'night_inspector',
+    title: 'Nocny Inspektor',
+    description: 'Ukończ bezbłędnie kurs Nocny Serwis (02:30), mijając każdą ekipę torową ≤ 20 km/h z klaksonem.',
+    category: 'challenge',
+  },
 ];
 
 export function evaluateUnlockedAchievementIds(
@@ -155,6 +161,14 @@ export function evaluateUnlockedAchievementIds(
     'academy_license',
     snapshot.gameMode === 'academy' && snapshot.academy?.completed === true,
   );
+  const nightRunFlawless =
+    isFinished &&
+    snapshot.nightInspection.active &&
+    snapshot.nightInspection.totalCount > 0 &&
+    snapshot.nightInspection.violatedCount === 0 &&
+    snapshot.nightInspection.passedCount >= snapshot.nightInspection.totalCount &&
+    totalViolations === 0;
+  check('night_inspector', nightRunFlawless);
 
   return newlyUnlocked;
 }

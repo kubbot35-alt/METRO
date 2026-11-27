@@ -38,15 +38,44 @@ export const LATE_EVENING_SPEC: ITimeOfDaySpec = {
   fogDensity: 0.0128,
 };
 
+export const NIGHT_SERVICE_SPEC: ITimeOfDaySpec = {
+  id: 'night_service',
+  name: 'Nocny Serwis',
+  clockLabel: '02:30',
+  description:
+    'Nocna przerwa techniczna: brak pasażerów, przygaszone stacje z kogutami i inspekcja ekip torowych (≤ 20 km/h + klakson).',
+  startClockSec: 2 * 3600 + 30 * 60,
+  boardingDurationSec: 4.0,
+  passengerMultiplier: 0,
+  redSignalProbability: 0.14,
+  trafficSpawnMinSec: 120,
+  trafficSpawnMaxSec: 185,
+  stationLightIntensityA: 11,
+  stationLightIntensityB: 8,
+  ambientLightIntensity: 0.22,
+  stationLightColorHex: 0xf59e0b,
+  fogDensity: 0.0138,
+};
+
 export const TIME_OF_DAY_CATALOG: readonly ITimeOfDaySpec[] = [
   RUSH_HOUR_SPEC,
   LATE_EVENING_SPEC,
+  NIGHT_SERVICE_SPEC,
 ];
 
 export function getTimeOfDaySpec(id: TimeOfDayId): ITimeOfDaySpec {
-  return id === 'evening' ? LATE_EVENING_SPEC : RUSH_HOUR_SPEC;
+  if (id === 'evening') {
+    return LATE_EVENING_SPEC;
+  }
+  if (id === 'night_service') {
+    return NIGHT_SERVICE_SPEC;
+  }
+  return RUSH_HOUR_SPEC;
 }
 
 export function computeEffectivePassengers(baseWaiting: number, multiplier: number): number {
+  if (multiplier <= 0 || baseWaiting <= 0) {
+    return 0;
+  }
   return Math.max(2, Math.round(baseWaiting * multiplier));
 }

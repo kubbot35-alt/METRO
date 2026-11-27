@@ -89,6 +89,19 @@ export function localizeRadioDispatch(
       spokenText: 'Attention from Dispatch. Slippery rails reported ahead, brake earlier.',
     };
   }
+  if (radio.category === 'inspection') {
+    const numMatch = radio.text.match(/#(\d+)/);
+    const num = numMatch ? numMatch[1] : '';
+    const locMatch = radio.text.match(/\(([^)]+)\)/);
+    const locPl = locMatch ? locMatch[1] : '';
+    const locEn = locPl
+      .replace(/^Tunel przed /, 'Tunnel before ')
+      .replace(/^Stacja /, 'Station ');
+    return {
+      displayText: `Dispatcher: Checkpoint #${num}${locEn ? ` (${locEn})` : ''} cleared — track crew safe, continue inspection.`,
+      spokenText: `Dispatch confirmation. Checkpoint ${num} cleared. Track crew safe.`,
+    };
+  }
   return {
     displayText:
       'Dispatcher: Train ahead has a minor delay, proceed with caution to the next semaphore.',
@@ -170,6 +183,13 @@ const FEEDBACK_EXACT_EN: ReadonlyArray<readonly [string, string]> = [
   ['Akademia: Czas czuwaka minął — spróbuj ponownie [C]', 'Academy: Czuwak timed out — try again [C]'],
   ['Ponowne zamykanie drzwi — oczekiwanie 3 s', 'Retrying door close — please wait 3 s'],
   ['Sandbox: wywołano mijankę na sąsiednim torze', 'Sandbox: spawned oncoming train on opposite track'],
+  ['Kultura jazdy: przygaszono długie światła', 'Driving courtesy: dimmed high beams'],
+  ['Przygaszono długie przed pociągiem z naprzeciwka', 'Dimmed high beams for oncoming train'],
+  ['Światła długie (drogowe)', 'High-beam headlights ON'],
+  ['Światła krótkie (mijania)', 'Low-beam headlights ON'],
+  ['Reflektory wyłączone', 'Headlights OFF'],
+  ['Lampka kabiny: WŁ.', 'Cab light: ON'],
+  ['Lampka kabiny: WYŁ.', 'Cab light: OFF'],
 ];
 
 export function localizeFeedbackText(lang: LanguageId, textPl: string): string {
@@ -221,6 +241,22 @@ export function localizeFeedbackText(lang: LanguageId, textPl: string): string {
   }
   if (textPl.startsWith('Przejazd techniczny przez stację ')) {
     return textPl.replace('Przejazd techniczny przez stację ', 'Technical pass through ');
+  }
+  if (textPl.startsWith('Inspekcja nocna: minięto stację ')) {
+    return textPl.replace('Inspekcja nocna: minięto stację ', 'Night inspection: passed station ');
+  }
+  if (textPl.startsWith('Punkt kontrolny #')) {
+    return textPl
+      .replace('Punkt kontrolny #', 'Checkpoint #')
+      .replace(' zaliczony — ekipa torowa bezpieczna', ' cleared — track crew safe')
+      .replace(' zaliczony — ekipa bezpiecznie ominięta', ' cleared — track crew safely passed');
+  }
+  if (textPl.startsWith('BHP Ekipa #')) {
+    return textPl
+      .replace('BHP Ekipa #', 'Safety Crew #')
+      .replace('Przekroczono 20 km/h i brak klaksonu [H]!', 'Exceeded 20 km/h and missed horn [H]!')
+      .replace('Przekroczono 20 km/h przy ekipie torowej!', 'Exceeded 20 km/h near track crew!')
+      .replace('Brak sygnału ostrzegawczego klaksonem [H]!', 'Missing warning horn signal [H]!');
   }
   if (textPl.includes('Idealne zatrzymanie') || textPl.includes('Dobre zatrzymanie') || textPl.includes('Poprawne zatrzymanie')) {
     return textPl

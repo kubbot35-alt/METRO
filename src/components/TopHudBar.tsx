@@ -1,5 +1,6 @@
 import { getLocalizedCameraLabel, getLocalizedChallenge } from '../domain/i18nCatalog';
 import { localizeFeedbackText, localizeRadioDispatch } from '../domain/i18nDynamic';
+import { NIGHT_CREW_MAX_SPEED_KMH } from '../domain/nightInspectionSystem';
 import type { FeedbackTone, IGhostDeltaSnapshot, ISimulationSnapshot } from '../domain/types';
 import { useI18n } from '../i18n/LanguageContext';
 import { GhostDeltaBadge } from './GhostDeltaBadge';
@@ -103,11 +104,32 @@ export function TopHudBar({
           </span>
           <span className="font-mono-tabular text-xs font-semibold text-slate-200 whitespace-nowrap">
             {snapshot.trainModel.name} ·{' '}
-            {snapshot.timeOfDay.id === 'rush' ? tr('Szczyt', 'Rush') : tr('Wieczór', 'Evening')}
+            {snapshot.timeOfDay.id === 'rush'
+              ? tr('Szczyt', 'Rush')
+              : snapshot.timeOfDay.id === 'night_service'
+                ? tr('Nocny Serwis', 'Night Service')
+                : tr('Wieczór', 'Evening')}
           </span>
         </div>
       </div>
       <GhostDeltaBadge delta={ghostDelta} />
+      {snapshot.nightInspection.active && (
+        <div
+          data-testid="night-inspection-progress"
+          className="mt-1.5 px-2.5 py-1 rounded-md border border-orange-400/75 bg-[#221309]/92 text-orange-100 text-[11px] font-mono-tabular font-bold flex items-center gap-2 shadow-lg"
+        >
+          <span className="w-2 h-2 rounded-full bg-orange-400 animate-pulse shrink-0" />
+          <span>
+            {tr('INSPEKCJA 02:30', 'NIGHT INSPECTION')} · {snapshot.nightInspection.passedCount}/
+            {snapshot.nightInspection.totalCount}
+          </span>
+          {snapshot.nightInspection.violatedCount > 0 && (
+            <span className="px-1.5 py-0.5 rounded bg-red-500/25 border border-red-400/60 text-red-200 text-[9.5px]">
+              BHP: -{snapshot.nightInspection.violatedCount}
+            </span>
+          )}
+        </div>
+      )}
       {snapshot.gameMode === 'passenger' && (
         <div
           data-testid="passenger-ato-badge"
@@ -189,6 +211,55 @@ export function TopHudBar({
                 className="h-full bg-cyan-400 transition-transform origin-left"
                 style={{ transform: `scaleX(${Math.max(0, Math.min(1, radio.remainingSec / 6))})` }}
               />
+            </div>
+          </div>
+        )}
+        {snapshot.lightingEffects.dimHighBeamPromptActive && (
+          <div
+            role="alert"
+            data-testid="dim-high-beam-prompt"
+            className="px-3.5 py-1.5 rounded-md border-2 border-sky-300 bg-[#081c2e]/95 text-sky-100 text-xs font-mono-tabular font-bold tracking-wide shadow-2xl flex items-center gap-2 animate-pulse"
+          >
+            <span className="w-2 h-2 rounded-full bg-sky-300 shrink-0" />
+            <span>
+              {tr('Przygaś długie! [L] · Pociąg z naprzeciwka', 'Dim high beams! [L] · Oncoming train')}
+            </span>
+          </div>
+        )}
+        {snapshot.nightInspection.activeApproachCrew && (
+          <div
+            role="alert"
+            data-testid="night-crew-warning"
+            className="w-full max-w-[560px] px-3.5 py-2 rounded-md border-2 border-orange-400 bg-[#231107]/95 text-orange-50 shadow-2xl flex flex-wrap items-center justify-between gap-2 text-xs font-mono-tabular"
+          >
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-orange-400 animate-ping shrink-0" />
+              <span className="font-bold text-orange-200">
+                {tr('EKIPA NA TORACH', 'TRACK CREW AHEAD')} (
+                {Math.max(0, Math.round(snapshot.nightInspection.activeApproachDistanceM ?? 0))} m)
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 text-[11px] font-bold">
+              <span
+                className={`px-2 py-0.5 rounded border ${
+                  snapshot.nightInspection.speedSafeNow
+                    ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200'
+                    : 'bg-red-500/25 border-red-400 text-red-200 animate-pulse'
+                }`}
+              >
+                {snapshot.nightInspection.speedSafeNow ? '✓ ' : '⚠ '}
+                ≤ {NIGHT_CREW_MAX_SPEED_KMH} km/h
+              </span>
+              <span
+                className={`px-2 py-0.5 rounded border ${
+                  snapshot.nightInspection.activeApproachCrew.hornSounded
+                    ? 'bg-emerald-500/20 border-emerald-400 text-emerald-200'
+                    : 'bg-amber-500/25 border-amber-400 text-amber-200 animate-pulse'
+                }`}
+              >
+                {snapshot.nightInspection.activeApproachCrew.hornSounded ? '✓ ' : '● '}
+                {tr('Klakson [H]', 'Horn [H]')}
+              </span>
             </div>
           </div>
         )}

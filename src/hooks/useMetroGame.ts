@@ -130,6 +130,7 @@ export interface IMetroGameController {
   toggleDoorsLeft: () => void;
   toggleDoorsRight: () => void;
   toggleHeadlights: () => void;
+  toggleCabLight: () => void;
   toggleWipers: () => void;
   toggleAto: () => void;
   acknowledgeCzuwak: () => void;
@@ -709,8 +710,16 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
   }, []);
 
   const toggleHeadlights = useCallback((): void => {
-    inputRef.current?.triggerHeadlightsToggle();
-  }, []);
+    audioRef.current?.unlock();
+    simRef.current?.cycleHeadlightMode?.();
+    syncNow();
+  }, [syncNow]);
+
+  const toggleCabLight = useCallback((): void => {
+    audioRef.current?.unlock();
+    simRef.current?.toggleCabLight?.();
+    syncNow();
+  }, [syncNow]);
 
   const toggleWipers = useCallback((): void => {
     inputRef.current?.triggerWipersToggle();
@@ -1044,7 +1053,12 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     let lastScore = 0;
     let lastDoor = simRef.current!.getSnapshot().doorState;
     let lastDoorSide = simRef.current!.getSnapshot().openDoorSide;
-    let lastHeadlights = simRef.current!.getSnapshot().headlightsOn;
+    let lastHeadlightMode = simRef.current!.getSnapshot().headlightMode;
+    let lastCabLightOn = simRef.current!.getSnapshot().cabLightOn;
+    let lastDimPrompt = simRef.current!.getSnapshot().lightingEffects.dimHighBeamPromptActive;
+    let lastNightPassed = simRef.current!.getSnapshot().nightInspection.passedCount;
+    let lastNightViolated = simRef.current!.getSnapshot().nightInspection.violatedCount;
+    let lastNightApproachId = simRef.current!.getSnapshot().nightInspection.activeApproachCrew?.id ?? -1;
     let lastWipersOn = simRef.current!.getSnapshot().weather.wipersOn;
     let lastWheelSlip = simRef.current!.getSnapshot().weather.wheelSlipActive;
     let lastPassengers = 0;
@@ -1153,6 +1167,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         toggleDoorsLeftPressed: false,
         toggleDoorsRightPressed: false,
         toggleHeadlightsPressed: false,
+        toggleCabLightPressed: false,
         toggleWipersPressed: false,
         toggleAtoPressed: false,
         acknowledgeCzuwakPressed: false,
@@ -1182,6 +1197,14 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
           wiperSweepTick: Boolean(latestAudio.wiperSweepTick) || Boolean(nextAudio.wiperSweepTick),
           academyStepCompleted:
             Boolean(latestAudio.academyStepCompleted) || Boolean(nextAudio.academyStepCompleted),
+          thirdRailSparkCrackle:
+            Boolean(latestAudio.thirdRailSparkCrackle) || Boolean(nextAudio.thirdRailSparkCrackle),
+          highBeamDimBonusChime:
+            Boolean(latestAudio.highBeamDimBonusChime) || Boolean(nextAudio.highBeamDimBonusChime),
+          nightCrewClearedChime:
+            Boolean(latestAudio.nightCrewClearedChime) || Boolean(nextAudio.nightCrewClearedChime),
+          nightCrewViolationBuzz:
+            Boolean(latestAudio.nightCrewViolationBuzz) || Boolean(nextAudio.nightCrewViolationBuzz),
         };
         remaining -= subDt;
       }
@@ -1284,12 +1307,18 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
       const camNoticeId = snap.cameraNotice?.id ?? -1;
       const academyStep = snap.academy?.currentStep ?? 0;
       const academyHighlight = snap.academy?.highlightTarget ?? null;
+      const nightApproachId = snap.nightInspection.activeApproachCrew?.id ?? -1;
       const discreteChanged =
         snap.phase !== lastPhase ||
         snap.score !== lastScore ||
         snap.doorState !== lastDoor ||
         snap.openDoorSide !== lastDoorSide ||
-        snap.headlightsOn !== lastHeadlights ||
+        snap.headlightMode !== lastHeadlightMode ||
+        snap.cabLightOn !== lastCabLightOn ||
+        snap.lightingEffects.dimHighBeamPromptActive !== lastDimPrompt ||
+        snap.nightInspection.passedCount !== lastNightPassed ||
+        snap.nightInspection.violatedCount !== lastNightViolated ||
+        nightApproachId !== lastNightApproachId ||
         snap.weather.wipersOn !== lastWipersOn ||
         snap.weather.wheelSlipActive !== lastWheelSlip ||
         snap.passengersCarried !== lastPassengers ||
@@ -1314,7 +1343,12 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
         lastScore = snap.score;
         lastDoor = snap.doorState;
         lastDoorSide = snap.openDoorSide;
-        lastHeadlights = snap.headlightsOn;
+        lastHeadlightMode = snap.headlightMode;
+        lastCabLightOn = snap.cabLightOn;
+        lastDimPrompt = snap.lightingEffects.dimHighBeamPromptActive;
+        lastNightPassed = snap.nightInspection.passedCount;
+        lastNightViolated = snap.nightInspection.violatedCount;
+        lastNightApproachId = nightApproachId;
         lastWipersOn = snap.weather.wipersOn;
         lastWheelSlip = snap.weather.wheelSlipActive;
         lastPassengers = snap.passengersCarried;
@@ -1433,6 +1467,7 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
     toggleDoorsLeft,
     toggleDoorsRight,
     toggleHeadlights,
+    toggleCabLight,
     toggleWipers,
     toggleAto,
     acknowledgeCzuwak,
