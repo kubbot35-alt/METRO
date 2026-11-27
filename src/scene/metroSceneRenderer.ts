@@ -27,6 +27,7 @@ import type {
   TrainModelId,
   WeatherModeId,
 } from '../domain/types';
+import { createAdTexturePool, type IAdTexturePool } from './adTexturePool';
 import { buildMetroCabRig, type ICabRig } from './cabBuilder';
 import { MetroCabMotionController, type ICabMotionController } from './cabMotionController';
 import { LiveMirrorSystem, type ILiveMirrorSystem } from './liveMirrorSystem';
@@ -118,6 +119,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
   private tunnelEffectsRig: ITunnelEffectsRig | null = null;
   private nightCrewRig: INightCrewRig | null = null;
   private turnaroundSidingRig: ITurnaroundSidingRig | null = null;
+  private adTexturePool: IAdTexturePool | null = null;
   private liveMirrorSystem: ILiveMirrorSystem | null = null;
   private readonly raycaster = new THREE.Raycaster();
   private readonly pointerNdc = new THREE.Vector2();
@@ -265,7 +267,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
       this.passengerInteriorRig.group.position.set(frame.x, frame.y, frame.z);
       this.passengerInteriorRig.group.rotation.set(frame.pitch, frame.yaw, state.rollRad * 0.85);
       if (snapshot.cameraMode === 'interior') {
-        this.passengerInteriorRig.update(snapshot, dtSec);
+        this.passengerInteriorRig.update(snapshot, dtSec, this.settings.language);
       }
     }
     this.updateOncomingTrain(snapshot, dtSec);
@@ -276,9 +278,11 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
       this.cabRig.leverPivot.rotation.x = state.leverAngleRad;
     }
     this.cabRig.update?.(snapshot, dtSec);
+    const isNightService = snapshot.timeOfDay.id === 'night_service';
     this.tunnelRig?.updateCulling(posM, DEFAULT_SCENE_CULL_RANGE_M);
     this.stationsRig?.updateCulling(posM, DEFAULT_SCENE_CULL_RANGE_M);
-    this.stationsRig?.setNightServiceMode(snapshot.timeOfDay.id === 'night_service', dtSec);
+    this.stationsRig?.setNightServiceMode(isNightService, dtSec);
+    this.adTexturePool?.update(snapshot.elapsedTimeSec, isNightService, this.settings.language);
     this.passengerRig?.sync(snapshot, dtSec, this.passengerDensity);
     this.trackworkRig?.sync(snapshot.trackworkZones, this.alignment, dtSec);
     this.tunnelEffectsRig?.update(snapshot, this.alignment, dtSec);
@@ -504,6 +508,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.worldResources.forEach((res) => res.dispose());
     this.tunnelRig?.dispose();
     this.stationsRig?.dispose();
+    this.adTexturePool?.dispose();
     this.surfaceDepotRig?.dispose();
     this.rainRig?.dispose();
     this.tunnelEffectsRig?.dispose();
@@ -592,6 +597,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
       tunnelPortalDistanceM: METRO_LINE_M1.tunnelPortalDistanceM,
       alignmentIntensity: METRO_LINE_M1.alignmentIntensity,
     });
+    this.adTexturePool = createAdTexturePool(maxAniso, this.settings.language);
     this.tunnelRig = buildMetroTunnel(scene, this.alignment, LINE_M1_STATIONS, LINE_M1_SPEED_ZONES, maxAniso);
     this.stationsRig = buildMetroStations(
       scene,
@@ -599,6 +605,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
       LINE_M1_STATIONS,
       maxAniso,
       METRO_LINE_M1,
+      this.adTexturePool,
     );
     this.tunnelRig.updateCulling(0, DEFAULT_SCENE_CULL_RANGE_M);
     this.stationsRig.updateCulling(0, DEFAULT_SCENE_CULL_RANGE_M);
@@ -619,7 +626,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.semaphoreRig = buildTunnelSemaphores(scene, this.alignment, initialSignals);
     this.playerTrainRig = buildMetroConsist(scene, SIEMENS_INSPIRO_SPEC.visual, maxAniso);
     this.playerTrainRig.group.visible = false;
-    this.passengerInteriorRig = buildPassengerInteriorRig(scene, maxAniso);
+    this.passengerInteriorRig = buildPassengerInteriorRig(scene, maxAniso, this.adTexturePool);
     this.oncomingTrainRig = buildMetroConsist(scene, SERIA_81_SPEC.visual, maxAniso);
     this.oncomingTrainRig.setLine?.(METRO_LINE_M1.id, METRO_LINE_M1.oppositeDestinationLed);
     this.oncomingTrainRig.group.rotation.order = 'YXZ';
@@ -662,7 +669,14 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.semaphoreRig?.dispose();
 
     this.tunnelRig = buildMetroTunnel(this.scene, this.alignment, stations, line.speedZones, this.maxAniso);
-    this.stationsRig = buildMetroStations(this.scene, this.alignment, stations, this.maxAniso, line);
+    this.stationsRig = buildMetroStations(
+      this.scene,
+      this.alignment,
+      stations,
+      this.maxAniso,
+      line,
+      this.adTexturePool ?? undefined,
+    );
     const posM = snapshot.kinematics.positionM;
     this.tunnelRig.updateCulling(posM, DEFAULT_SCENE_CULL_RANGE_M);
     this.stationsRig.updateCulling(posM, DEFAULT_SCENE_CULL_RANGE_M);

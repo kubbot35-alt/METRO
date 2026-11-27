@@ -3,6 +3,7 @@ import { DEFAULT_SCENE_CULL_RANGE_M, isWithinCullingRange } from '../domain/rout
 import type { TrackAlignment } from '../domain/trackAlignment';
 import { getStationPlatformLayout } from '../domain/trackGeometry';
 import type { IMetroLineSpec, IStationSpec } from '../domain/types';
+import type { IAdTexturePool } from './adTexturePool';
 import {
   createPlatformClockTexture,
   createPlatformTileTexture,
@@ -10,6 +11,10 @@ import {
   createStationWallTexture,
   createStopMarkerTexture,
 } from './proceduralTextures';
+import {
+  addStationAdvertisements,
+  createStationAdsContext,
+} from './stationAdsBuilder';
 import {
   addPlatformFurniture,
   type IStationFurnitureMaterials,
@@ -36,6 +41,7 @@ export function buildMetroStations(
   stations: readonly IStationSpec[],
   maxAnisotropy: number,
   lineSpec?: Pick<IMetroLineSpec, 'id' | 'badgeCode' | 'destinationLed' | 'oppositeDestinationLed' | 'cssColor'>,
+  adPool?: IAdTexturePool,
 ): IMetroStationsRig {
   const disposables: Array<{ dispose(): void }> = [];
   const root = new THREE.Group();
@@ -57,12 +63,15 @@ export function buildMetroStations(
     clockTexPlayer,
     clockTexOpp,
   );
+  const adsCtx = createStationAdsContext();
   disposables.push(
     platformTex,
     stopTex,
     clockTexPlayer,
     clockTexOpp,
     ...Object.values(sharedMats),
+    ...adsCtx.resources.geometries,
+    ...adsCtx.resources.materials,
   );
 
   const stationEntries: IStationEntry[] = [];
@@ -70,8 +79,11 @@ export function buildMetroStations(
   const accentGlowMats: THREE.MeshStandardMaterial[] = [];
   const signMats: THREE.MeshStandardMaterial[] = [];
 
-  stations.forEach((station) => {
+  stations.forEach((station, stationIndex) => {
     const built = createSingleStation(station, alignment, lineBadge, sharedMats, maxAnisotropy, disposables);
+    if (adPool) {
+      addStationAdvertisements(built.group, station, stationIndex, adPool, adsCtx.ctx);
+    }
     root.add(built.group);
     stationEntries.push({ distanceM: station.distanceM, group: built.group, visible: true });
     nightGroups.push(built.nightGroup);

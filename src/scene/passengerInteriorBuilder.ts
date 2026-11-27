@@ -1,10 +1,12 @@
 import * as THREE from 'three';
+import { getDoohSlideIndex, METRO_AD_CAMPAIGNS } from '../domain/metroAdsCatalog';
 import { formatClockTime } from '../domain/scheduleSystem';
-import type { DoorSide, ISimulationSnapshot, TrainVisualTheme } from '../domain/types';
+import type { DoorSide, ISimulationSnapshot, LanguageId, TrainVisualTheme } from '../domain/types';
+import type { IAdTexturePool } from './adTexturePool';
 
 export interface IPassengerInteriorRig {
   readonly group: THREE.Group;
-  update(snapshot: ISimulationSnapshot, dtSec: number): void;
+  update(snapshot: ISimulationSnapshot, dtSec: number, lang?: LanguageId): void;
   dispose(): void;
 }
 
@@ -31,6 +33,7 @@ const COAT_PALETTE = [0x1e3a5f, 0x334155, 0x7c2d12, 0x3f3f46, 0x1e40af, 0x4c1d95
 export function buildPassengerInteriorRig(
   scene: THREE.Scene,
   maxAnisotropy: number,
+  adPool?: IAdTexturePool,
 ): IPassengerInteriorRig {
   const disposables: Array<{ dispose(): void }> = [];
   const group = new THREE.Group();
@@ -43,6 +46,9 @@ export function buildPassengerInteriorRig(
   const led = createOverheadLedDisplay(group, maxAnisotropy, disposables);
 
   buildShellAndWindows(group, mats, disposables);
+  if (adPool) {
+    buildInteriorAdFrames(group, adPool, disposables);
+  }
   const leftDoors = buildSlidingDoors(group, -HALF_W + 0.05, mats, disposables);
   const rightDoors = buildSlidingDoors(group, HALF_W - 0.05, mats, disposables);
   buildSeatsAndHandrails(group, mats, disposables);
@@ -58,7 +64,7 @@ export function buildPassengerInteriorRig(
 
   return {
     group,
-    update: (snapshot, dtSec) => {
+    update: (snapshot, dtSec, lang = 'pl') => {
       walkClock += dtSec;
       const theme = snapshot.trainModel.visual.theme;
       if (appliedTheme !== theme) {
@@ -87,16 +93,30 @@ export function buildPassengerInteriorRig(
 
       const clockStr = formatClockTime(snapshot.schedule.currentClockSec).slice(0, 5);
       const stationName = snapshot.currentStation.station.name;
+      const isEn = lang === 'en';
       const statusText = isTechnical
-        ? 'PRZEJAZD TECHNICZNY'
+        ? isEn
+          ? 'TECHNICAL RUN'
+          : 'PRZEJAZD TECHNICZNY'
         : snapshot.doorState === 'open'
-          ? `STACJA: ${stationName.toUpperCase()}`
-          : `NASTĘPNA: ${stationName.toUpperCase()}`;
+          ? `${isEn ? 'STATION' : 'STACJA'}: ${stationName.toUpperCase()}`
+          : `${isEn ? 'NEXT' : 'NASTĘPNA'}: ${stationName.toUpperCase()}`;
+      const adIdx = getDoohSlideIndex(snapshot.elapsedTimeSec, 1, METRO_AD_CAMPAIGNS.length);
+      const ad = METRO_AD_CAMPAIGNS[adIdx];
+      const adTicker = isEn ? `${ad.titleEn} • ${ad.taglineEn}` : `${ad.titlePl} • ${ad.taglinePl}`;
       const lineBadge = snapshot.line.badgeCode ?? snapshot.line.id;
-      const ledKey = `${theme}|${lineBadge}|${snapshot.line.cssColor}|${statusText}|${clockStr}`;
+      const ledKey = `${theme}|${lineBadge}|${snapshot.line.cssColor}|${statusText}|${clockStr}|${adIdx}|${lang}`;
       if (ledKey !== lastLedKey) {
         lastLedKey = ledKey;
-        led.redraw(lineBadge, snapshot.line.cssColor, statusText, clockStr, theme === 'varsovia');
+        led.redraw(
+          lineBadge,
+          snapshot.line.cssColor,
+          statusText,
+          clockStr,
+          theme === 'varsovia',
+          adTicker,
+          ad.accentHex,
+        );
       }
     },
     dispose: () => {
@@ -428,13 +448,66 @@ function buildSaloonLights(root: THREE.Group): readonly THREE.PointLight[] {
   return [lightA, lightB];
 }
 
+function buildInteriorAdFrames(
+  root: THREE.Group,
+  adPool: IAdTexturePool,
+  disposables: Array<{ dispose(): void }>,
+): void {
+  const frameMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.35, metalness: 0.72 });
+  const stripFrameGeo = new THREE.BoxGeometry(0.03, 0.36, 1.62);
+  const stripPosterGeo = new THREE.PlaneGeometry(1.54, 0.3);
+  const bulkFrameGeo = new THREE.BoxGeometry(0.54, 0.8, 0.03);
+  const bulkPosterGeo = new THREE.PlaneGeometry(0.48, 0.72);
+  disposables.push(frameMat, stripFrameGeo, stripPosterGeo, bulkFrameGeo, bulkPosterGeo);
+
+  const windowZ = [3.9, 9.45, 14.2];
+  ([-1, 1] as const).forEach((sideSign, sideIdx) => {
+    windowZ.forEach((zPos, i) => {
+      const unit = new THREE.Group();
+      unit.position.set(sideSign * (HALF_W - 0.11), CEIL_Y - 0.25, zPos);
+      unit.rotation.z = sideSign * 0.38;
+      unit.add(new THREE.Mesh(stripFrameGeo, frameMat));
+
+      const poster = new THREE.Mesh(
+        stripPosterGeo,
+        adPool.getInteriorPosterMaterial(i * 2 + sideIdx),
+      );
+      poster.position.x = -sideSign * 0.018;
+      poster.rotation.y = sideSign > 0 ? -Math.PI / 2 : Math.PI / 2;
+      unit.add(poster);
+      root.add(unit);
+    });
+  });
+
+  ([-1, 1] as const).forEach((sideSign, idx) => {
+    const bulkUnit = new THREE.Group();
+    bulkUnit.position.set(sideSign * 0.86, FLOOR_Y + 1.24, 2.1);
+    bulkUnit.add(new THREE.Mesh(bulkFrameGeo, frameMat));
+    const poster = new THREE.Mesh(
+      bulkPosterGeo,
+      adPool.getCitylightMaterial(idx + 2),
+    );
+    poster.position.z = 0.018;
+    bulkUnit.add(poster);
+    root.add(bulkUnit);
+  });
+}
+
 function createOverheadLedDisplay(
   root: THREE.Group,
   maxAnisotropy: number,
   disposables: Array<{ dispose(): void }>,
 ): {
   setWidescreenMode: (wide: boolean) => void;
-  redraw: (lineId: string, lineColor: string, statusText: string, clockStr: string, widescreen: boolean) => void;
+  redraw: (
+    lineId: string,
+    lineColor: string,
+    statusText: string,
+    clockStr: string,
+    widescreen: boolean,
+    adTicker?: string,
+    adAccentHex?: string,
+  ) => void;
   dispose: () => void;
 } {
   const canvas = document.createElement('canvas');
@@ -474,7 +547,7 @@ function createOverheadLedDisplay(
       frontGroup.scale.set(sx, sy, 1);
       midGroup.scale.set(sx, sy, 1);
     },
-    redraw: (lineId, lineColor, statusText, clockStr, widescreen) => {
+    redraw: (lineId, lineColor, statusText, clockStr, widescreen, adTicker = '', adAccentHex = '#38bdf8') => {
       ctx.fillStyle = widescreen ? '#09111f' : '#070b12';
       ctx.fillRect(0, 0, 640, 96);
       ctx.fillStyle = lineColor;
@@ -485,27 +558,21 @@ function createOverheadLedDisplay(
       ctx.textBaseline = 'middle';
       ctx.fillText(lineId, 49, 50);
 
-      if (widescreen) {
-        ctx.fillStyle = '#38bdf8';
-        ctx.fillRect(100, 14, 526, 4);
-        ctx.fillStyle = '#f8fafc';
-        ctx.font = 'bold 26px "JetBrains Mono", monospace';
-        ctx.textAlign = 'left';
-        ctx.fillText(statusText.slice(0, 28), 104, 46);
+      ctx.fillStyle = widescreen ? '#f8fafc' : '#fbbf24';
+      ctx.font = 'bold 24px "JetBrains Mono", monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(statusText.slice(0, 24), 102, 36);
 
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = '600 18px "JetBrains Mono", monospace';
-        ctx.fillText(`ŠKODA VARSOVIA · INFO LCD · ${clockStr}`, 104, 75);
-      } else {
-        ctx.fillStyle = '#fbbf24';
-        ctx.font = 'bold 24px "JetBrains Mono", monospace';
-        ctx.textAlign = 'left';
-        ctx.fillText(statusText.slice(0, 26), 104, 40);
+      ctx.fillStyle = '#94a3b8';
+      ctx.font = '700 17px "JetBrains Mono", monospace';
+      ctx.textAlign = 'right';
+      ctx.fillText(clockStr, 624, 36);
 
-        ctx.fillStyle = '#94a3b8';
-        ctx.font = '600 18px "JetBrains Mono", monospace';
-        ctx.fillText(`METRO WARSZAWSKIE · ${clockStr}`, 104, 72);
-      }
+      ctx.fillStyle = adAccentHex;
+      ctx.fillRect(102, 54, 524, 2);
+      ctx.font = '700 16px "JetBrains Mono", monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(adTicker ? `★ ${adTicker.slice(0, 42)}` : `METRO WARSZAWSKIE · ${clockStr}`, 102, 74);
       tex.needsUpdate = true;
     },
     dispose: () => tex.dispose(),
