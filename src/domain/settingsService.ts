@@ -100,16 +100,21 @@ function parseLanguage(value: unknown): LanguageId {
   return DEFAULT_GAME_SETTINGS.language;
 }
 
+export function getDefaultLiveMirrorsForQuality(quality: GraphicsQualityId): boolean {
+  return quality === 'medium' || quality === 'high';
+}
+
 export function sanitizeGameSettings(raw: unknown): IGameSettings {
   if (!raw || typeof raw !== 'object') {
     return { ...DEFAULT_GAME_SETTINGS };
   }
   const obj = raw as Record<string, unknown>;
+  const graphicsQuality = parseGraphicsQuality(obj.graphicsQuality);
   return {
     masterVolume: Math.round(clampNum(obj.masterVolume, 0, 1, DEFAULT_GAME_SETTINGS.masterVolume) * 100) / 100,
     trainVolume: Math.round(clampNum(obj.trainVolume, 0, 1, DEFAULT_GAME_SETTINGS.trainVolume) * 100) / 100,
     voiceVolume: Math.round(clampNum(obj.voiceVolume, 0, 1, DEFAULT_GAME_SETTINGS.voiceVolume) * 100) / 100,
-    graphicsQuality: parseGraphicsQuality(obj.graphicsQuality),
+    graphicsQuality,
     cabFovDeg: Math.round(clampNum(obj.cabFovDeg, 60, 95, DEFAULT_GAME_SETTINGS.cabFovDeg)),
     showFps: typeof obj.showFps === 'boolean' ? obj.showFps : DEFAULT_GAME_SETTINGS.showFps,
     gamepadVibration:
@@ -120,7 +125,7 @@ export function sanitizeGameSettings(raw: unknown): IGameSettings {
     liveMirrorsEnabled:
       typeof obj.liveMirrorsEnabled === 'boolean'
         ? obj.liveMirrorsEnabled
-        : DEFAULT_GAME_SETTINGS.liveMirrorsEnabled,
+        : getDefaultLiveMirrorsForQuality(graphicsQuality),
     language: parseLanguage(obj.language),
   };
 }

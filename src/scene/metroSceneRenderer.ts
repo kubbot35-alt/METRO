@@ -167,7 +167,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     this.surfaceDepotRig?.sync(1, 'rush', 'clear', this.camera.position);
     this.attachResizeObserver(container);
     this.scene.updateMatrixWorld(true);
-    this.renderer.render(this.scene, this.camera);
+    this.render();
   }
 
   public applySettings(settings: IGameSettings): void {
@@ -390,7 +390,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     if (!this.renderer || !this.scene || !this.camera) {
       return null;
     }
-    this.renderer.render(this.scene, this.camera);
+    this.render();
     const glCanvas = this.renderer.domElement;
     const width = Math.max(glCanvas.width, 1);
     const height = Math.max(glCanvas.height, 1);
@@ -439,7 +439,7 @@ export class MetroSceneRenderer implements IMetroSceneRenderer {
     if (!this.renderer || !this.scene || !this.camera) {
       return;
     }
-    if (this.liveMirrorSystem && this.lastSnapshot && this.cabRig && this.playerTrainRig) {
+    if (this.liveMirrorSystem && this.cabRig && this.playerTrainRig) {
       this.liveMirrorSystem.renderIfDue({
         renderer: this.renderer,
         scene: this.scene,

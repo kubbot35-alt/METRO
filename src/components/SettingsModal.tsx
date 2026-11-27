@@ -226,7 +226,14 @@ function GeneralSettingsTab({
                 type="button"
                 data-testid={`select-quality-${preset.id}`}
                 aria-pressed={selected}
-                onClick={() => onUpdate({ graphicsQuality: preset.id as GraphicsQualityId })}
+                onClick={() =>
+                  onUpdate({
+                    graphicsQuality: preset.id as GraphicsQualityId,
+                    ...(preset.id === 'medium' || preset.id === 'high'
+                      ? { liveMirrorsEnabled: true }
+                      : {}),
+                  })
+                }
                 className={`text-left rounded-md border-2 p-2.5 transition-colors cursor-pointer ${
                   selected
                     ? 'border-amber-400 bg-[#221a0f] text-slate-50'

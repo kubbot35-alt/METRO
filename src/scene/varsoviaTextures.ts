@@ -66,6 +66,9 @@ export function createVarsoviaCabScreens(maxAnisotropy: number): IVarsoviaCabScr
   const right = makeScreenCanvas(512, 300, maxAnisotropy);
   let accumSec = 1;
 
+  drawRightSideCamerasScreen(right.ctx, null);
+  right.texture.needsUpdate = true;
+
   return {
     leftScreenTexture: left.texture,
     centerScreenTexture: center.texture,
@@ -78,7 +81,7 @@ export function createVarsoviaCabScreens(maxAnisotropy: number): IVarsoviaCabScr
       accumSec = 0;
       drawLeftSpeedScreen(left.ctx, snapshot);
       drawCenterDiagnosticsScreen(center.ctx, snapshot);
-      drawRightSideCamerasScreen(right.ctx, snapshot);
+      drawRightSideCamerasScreen(right.ctx, snapshot.openDoorSide);
       left.texture.needsUpdate = true;
       center.texture.needsUpdate = true;
       right.texture.needsUpdate = true;
@@ -256,97 +259,68 @@ function drawCenterDiagnosticsScreen(ctx: CanvasRenderingContext2D, s: ISimulati
   ctx.fillText(`PERON: ${platSide} · ${Math.round(s.currentStation.distanceToTargetM)} m`, 34, 270);
 }
 
-function drawRightSideCamerasScreen(ctx: CanvasRenderingContext2D, s: ISimulationSnapshot): void {
-  ctx.fillStyle = '#04080f';
-  ctx.fillRect(0, 0, 512, 300);
+function drawRightSideCamerasScreen(
+  ctx: CanvasRenderingContext2D,
+  openDoorSide: 'left' | 'right' | null,
+): void {
+  // 100% transparent canvas background so 3D RenderTarget planes behind CAM L / CAM P show through
+  ctx.clearRect(0, 0, 512, 300);
 
-  ctx.fillStyle = '#0c1828';
+  // Header strip
+  ctx.fillStyle = 'rgba(12, 24, 40, 0.94)';
   ctx.fillRect(0, 0, 512, 36);
   ctx.fillStyle = '#38bdf8';
   ctx.font = 'bold 16px "JetBrains Mono", monospace';
   ctx.textAlign = 'left';
-  ctx.fillText('KAMERY BOCZNE · CCTV PERON', 16, 23);
+  ctx.fillText('KAMERY BOCZNE • CCTV PERON', 16, 23);
   ctx.fillStyle = '#10b981';
   ctx.textAlign = 'right';
   ctx.fillText('● LIVE HD', 496, 23);
 
-  const inStation = Math.abs(s.currentStation.distanceToTargetM) < 75;
-  const platSide = s.currentStation.station.platformSide;
-
-  drawSingleCameraFeed(
+  drawSingleCameraFeedOverlay(
     ctx,
     14,
     48,
     236,
     236,
     'CAM L',
-    inStation && platSide === 'left',
-    s.openDoorSide === 'left',
-    true,
+    openDoorSide === 'left',
   );
-  drawSingleCameraFeed(
+  drawSingleCameraFeedOverlay(
     ctx,
     262,
     48,
     236,
     236,
     'CAM P',
-    inStation && platSide === 'right',
-    s.openDoorSide === 'right',
-    false,
+    openDoorSide === 'right',
   );
 }
 
-function drawSingleCameraFeed(
+function drawSingleCameraFeedOverlay(
   ctx: CanvasRenderingContext2D,
   x: number,
   y: number,
   w: number,
   h: number,
   label: string,
-  hasPlatform: boolean,
   doorsOpen: boolean,
-  isLeft: boolean,
 ): void {
-  ctx.fillStyle = hasPlatform ? '#1b2638' : '#0b1018';
-  ctx.fillRect(x, y, w, h);
+  // Ensure interior of camera window is 100% transparent
+  ctx.clearRect(x, y, w, h);
 
-  // Perspective train flank
-  ctx.fillStyle = '#cbd5e1';
-  ctx.beginPath();
-  if (isLeft) {
-    ctx.moveTo(x + w, y + 26);
-    ctx.lineTo(x + w - 82, y + 66);
-    ctx.lineTo(x + w - 82, y + h);
-    ctx.lineTo(x + w, y + h);
-  } else {
-    ctx.moveTo(x, y + 26);
-    ctx.lineTo(x + 82, y + 66);
-    ctx.lineTo(x + 82, y + h);
-    ctx.lineTo(x, y + h);
-  }
-  ctx.closePath();
-  ctx.fill();
-
-  // Platform edge + yellow safety stripe if in station
-  if (hasPlatform) {
-    ctx.fillStyle = '#334155';
-    ctx.fillRect(isLeft ? x : x + 84, y + 128, w - 84, h - 128);
-    ctx.fillStyle = '#facc15';
-    ctx.fillRect(isLeft ? x + w - 96 : x + 84, y + 128, 12, h - 128);
-  }
-
-  // Border & overlay labels
-  ctx.strokeStyle = doorsOpen ? '#10b981' : '#334155';
+  // Thin frame around the transparent camera viewport
+  ctx.strokeStyle = doorsOpen ? '#10b981' : '#38bdf8';
   ctx.lineWidth = 2;
   ctx.strokeRect(x, y, w, h);
 
-  ctx.fillStyle = 'rgba(2, 6, 14, 0.78)';
-  ctx.fillRect(x + 6, y + 6, 118, 24);
+  // Compact top-left label badge
+  ctx.fillStyle = 'rgba(2, 6, 14, 0.76)';
+  ctx.fillRect(x + 6, y + 6, 116, 22);
   ctx.fillStyle = doorsOpen ? '#34d399' : '#38bdf8';
-  ctx.font = 'bold 14px "JetBrains Mono", monospace';
+  ctx.font = 'bold 13px "JetBrains Mono", monospace';
   ctx.textAlign = 'left';
-  ctx.fillText(`${label} · ${doorsOpen ? 'OTWARTE' : 'OK'}`, x + 12, y + 23);
+  ctx.fillText(`${label} • ${doorsOpen ? 'OTWARTE' : 'LIVE'}`, x + 11, y + 21);
 }
 
 function drawMetricBox(

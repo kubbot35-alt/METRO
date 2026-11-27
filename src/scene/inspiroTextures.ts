@@ -92,11 +92,11 @@ function drawLedMatrixGrid(ctx: CanvasRenderingContext2D): void {
 export function createInspiroCabScreens(maxAnisotropy: number): IInspiroCabScreens {
   const left = createSurface(512, 320, maxAnisotropy);
   const right = createSurface(512, 320, maxAnisotropy);
-  const monitor = createSurface(256, 160, maxAnisotropy);
+  const monitor = createSurface(512, 300, maxAnisotropy);
   let elapsed = 1;
-  let lastDoorState = '';
+  let lastOpenDoorSide: 'left' | 'right' | null | undefined = undefined;
 
-  drawMonitorScreen(monitor.ctx, false);
+  drawMonitorScreen(monitor.ctx, null);
   monitor.texture.needsUpdate = true;
 
   return {
@@ -105,10 +105,9 @@ export function createInspiroCabScreens(maxAnisotropy: number): IInspiroCabScree
     mirrorMonitorTexture: monitor.texture,
     update: (snapshot: ISimulationSnapshot, dtSec: number): void => {
       elapsed += dtSec;
-      const doorsOpen = snapshot.doorState === 'open';
-      if (snapshot.doorState !== lastDoorState) {
-        lastDoorState = snapshot.doorState;
-        drawMonitorScreen(monitor.ctx, doorsOpen);
+      if (snapshot.openDoorSide !== lastOpenDoorSide) {
+        lastOpenDoorSide = snapshot.openDoorSide;
+        drawMonitorScreen(monitor.ctx, snapshot.openDoorSide);
         monitor.texture.needsUpdate = true;
       }
       if (elapsed < 0.14) {
@@ -286,17 +285,46 @@ function drawStationFooter(ctx: CanvasRenderingContext2D, snapshot: ISimulationS
   ctx.fillText(`${Math.max(0, Math.round(snapshot.currentStation.distanceToTargetM))} m`, 488, 286);
 }
 
-function drawMonitorScreen(ctx: CanvasRenderingContext2D, doorsOpen: boolean): void {
-  ctx.fillStyle = '#0b1220';
-  ctx.fillRect(0, 0, 256, 160);
-  ctx.fillStyle = '#1e293b';
-  ctx.fillRect(10, 28, 120, 118);
-  ctx.fillStyle = '#334155';
-  ctx.fillRect(136, 28, 110, 118);
-  ctx.fillStyle = '#eab308';
-  ctx.fillRect(134, 28, 4, 118);
-  ctx.fillStyle = doorsOpen ? '#10b981' : '#38bdf8';
-  ctx.font = 'bold 14px "JetBrains Mono", monospace';
+function drawMonitorScreen(
+  ctx: CanvasRenderingContext2D,
+  openDoorSide: 'left' | 'right' | null,
+): void {
+  // 100% transparent background so the 3D RenderTarget planes behind CAM L and CAM P show through
+  ctx.clearRect(0, 0, 512, 300);
+
+  ctx.fillStyle = 'rgba(12, 24, 40, 0.94)';
+  ctx.fillRect(0, 0, 512, 36);
+  ctx.fillStyle = '#38bdf8';
+  ctx.font = 'bold 16px "JetBrains Mono", monospace';
   ctx.textAlign = 'left';
-  ctx.fillText(doorsOpen ? 'CCTV PERON · DRZWI OTW.' : 'CCTV PERON · ZAMKN.', 12, 20);
+  ctx.fillText('KAMERY BOCZNE • CCTV PERON', 16, 23);
+  ctx.fillStyle = '#10b981';
+  ctx.textAlign = 'right';
+  ctx.fillText('● LIVE HD', 496, 23);
+
+  drawInspiroCameraWindowOverlay(ctx, 14, 48, 236, 236, 'CAM L', openDoorSide === 'left');
+  drawInspiroCameraWindowOverlay(ctx, 262, 48, 236, 236, 'CAM P', openDoorSide === 'right');
+}
+
+function drawInspiroCameraWindowOverlay(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  label: string,
+  doorsOpen: boolean,
+): void {
+  ctx.clearRect(x, y, w, h);
+
+  ctx.strokeStyle = doorsOpen ? '#10b981' : '#38bdf8';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, w, h);
+
+  ctx.fillStyle = 'rgba(2, 6, 14, 0.76)';
+  ctx.fillRect(x + 6, y + 6, 116, 22);
+  ctx.fillStyle = doorsOpen ? '#34d399' : '#38bdf8';
+  ctx.font = 'bold 13px "JetBrains Mono", monospace';
+  ctx.textAlign = 'left';
+  ctx.fillText(`${label} • ${doorsOpen ? 'OTWARTE' : 'LIVE'}`, x + 11, y + 21);
 }

@@ -1,7 +1,12 @@
 import * as THREE from 'three';
 import type { ISimulationSnapshot } from '../domain/types';
 import { getStationPlatformSide } from '../domain/trackGeometry';
-import { addModernCabCctvMonitors, type ICabMirrorHardware } from './cabMirrorAttachments';
+import {
+  addModernCabCctvMonitors,
+  createDeskCctvMonitorUnit,
+  type ICabMirrorHardware,
+  type IDeskCctvMonitorBinding,
+} from './cabMirrorAttachments';
 import { createInspiroCabScreens } from './inspiroTextures';
 
 export interface IInspiroCabInterior {
@@ -36,8 +41,25 @@ export function buildInspiroCabInterior(maxAnisotropy: number): IInspiroCabInter
     lamps.doorMat, lamps.warnMat, lamps.headlightMat, lamps.czuwakMat,
   );
 
-  const mirrorHardware = addSlopedWindshieldFrame(group, darkPanelMat, aluminumMat, bezelMat, disposables);
-  addSculptedInspiroDesk(group, deskTopMat, darkPanelMat, bezelMat, screens.leftLcdTexture, screens.rightLcdTexture, lamps, disposables);
+  const deskCctvBinding = addSculptedInspiroDesk(
+    group,
+    deskTopMat,
+    darkPanelMat,
+    bezelMat,
+    screens.leftLcdTexture,
+    screens.rightLcdTexture,
+    screens.mirrorMonitorTexture,
+    lamps,
+    disposables,
+  );
+  const mirrorHardware = addSlopedWindshieldFrame(
+    group,
+    darkPanelMat,
+    aluminumMat,
+    bezelMat,
+    disposables,
+    deskCctvBinding,
+  );
   const leverPivot = addErgonomicMasterLever(group, darkPanelMat, aluminumMat, disposables);
   const wiperPivot = addCabWiper(group, disposables);
   addCoolScreenAmbientLight(group);
@@ -83,6 +105,7 @@ function addSlopedWindshieldFrame(
   trimMat: THREE.MeshStandardMaterial,
   bezelMat: THREE.MeshStandardMaterial,
   disposables: Array<{ dispose(): void }>,
+  deskCctvBinding: IDeskCctvMonitorBinding,
 ): ICabMirrorHardware {
   const pillarGeo = new THREE.BoxGeometry(0.11, 1.48, 0.16);
   const leftPillar = new THREE.Mesh(pillarGeo, panelMat);
@@ -117,6 +140,7 @@ function addSlopedWindshieldFrame(
     bezelMat,
     { offsetX: 0.72, posY: 0.36, posZ: -0.94, pitchRad: 0.14, yawRad: 0.3, width: 0.22, height: 0.14 },
     disposables,
+    deskCctvBinding,
   );
 }
 
@@ -127,35 +151,52 @@ function addSculptedInspiroDesk(
   bezelMat: THREE.MeshStandardMaterial,
   leftLcdTex: THREE.CanvasTexture,
   rightLcdTex: THREE.CanvasTexture,
+  cctvOverlayTex: THREE.CanvasTexture,
   lamps: IButtonLamps,
   disposables: Array<{ dispose(): void }>,
-): void {
-  const mainDeckGeo = new THREE.BoxGeometry(2.1, 0.24, 0.56);
+): IDeskCctvMonitorBinding {
+  const mainDeckGeo = new THREE.BoxGeometry(2.14, 0.24, 0.56);
   const mainDeck = new THREE.Mesh(mainDeckGeo, deskMat);
   mainDeck.position.set(0, -0.5, -0.94);
   mainDeck.rotation.x = 0.14;
 
-  const instrumentHoodGeo = new THREE.BoxGeometry(1.06, 0.24, 0.14);
+  const instrumentHoodGeo = new THREE.BoxGeometry(1.32, 0.24, 0.14);
   const instrumentHood = new THREE.Mesh(instrumentHoodGeo, panelMat);
   instrumentHood.position.set(0, -0.34, -1.03);
   instrumentHood.rotation.x = -0.32;
 
-  const hoodLipGeo = new THREE.BoxGeometry(1.08, 0.024, 0.16);
+  const hoodLipGeo = new THREE.BoxGeometry(1.36, 0.024, 0.16);
   const hoodLip = new THREE.Mesh(hoodLipGeo, bezelMat);
   hoodLip.position.set(0, -0.205, -0.99);
   hoodLip.rotation.x = 0.04;
 
   const screenGeo = new THREE.PlaneGeometry(0.37, 0.21);
-  const lcdBezelGeo = new THREE.BoxGeometry(0.4, 0.24, 0.026);
+  const lcdBezelGeo = new THREE.BoxGeometry(0.398, 0.236, 0.024);
   const leftMat = createLcdMaterial(leftLcdTex);
-  const rightMat = createLcdMaterial(rightLcdTex);
+  const centerMat = createLcdMaterial(rightLcdTex);
 
-  const leftLcd = createAngledLcdUnit(screenGeo, lcdBezelGeo, leftMat, bezelMat, -0.225, -0.34, -0.92, 0.07);
-  const rightLcd = createAngledLcdUnit(screenGeo, lcdBezelGeo, rightMat, bezelMat, 0.225, -0.34, -0.92, -0.07);
+  const leftLcd = createAngledLcdUnit(screenGeo, lcdBezelGeo, leftMat, bezelMat, -0.415, -0.34, -0.91, 0.09);
+  const centerLcd = createAngledLcdUnit(screenGeo, lcdBezelGeo, centerMat, bezelMat, 0, -0.34, -0.928, 0);
+  const deskCctvBinding = createDeskCctvMonitorUnit(
+    {
+      screenWidth: 0.37,
+      screenHeight: 0.21,
+      bezelGeo: lcdBezelGeo,
+      bezelMat,
+      overlayTex: cctvOverlayTex,
+      x: 0.415,
+      y: -0.34,
+      z: -0.91,
+      pitchRad: -0.3,
+      yawRad: -0.09,
+    },
+    disposables,
+  );
 
-  group.add(mainDeck, instrumentHood, hoodLip, leftLcd, rightLcd);
+  group.add(mainDeck, instrumentHood, hoodLip, leftLcd, centerLcd, deskCctvBinding.unit);
   addDeskFunctionButtons(group, bezelMat, lamps, disposables);
-  disposables.push(mainDeckGeo, instrumentHoodGeo, hoodLipGeo, screenGeo, lcdBezelGeo, leftMat, rightMat);
+  disposables.push(mainDeckGeo, instrumentHoodGeo, hoodLipGeo, screenGeo, lcdBezelGeo, leftMat, centerMat);
+  return deskCctvBinding;
 }
 
 function createLcdMaterial(tex: THREE.CanvasTexture): THREE.MeshStandardMaterial {
@@ -195,27 +236,27 @@ function addDeskFunctionButtons(
   lamps: IButtonLamps,
   disposables: Array<{ dispose(): void }>,
 ): void {
-  const podGeo = new THREE.BoxGeometry(0.28, 0.06, 0.22);
+  const podGeo = new THREE.BoxGeometry(0.24, 0.06, 0.22);
   const rightPod = new THREE.Mesh(podGeo, bezelMat);
-  rightPod.position.set(0.61, -0.36, -0.88);
+  rightPod.position.set(0.74, -0.365, -0.86);
   rightPod.rotation.set(0.28, -0.22, 0);
 
-  const btnGeo = new THREE.BoxGeometry(0.044, 0.022, 0.044);
+  const btnGeo = new THREE.BoxGeometry(0.038, 0.022, 0.038);
   const btnDoor = new THREE.Mesh(btnGeo, lamps.doorMat);
-  btnDoor.position.set(0.54, -0.325, -0.89);
+  btnDoor.position.set(0.68, -0.33, -0.87);
   const btnHead = new THREE.Mesh(btnGeo, lamps.headlightMat);
-  btnHead.position.set(0.61, -0.325, -0.88);
+  btnHead.position.set(0.74, -0.33, -0.86);
   const btnCzuwak = new THREE.Mesh(btnGeo, lamps.czuwakMat);
-  btnCzuwak.position.set(0.68, -0.325, -0.87);
+  btnCzuwak.position.set(0.8, -0.33, -0.85);
 
-  const estopCollarGeo = new THREE.CylinderGeometry(0.034, 0.038, 0.018, 12);
+  const estopCollarGeo = new THREE.CylinderGeometry(0.032, 0.036, 0.018, 12);
   const estopCollarMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.4 });
   const estopCollar = new THREE.Mesh(estopCollarGeo, estopCollarMat);
-  estopCollar.position.set(0.61, -0.335, -0.81);
+  estopCollar.position.set(0.74, -0.34, -0.79);
 
-  const estopCapGeo = new THREE.CylinderGeometry(0.028, 0.021, 0.026, 12);
+  const estopCapGeo = new THREE.CylinderGeometry(0.026, 0.02, 0.026, 12);
   const estopCap = new THREE.Mesh(estopCapGeo, lamps.warnMat);
-  estopCap.position.set(0.61, -0.312, -0.81);
+  estopCap.position.set(0.74, -0.317, -0.79);
 
   group.add(rightPod, btnDoor, btnHead, btnCzuwak, estopCollar, estopCap);
   disposables.push(podGeo, btnGeo, estopCollarGeo, estopCollarMat, estopCapGeo);
@@ -227,7 +268,7 @@ function addErgonomicMasterLever(
   trimMat: THREE.MeshStandardMaterial,
   disposables: Array<{ dispose(): void }>,
 ): THREE.Group {
-  const baseX = -0.62;
+  const baseX = -0.71;
   const baseY = -0.39;
   const baseZ = -0.84;
 

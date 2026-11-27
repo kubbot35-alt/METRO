@@ -9,7 +9,12 @@ import {
   shouldUpdateMirrorsOnFrame,
 } from './mirrorCctvSystem';
 import { LINE_M1_STATIONS } from './routeData';
-import { DEFAULT_GAME_SETTINGS, SettingsStorageService } from './settingsService';
+import {
+  DEFAULT_GAME_SETTINGS,
+  getDefaultLiveMirrorsForQuality,
+  sanitizeGameSettings,
+  SettingsStorageService,
+} from './settingsService';
 
 test('mirror frame-skip intervals match High (2), Medium (4), Low (0), and disabled toggle (0)', () => {
   assert.equal(getMirrorUpdateInterval('high', true), 2);
@@ -64,7 +69,7 @@ test('resolveStationCameraMode mounts ceiling camera near stations and falls bac
   assert.equal(midTunnel.mode, 'tunnel-roof');
 });
 
-test('SettingsStorageService persists liveMirrorsEnabled toggle and defaults to true', () => {
+test('SettingsStorageService persists liveMirrorsEnabled toggle and defaults to true for Medium and High quality', () => {
   const store = new Map<string, string>();
   const service = new SettingsStorageService({
     getItem: (k) => store.get(k) ?? null,
@@ -73,6 +78,10 @@ test('SettingsStorageService persists liveMirrorsEnabled toggle and defaults to 
     },
   });
 
+  assert.equal(getDefaultLiveMirrorsForQuality('high'), true);
+  assert.equal(getDefaultLiveMirrorsForQuality('medium'), true);
+  assert.equal(sanitizeGameSettings({ graphicsQuality: 'medium' }).liveMirrorsEnabled, true);
+  assert.equal(sanitizeGameSettings({ graphicsQuality: 'high' }).liveMirrorsEnabled, true);
   assert.equal(service.load().liveMirrorsEnabled, true);
   service.save({ ...DEFAULT_GAME_SETTINGS, liveMirrorsEnabled: false, graphicsQuality: 'medium' });
   const loaded = service.load();

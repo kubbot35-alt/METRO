@@ -44,7 +44,102 @@ function createMonitorHeaderTexture(label: string): THREE.CanvasTexture {
 }
 
 function createMirrorGlassMaterial(): THREE.MeshBasicMaterial {
-  return new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: true });
+  return new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+}
+
+export interface IDeskCctvMonitorBinding {
+  readonly unit: THREE.Group;
+  readonly interactiveMeshes: readonly THREE.Mesh[];
+  setMirrorTextures(leftTex: THREE.Texture, rightTex: THREE.Texture): void;
+}
+
+export interface IDeskCctvUnitOptions {
+  readonly screenWidth: number;
+  readonly screenHeight: number;
+  readonly bezelGeo: THREE.BoxGeometry;
+  readonly bezelMat: THREE.MeshStandardMaterial;
+  readonly overlayTex: THREE.CanvasTexture;
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+  readonly pitchRad: number;
+  readonly yawRad: number;
+}
+
+export function createDeskCctvMonitorUnit(
+  options: IDeskCctvUnitOptions,
+  disposables: Array<{ dispose(): void }>,
+): IDeskCctvMonitorBinding {
+  const {
+    screenWidth,
+    screenHeight,
+    bezelGeo,
+    bezelMat,
+    overlayTex,
+    x,
+    y,
+    z,
+    pitchRad,
+    yawRad,
+  } = options;
+
+  const unit = new THREE.Group();
+  unit.name = 'DeskSideCctvMonitorUnit';
+  unit.position.set(x, y, z);
+  unit.rotation.set(pitchRad, yawRad, 0);
+
+  const bezel = new THREE.Mesh(bezelGeo, bezelMat);
+  bezel.position.set(0, 0, -0.002);
+
+  const overlayZ = 0.017;
+  const overlayGeo = new THREE.PlaneGeometry(screenWidth, screenHeight);
+  const overlayMat = new THREE.MeshBasicMaterial({
+    map: overlayTex,
+    transparent: true,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  const overlayMesh = new THREE.Mesh(overlayGeo, overlayMat);
+  overlayMesh.name = 'DeskCctvTransparentOverlay';
+  overlayMesh.position.set(0, 0, overlayZ);
+  overlayMesh.renderOrder = 2;
+
+  // Directly behind the transparent overlay (-0.003 in local Z): two separate PlaneGeometry meshes for CAM L and CAM P
+  const feedWidth = (236 / 512) * screenWidth;
+  const feedHeight = (236 / 300) * screenHeight;
+  const feedOffsetX = (124 / 512) * screenWidth;
+  const feedOffsetY = -(16 / 300) * screenHeight;
+  const camLGeo = createMirroredPlaneGeometry(feedWidth, feedHeight);
+  const camPGeo = createMirroredPlaneGeometry(feedWidth, feedHeight);
+
+  const camLMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+  const camPMat = new THREE.MeshBasicMaterial({ color: 0xffffff, toneMapped: false });
+
+  const camLMesh = new THREE.Mesh(camLGeo, camLMat);
+  camLMesh.name = 'DeskCctvFeed_CAM_L';
+  camLMesh.position.set(-feedOffsetX, feedOffsetY, overlayZ - 0.003);
+  camLMesh.renderOrder = 1;
+  camLMesh.userData.cctvChannel = 'left';
+
+  const camPMesh = new THREE.Mesh(camPGeo, camPMat);
+  camPMesh.name = 'DeskCctvFeed_CAM_P';
+  camPMesh.position.set(feedOffsetX, feedOffsetY, overlayZ - 0.003);
+  camPMesh.renderOrder = 1;
+  camPMesh.userData.cctvChannel = 'right';
+
+  unit.add(bezel, camLMesh, camPMesh, overlayMesh);
+  disposables.push(overlayGeo, overlayMat, camLGeo, camPGeo, camLMat, camPMat);
+
+  return {
+    unit,
+    interactiveMeshes: [camLMesh, camPMesh],
+    setMirrorTextures: (leftTex: THREE.Texture, rightTex: THREE.Texture): void => {
+      camLMat.map = leftTex;
+      camLMat.needsUpdate = true;
+      camPMat.map = rightTex;
+      camPMat.needsUpdate = true;
+    },
+  };
 }
 
 export function addSeria81CabWingMirrors(
@@ -128,6 +223,7 @@ export function addModernCabCctvMonitors(
   bezelMat: THREE.MeshStandardMaterial,
   placement: IModernCctvPlacement,
   disposables: Array<{ dispose(): void }>,
+  deskCctvBinding?: IDeskCctvMonitorBinding,
 ): ICabMirrorHardware {
   const { offsetX, posY, posZ, pitchRad, yawRad, width, height } = placement;
   const bodyGeo = new THREE.BoxGeometry(width + 0.028, height + 0.036, 0.034);
@@ -144,7 +240,9 @@ export function addModernCabCctvMonitors(
   const rightHeaderTex = createMonitorHeaderTexture('CAM P');
   const leftHeaderMat = new THREE.MeshBasicMaterial({ map: leftHeaderTex, toneMapped: false });
   const rightHeaderMat = new THREE.MeshBasicMaterial({ map: rightHeaderTex, toneMapped: false });
-  const interactiveMeshes: THREE.Mesh[] = [];
+  const interactiveMeshes: THREE.Mesh[] = [
+    ...(deskCctvBinding ? deskCctvBinding.interactiveMeshes : []),
+  ];
 
   ([-1, 1] as const).forEach((side) => {
     const channel: DoorSide = side === -1 ? 'left' : 'right';
@@ -180,6 +278,7 @@ export function addModernCabCctvMonitors(
       leftScreenMat.needsUpdate = true;
       rightScreenMat.map = rightTex;
       rightScreenMat.needsUpdate = true;
+      deskCctvBinding?.setMirrorTextures(leftTex, rightTex);
     },
     setActivePlatformSide: (side, highlighted): void => {
       const leftActive = side === 'left';

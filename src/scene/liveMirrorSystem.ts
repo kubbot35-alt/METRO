@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import {
   getMirrorUpdateInterval,
   resolveCctvChannel,
-  shouldUpdateMirrorsOnFrame,
   type ResolvedCctvChannel,
 } from '../domain/mirrorCctvSystem';
 import { getStationPlatformSide } from '../domain/trackGeometry';
@@ -19,7 +18,7 @@ export const MIRROR_RT_HEIGHT = 160;
 export interface IMirrorRenderContext {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene: THREE.Scene;
-  readonly snapshot: ISimulationSnapshot;
+  readonly snapshot: ISimulationSnapshot | null;
   readonly alignment: TrackAlignment;
   readonly cabGroup: THREE.Group;
   readonly playerTrainGroup: THREE.Group;
@@ -96,16 +95,15 @@ export class LiveMirrorSystem implements ILiveMirrorSystem {
   public readonly leftFallbackTexture: THREE.CanvasTexture;
   public readonly rightFallbackTexture: THREE.CanvasTexture;
 
-  private readonly leftTarget: THREE.WebGLRenderTarget;
-  private readonly rightTarget: THREE.WebGLRenderTarget;
+  private readonly leftRT: THREE.WebGLRenderTarget;
+  private readonly rightRT: THREE.WebGLRenderTarget;
   private readonly interiorTarget: THREE.WebGLRenderTarget;
-  private readonly sideCamera: THREE.PerspectiveCamera;
+  private readonly leftCctvCamera: THREE.PerspectiveCamera;
+  private readonly rightCctvCamera: THREE.PerspectiveCamera;
   private readonly interiorCamera: THREE.PerspectiveCamera;
   private readonly pixelBuf = new Uint8Array(MIRROR_RT_WIDTH * MIRROR_RT_HEIGHT * 4);
   private readonly gammaLut = buildSrgbGammaLut();
   private pipImageData: ImageData | null = null;
-  private frameCounter = 0;
-  private forceNextRender = true;
 
   public constructor() {
     const rtOpts: THREE.RenderTargetOptions = {
@@ -114,19 +112,23 @@ export class LiveMirrorSystem implements ILiveMirrorSystem {
       depthBuffer: true,
       stencilBuffer: false,
     };
-    this.leftTarget = new THREE.WebGLRenderTarget(MIRROR_RT_WIDTH, MIRROR_RT_HEIGHT, rtOpts);
-    this.rightTarget = new THREE.WebGLRenderTarget(MIRROR_RT_WIDTH, MIRROR_RT_HEIGHT, rtOpts);
+    this.leftRT = new THREE.WebGLRenderTarget(MIRROR_RT_WIDTH, MIRROR_RT_HEIGHT, rtOpts);
+    this.rightRT = new THREE.WebGLRenderTarget(MIRROR_RT_WIDTH, MIRROR_RT_HEIGHT, rtOpts);
     this.interiorTarget = new THREE.WebGLRenderTarget(MIRROR_RT_WIDTH, MIRROR_RT_HEIGHT, rtOpts);
-    this.leftLiveTexture = this.leftTarget.texture;
-    this.rightLiveTexture = this.rightTarget.texture;
+    this.leftRT.texture.colorSpace = THREE.SRGBColorSpace;
+    this.rightRT.texture.colorSpace = THREE.SRGBColorSpace;
+    this.interiorTarget.texture.colorSpace = THREE.SRGBColorSpace;
+    this.leftLiveTexture = this.leftRT.texture;
+    this.rightLiveTexture = this.rightRT.texture;
     this.leftFallbackTexture = createStaticMirrorFallbackTexture('CAM L');
     this.rightFallbackTexture = createStaticMirrorFallbackTexture('CAM P');
-    this.sideCamera = new THREE.PerspectiveCamera(58, MIRROR_RT_WIDTH / MIRROR_RT_HEIGHT, 0.18, 150);
+    this.leftCctvCamera = new THREE.PerspectiveCamera(58, MIRROR_RT_WIDTH / MIRROR_RT_HEIGHT, 0.15, 160);
+    this.rightCctvCamera = new THREE.PerspectiveCamera(58, MIRROR_RT_WIDTH / MIRROR_RT_HEIGHT, 0.15, 160);
     this.interiorCamera = new THREE.PerspectiveCamera(68, MIRROR_RT_WIDTH / MIRROR_RT_HEIGHT, 0.12, 42);
   }
 
   public markDirty(): void {
-    this.forceNextRender = true;
+    // Kept for interface compatibility; live cameras render every frame when enabled
   }
 
   public renderIfDue(ctx: IMirrorRenderContext): boolean {
@@ -134,25 +136,13 @@ export class LiveMirrorSystem implements ILiveMirrorSystem {
     if (interval <= 0) {
       return false;
     }
-    const needCabMirrors = ctx.snapshot.cameraMode === 'cab';
-    if (!needCabMirrors && !ctx.pipOpen) {
-      return true;
-    }
-    const due =
-      this.forceNextRender ||
-      shouldUpdateMirrorsOnFrame(this.frameCounter, ctx.quality, ctx.liveMirrorsEnabled);
-    this.frameCounter += 1;
-    if (!due) {
-      return true;
-    }
-    this.forceNextRender = false;
     this.executeRenderPasses(ctx);
     return true;
   }
 
   public dispose(): void {
-    this.leftTarget.dispose();
-    this.rightTarget.dispose();
+    this.leftRT.dispose();
+    this.rightRT.dispose();
     this.interiorTarget.dispose();
     this.leftFallbackTexture.dispose();
     this.rightFallbackTexture.dispose();
@@ -165,13 +155,14 @@ export class LiveMirrorSystem implements ILiveMirrorSystem {
     const prevIntVis = ctx.passengerInteriorGroup?.visible ?? false;
     const prevFillIntensity = ctx.cabFillLight?.intensity ?? 0;
     const prevFillDist = ctx.cabFillLight?.distance ?? 2;
-    const prevTarget = renderer.getRenderTarget();
 
-    const posM = snapshot.kinematics.positionM;
-    const platformSide = getStationPlatformSide(snapshot.currentStation.station);
+    const posM = snapshot?.kinematics.positionM ?? 0;
+    const platformSide = snapshot
+      ? getStationPlatformSide(snapshot.currentStation.station)
+      : 'left';
     const resolvedPip: ResolvedCctvChannel = resolveCctvChannel(ctx.pipChannel, platformSide);
 
-    // Side mirror & CCTV camera passes: show exterior consist & doors, hide cab interior
+    // Temporarily hide cab interior & passenger interior, show exterior train consist
     ctx.cabGroup.visible = false;
     if (ctx.passengerInteriorGroup) {
       ctx.passengerInteriorGroup.visible = false;
@@ -182,15 +173,19 @@ export class LiveMirrorSystem implements ILiveMirrorSystem {
       ctx.cabFillLight.distance = 28;
     }
 
-    const needBothSides = snapshot.cameraMode === 'cab';
-    if (needBothSides || (ctx.pipOpen && resolvedPip === 'left')) {
-      this.renderSideCamera(renderer, scene, alignment, posM, -1, this.leftTarget);
-    }
-    if (needBothSides || (ctx.pipOpen && resolvedPip === 'right')) {
-      this.renderSideCamera(renderer, scene, alignment, posM, 1, this.rightTarget);
-    }
+    // Position left and right CCTV cameras outside the train body at x = ±1.85 aimed backward along the platform
+    this.updateSideCctvCameraPose(this.leftCctvCamera, alignment, posM, -1);
+    this.updateSideCctvCameraPose(this.rightCctvCamera, alignment, posM, 1);
 
-    if (ctx.pipOpen && resolvedPip === 'interior' && ctx.passengerInteriorGroup) {
+    renderer.setRenderTarget(this.leftRT);
+    renderer.clear();
+    renderer.render(scene, this.leftCctvCamera);
+
+    renderer.setRenderTarget(this.rightRT);
+    renderer.clear();
+    renderer.render(scene, this.rightCctvCamera);
+
+    if (ctx.pipOpen && resolvedPip === 'interior' && ctx.passengerInteriorGroup && snapshot) {
       ctx.playerTrainGroup.visible = false;
       ctx.passengerInteriorGroup.visible = true;
       ctx.updatePassengerInterior?.(snapshot, ctx.dtSec);
@@ -200,14 +195,14 @@ export class LiveMirrorSystem implements ILiveMirrorSystem {
     if (ctx.pipOpen && ctx.pipCanvas) {
       const targetToRead =
         resolvedPip === 'left'
-          ? this.leftTarget
+          ? this.leftRT
           : resolvedPip === 'right'
-            ? this.rightTarget
+            ? this.rightRT
             : this.interiorTarget;
       this.blitRenderTargetToCanvas(renderer, targetToRead, ctx.pipCanvas, resolvedPip !== 'interior');
     }
 
-    renderer.setRenderTarget(prevTarget);
+    renderer.setRenderTarget(null);
     ctx.cabGroup.visible = prevCabVis;
     ctx.playerTrainGroup.visible = prevTrainVis;
     if (ctx.passengerInteriorGroup) {
@@ -219,20 +214,16 @@ export class LiveMirrorSystem implements ILiveMirrorSystem {
     }
   }
 
-  private renderSideCamera(
-    renderer: THREE.WebGLRenderer,
-    scene: THREE.Scene,
+  private updateSideCctvCameraPose(
+    camera: THREE.PerspectiveCamera,
     alignment: TrackAlignment,
     posM: number,
     sideSign: -1 | 1,
-    target: THREE.WebGLRenderTarget,
   ): void {
-    const camPt = alignment.toWorldPoint(posM + 0.15, sideSign * 1.66, 2.54, false);
-    const lookPt = alignment.toWorldPoint(posM - 25.0, sideSign * 1.94, 1.72, false);
-    this.sideCamera.position.set(camPt.x, camPt.y, camPt.z);
-    this.sideCamera.lookAt(lookPt.x, lookPt.y, lookPt.z);
-    renderer.setRenderTarget(target);
-    renderer.render(scene, this.sideCamera);
+    const camPt = alignment.toWorldPoint(posM + 0.35, sideSign * 1.85, 2.42, false);
+    const lookPt = alignment.toWorldPoint(posM - 24.0, sideSign * 2.52, 1.62, false);
+    camera.position.set(camPt.x, camPt.y, camPt.z);
+    camera.lookAt(lookPt.x, lookPt.y, lookPt.z);
   }
 
   private renderInteriorCamera(
@@ -246,6 +237,7 @@ export class LiveMirrorSystem implements ILiveMirrorSystem {
     this.interiorCamera.position.set(eyePt.x, eyePt.y, eyePt.z);
     this.interiorCamera.lookAt(lookPt.x, lookPt.y, lookPt.z);
     renderer.setRenderTarget(this.interiorTarget);
+    renderer.clear();
     renderer.render(scene, this.interiorCamera);
   }
 

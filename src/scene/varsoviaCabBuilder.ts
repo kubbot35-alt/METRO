@@ -1,7 +1,11 @@
 import * as THREE from 'three';
 import type { ISimulationSnapshot } from '../domain/types';
 import { getStationPlatformSide } from '../domain/trackGeometry';
-import { addModernCabCctvMonitors } from './cabMirrorAttachments';
+import {
+  addModernCabCctvMonitors,
+  createDeskCctvMonitorUnit,
+  type IDeskCctvMonitorBinding,
+} from './cabMirrorAttachments';
 import type { IInspiroCabInterior } from './inspiroCabBuilder';
 import { createVarsoviaCabScreens } from './varsoviaTextures';
 
@@ -36,7 +40,7 @@ export function buildVarsoviaCabInterior(maxAnisotropy: number): IInspiroCabInte
   );
 
   addPanoramicWindshieldFrame(group, matteGraphite, glossyBezel, lamps.ambientLedMat, disposables);
-  addMinimalistThreeScreenDesk(
+  const deskCctvBinding = addMinimalistThreeScreenDesk(
     group,
     deskDeckMat,
     matteGraphite,
@@ -54,6 +58,7 @@ export function buildVarsoviaCabInterior(maxAnisotropy: number): IInspiroCabInte
     glossyBezel,
     { offsetX: 0.74, posY: 0.37, posZ: -0.93, pitchRad: 0.14, yawRad: 0.28, width: 0.225, height: 0.142 },
     disposables,
+    deskCctvBinding,
   );
   addAmbientCabLighting(group);
 
@@ -143,7 +148,7 @@ function addMinimalistThreeScreenDesk(
   centerTex: THREE.CanvasTexture,
   rightTex: THREE.CanvasTexture,
   disposables: Array<{ dispose(): void }>,
-): void {
+): IDeskCctvMonitorBinding {
   const mainDeckGeo = new THREE.BoxGeometry(2.18, 0.22, 0.58);
   const mainDeck = new THREE.Mesh(mainDeckGeo, deskMat);
   mainDeck.position.set(0, -0.5, -0.94);
@@ -163,16 +168,29 @@ function addMinimalistThreeScreenDesk(
   const deskLed = new THREE.Mesh(deskLedGeo, lamps.ambientLedMat);
   deskLed.position.set(0, -0.208, -0.915);
 
-  // 3 wide touchscreen displays side-by-side: Speed | Diagnostics | Side CCTV
+  // 3 wide touchscreen displays side-by-side: Speed | Diagnostics | Side CCTV (transparent overlay + 2 live PlaneGeometries)
   const screenGeo = new THREE.PlaneGeometry(0.39, 0.22);
   const bezelGeo = new THREE.BoxGeometry(0.415, 0.242, 0.022);
   const leftMat = createScreenMat(leftTex);
   const centerMat = createScreenMat(centerTex);
-  const rightMat = createScreenMat(rightTex);
 
   const leftUnit = makeTouchDisplay(screenGeo, bezelGeo, leftMat, bezelMat, -0.43, -0.335, -0.91, 0.11);
   const centerUnit = makeTouchDisplay(screenGeo, bezelGeo, centerMat, bezelMat, 0, -0.335, -0.93, 0);
-  const rightUnit = makeTouchDisplay(screenGeo, bezelGeo, rightMat, bezelMat, 0.43, -0.335, -0.91, -0.11);
+  const rightCctvBinding = createDeskCctvMonitorUnit(
+    {
+      screenWidth: 0.39,
+      screenHeight: 0.22,
+      bezelGeo,
+      bezelMat,
+      overlayTex: rightTex,
+      x: 0.43,
+      y: -0.335,
+      z: -0.91,
+      pitchRad: -0.28,
+      yawRad: -0.11,
+    },
+    disposables,
+  );
 
   // Minimalist right touch control pod & emergency mushroom button
   const btnGeo = new THREE.BoxGeometry(0.042, 0.018, 0.042);
@@ -185,7 +203,7 @@ function addMinimalistThreeScreenDesk(
   const stopCap = new THREE.Mesh(stopCapGeo, lamps.warnMat);
   stopCap.position.set(0.73, -0.352, -0.77);
 
-  group.add(mainDeck, hood, lip, deskLed, leftUnit, centerUnit, rightUnit, btnDoor, btnLight, stopCap);
+  group.add(mainDeck, hood, lip, deskLed, leftUnit, centerUnit, rightCctvBinding.unit, btnDoor, btnLight, stopCap);
   disposables.push(
     mainDeckGeo,
     hoodGeo,
@@ -195,10 +213,10 @@ function addMinimalistThreeScreenDesk(
     bezelGeo,
     leftMat,
     centerMat,
-    rightMat,
     btnGeo,
     stopCapGeo,
   );
+  return rightCctvBinding;
 }
 
 function createScreenMat(tex: THREE.CanvasTexture): THREE.MeshStandardMaterial {
