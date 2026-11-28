@@ -38,29 +38,25 @@ export class StationAnnouncementTracker implements IAnnouncementTracker {
     platformSide?: DoorSide,
   ): void {
     this.tickActive(dtSec);
-    if (
-      stationIndex !== this.announcedArrivalIndex &&
-      distanceToTargetM <= ARRIVAL_TRIGGER_DIST_M &&
-      distanceToTargetM > -15
-    ) {
-      this.announcedArrivalIndex = stationIndex;
-      this.announcedNextIndex = stationIndex;
-      const sideLabel = platformSide === 'right' ? 'Peron po PRAWEJ [E]' : 'Peron po LEWEJ [Q]';
-      const sideSpoken = platformSide === 'right' ? 'Peron po prawej stronie.' : 'Peron po lewej stronie.';
-      const displayText = platformSide ? `Stacja: ${stationName} · ${sideLabel}` : `Stacja: ${stationName}`;
-      const spokenText = platformSide ? `Stacja: ${stationName}. ${sideSpoken}` : `Stacja: ${stationName}`;
-      this.push(displayText, 'arrival', spokenText, stationName, platformSide);
+    if (stationIndex !== this.announcedArrivalIndex && distanceToTargetM <= ARRIVAL_TRIGGER_DIST_M && distanceToTargetM > -15) {
+      this.triggerArrivalAnnouncement(stationIndex, stationName, platformSide);
       return;
     }
-    if (
-      stationIndex !== this.announcedNextIndex &&
-      speedKmh >= DEPARTURE_SPEED_KMH &&
-      distanceToTargetM > ARRIVAL_TRIGGER_DIST_M
-    ) {
+    if (stationIndex !== this.announcedNextIndex && speedKmh >= DEPARTURE_SPEED_KMH && distanceToTargetM > ARRIVAL_TRIGGER_DIST_M) {
       this.announcedNextIndex = stationIndex;
       const text = `Następna stacja: ${stationName}`;
       this.push(text, 'next', text, stationName, platformSide);
     }
+  }
+
+  private triggerArrivalAnnouncement(stationIndex: number, stationName: string, platformSide?: DoorSide): void {
+    this.announcedArrivalIndex = stationIndex;
+    this.announcedNextIndex = stationIndex;
+    const sideLabel = platformSide === 'right' ? 'Peron po PRAWEJ [E]' : 'Peron po LEWEJ [Q]';
+    const sideSpoken = platformSide === 'right' ? 'Peron po prawej stronie.' : 'Peron po lewej stronie.';
+    const displayText = platformSide ? `Stacja: ${stationName} · ${sideLabel}` : `Stacja: ${stationName}`;
+    const spokenText = platformSide ? `Stacja: ${stationName}. ${sideSpoken}` : `Stacja: ${stationName}`;
+    this.push(displayText, 'arrival', spokenText, stationName, platformSide);
   }
 
   public getCurrent(): IAnnouncementState | null {

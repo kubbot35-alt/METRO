@@ -28,132 +28,113 @@ interface ICanvasTexEntry {
   readonly campaign: IAdCampaignSpec;
 }
 
-export function createAdTexturePool(
-  maxAniso: number,
-  initialLang: LanguageId = 'pl',
-): IAdTexturePool {
-  const landscapeEntries = METRO_AD_CAMPAIGNS.map((ad) =>
-    createCanvasEntry(512, 256, ad, maxAniso, initialLang, paintLandscapeAdCanvas),
-  );
-  const portraitEntries = METRO_AD_CAMPAIGNS.map((ad) =>
-    createCanvasEntry(256, 384, ad, maxAniso, initialLang, paintPortraitCitylightCanvas),
-  );
-  const interiorEntries = METRO_AD_CAMPAIGNS.map((ad) =>
-    createCanvasEntry(512, 128, ad, maxAniso, initialLang, paintInteriorStripAdCanvas),
-  );
+type AdCanvasPainter = (
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  ad: IAdCampaignSpec,
+  language: LanguageId,
+) => void;
 
-  const bannerMaterials = landscapeEntries.map((e) => createBacklitMaterial(e.texture, 0.65, 0.25));
-  const citylightMaterials = portraitEntries.map((e) => createBacklitMaterial(e.texture, 0.72, 0.2));
-  const interiorMaterials = interiorEntries.map((e) => createBacklitMaterial(e.texture, 0.36, 0.35));
+class AdTexturePool implements IAdTexturePool {
+  public readonly campaignCount = METRO_AD_CAMPAIGNS.length;
+  private readonly landscapeEntries: ICanvasTexEntry[];
+  private readonly portraitEntries: ICanvasTexEntry[];
+  private readonly interiorEntries: ICanvasTexEntry[];
+  private readonly bannerMaterials: THREE.MeshStandardMaterial[];
+  private readonly citylightMaterials: THREE.MeshStandardMaterial[];
+  private readonly interiorMaterials: THREE.MeshStandardMaterial[];
+  private readonly doohSlideIndices: number[];
+  private readonly doohMaterials: THREE.MeshStandardMaterial[];
+  private currentLang: LanguageId;
+  private isNightOff = false;
 
-  const doohSlideIndices = Array.from({ length: DOOH_SLOT_COUNT }, (_, slot) =>
-    getDoohSlideIndex(0, slot, landscapeEntries.length),
-  );
-  const doohMaterials = doohSlideIndices.map((idx) =>
-    createBacklitMaterial(landscapeEntries[idx].texture, 0.92, 0.14),
-  );
+  public constructor(maxAniso: number, initialLang: LanguageId = 'pl') {
+    this.currentLang = initialLang;
+    this.landscapeEntries = METRO_AD_CAMPAIGNS.map((ad) => createCanvasEntry(512, 256, ad, maxAniso, initialLang, paintLandscapeAdCanvas));
+    this.portraitEntries = METRO_AD_CAMPAIGNS.map((ad) => createCanvasEntry(256, 384, ad, maxAniso, initialLang, paintPortraitCitylightCanvas));
+    this.interiorEntries = METRO_AD_CAMPAIGNS.map((ad) => createCanvasEntry(512, 128, ad, maxAniso, initialLang, paintInteriorStripAdCanvas));
+    this.bannerMaterials = this.landscapeEntries.map((e) => createBacklitMaterial(e.texture, 0.65, 0.25));
+    this.citylightMaterials = this.portraitEntries.map((e) => createBacklitMaterial(e.texture, 0.72, 0.2));
+    this.interiorMaterials = this.interiorEntries.map((e) => createBacklitMaterial(e.texture, 0.36, 0.35));
+    this.doohSlideIndices = Array.from({ length: DOOH_SLOT_COUNT }, (_, slot) => getDoohSlideIndex(0, slot, this.landscapeEntries.length));
+    this.doohMaterials = this.doohSlideIndices.map((idx) => createBacklitMaterial(this.landscapeEntries[idx].texture, 0.92, 0.14));
+  }
 
-  let currentLang: LanguageId = initialLang;
-  let isNightOff = false;
+  public getBannerMaterial(idx: number): THREE.MeshStandardMaterial {
+    return this.bannerMaterials[Math.abs(idx) % this.bannerMaterials.length];
+  }
 
-  const applyLanguage = (lang: LanguageId): void => {
-    currentLang = lang;
-    redrawEntries(landscapeEntries, lang, paintLandscapeAdCanvas);
-    redrawEntries(portraitEntries, lang, paintPortraitCitylightCanvas);
-    redrawEntries(interiorEntries, lang, paintInteriorStripAdCanvas);
-  };
+  public getCitylightMaterial(idx: number): THREE.MeshStandardMaterial {
+    return this.citylightMaterials[Math.abs(idx) % this.citylightMaterials.length];
+  }
 
-  const applyNightMode = (nightActive: boolean): void => {
-    isNightOff = nightActive;
-    setMaterialGroupNightState(bannerMaterials, nightActive, 0.65, 0x242b38);
-    setMaterialGroupNightState(citylightMaterials, nightActive, 0.72, 0x1e2530);
-    setMaterialGroupNightState(doohMaterials, nightActive, 0.92, 0x090c12);
-  };
+  public getDoohMaterial(slot: number): THREE.MeshStandardMaterial {
+    return this.doohMaterials[Math.abs(slot) % this.doohMaterials.length];
+  }
 
-  const rotateDoohSlots = (elapsedSec: number): void => {
+  public getInteriorPosterMaterial(idx: number): THREE.MeshStandardMaterial {
+    return this.interiorMaterials[Math.abs(idx) % this.interiorMaterials.length];
+  }
+
+  public update(elapsedSec: number, nightServiceActive: boolean, lang: LanguageId): void {
+    if (lang !== this.currentLang) this.applyLanguage(lang);
+    if (nightServiceActive !== this.isNightOff) this.applyNightMode(nightServiceActive);
+    if (!nightServiceActive) this.rotateDoohSlots(elapsedSec);
+  }
+
+  public dispose(): void {
+    [...this.landscapeEntries, ...this.portraitEntries, ...this.interiorEntries].forEach((e) => e.texture.dispose());
+    [...this.bannerMaterials, ...this.citylightMaterials, ...this.interiorMaterials, ...this.doohMaterials].forEach((m) => m.dispose());
+  }
+
+  private applyLanguage(lang: LanguageId): void {
+    this.currentLang = lang;
+    redrawEntries(this.landscapeEntries, lang, paintLandscapeAdCanvas);
+    redrawEntries(this.portraitEntries, lang, paintPortraitCitylightCanvas);
+    redrawEntries(this.interiorEntries, lang, paintInteriorStripAdCanvas);
+  }
+
+  private applyNightMode(nightActive: boolean): void {
+    this.isNightOff = nightActive;
+    setMaterialGroupNightState(this.bannerMaterials, nightActive, 0.65, 0x242b38);
+    setMaterialGroupNightState(this.citylightMaterials, nightActive, 0.72, 0x1e2530);
+    setMaterialGroupNightState(this.doohMaterials, nightActive, 0.92, 0x090c12);
+  }
+
+  private rotateDoohSlots(elapsedSec: number): void {
     for (let slot = 0; slot < DOOH_SLOT_COUNT; slot += 1) {
-      const nextIdx = getDoohSlideIndex(elapsedSec, slot, landscapeEntries.length);
-      if (doohSlideIndices[slot] !== nextIdx) {
-        doohSlideIndices[slot] = nextIdx;
-        const tex = landscapeEntries[nextIdx].texture;
-        doohMaterials[slot].map = tex;
-        doohMaterials[slot].emissiveMap = tex;
-        doohMaterials[slot].needsUpdate = true;
+      const nextIdx = getDoohSlideIndex(elapsedSec, slot, this.landscapeEntries.length);
+      if (this.doohSlideIndices[slot] !== nextIdx) {
+        this.doohSlideIndices[slot] = nextIdx;
+        const tex = this.landscapeEntries[nextIdx].texture;
+        this.doohMaterials[slot].map = tex;
+        this.doohMaterials[slot].emissiveMap = tex;
+        this.doohMaterials[slot].needsUpdate = true;
       }
     }
-  };
+  }
+}
 
-  return {
-    campaignCount: METRO_AD_CAMPAIGNS.length,
-    getBannerMaterial: (idx: number) =>
-      bannerMaterials[Math.abs(idx) % bannerMaterials.length],
-    getCitylightMaterial: (idx: number) =>
-      citylightMaterials[Math.abs(idx) % citylightMaterials.length],
-    getDoohMaterial: (slot: number) =>
-      doohMaterials[Math.abs(slot) % doohMaterials.length],
-    getInteriorPosterMaterial: (idx: number) =>
-      interiorMaterials[Math.abs(idx) % interiorMaterials.length],
-    update: (elapsedSec: number, nightServiceActive: boolean, lang: LanguageId): void => {
-      if (lang !== currentLang) {
-        applyLanguage(lang);
-      }
-      if (nightServiceActive !== isNightOff) {
-        applyNightMode(nightServiceActive);
-      }
-      if (!nightServiceActive) {
-        rotateDoohSlots(elapsedSec);
-      }
-    },
-    dispose: (): void => {
-      landscapeEntries.forEach((e) => e.texture.dispose());
-      portraitEntries.forEach((e) => e.texture.dispose());
-      interiorEntries.forEach((e) => e.texture.dispose());
-      bannerMaterials.forEach((m) => m.dispose());
-      citylightMaterials.forEach((m) => m.dispose());
-      interiorMaterials.forEach((m) => m.dispose());
-      doohMaterials.forEach((m) => m.dispose());
-    },
-  };
+export function createAdTexturePool(maxAniso: number, initialLang: LanguageId = 'pl'): IAdTexturePool {
+  return new AdTexturePool(maxAniso, initialLang);
 }
 
 function createCanvasEntry(
-  w: number,
-  h: number,
-  campaign: IAdCampaignSpec,
-  maxAniso: number,
-  lang: LanguageId,
-  painter: (
-    ctx: CanvasRenderingContext2D,
-    width: number,
-    height: number,
-    ad: IAdCampaignSpec,
-    language: LanguageId,
-  ) => void,
+  w: number, h: number, campaign: IAdCampaignSpec, maxAniso: number, lang: LanguageId, painter: AdCanvasPainter,
 ): ICanvasTexEntry {
   const canvas = document.createElement('canvas');
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d');
-  if (ctx) {
-    painter(ctx, w, h, campaign, lang);
-  }
+  if (ctx) painter(ctx, w, h, campaign, lang);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   texture.anisotropy = Math.min(4, Math.max(1, maxAniso));
   return { canvas, texture, campaign };
 }
 
-function redrawEntries(
-  entries: readonly ICanvasTexEntry[],
-  lang: LanguageId,
-  painter: (
-    ctx: CanvasRenderingContext2D,
-    width: number,
-    height: number,
-    ad: IAdCampaignSpec,
-    language: LanguageId,
-  ) => void,
-): void {
+function redrawEntries(entries: readonly ICanvasTexEntry[], lang: LanguageId, painter: AdCanvasPainter): void {
   for (const entry of entries) {
     const ctx = entry.canvas.getContext('2d');
     if (ctx) {

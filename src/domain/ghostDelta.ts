@@ -1,15 +1,16 @@
-import type {
-  IGhostDeltaSnapshot,
-  IGhostStationSplit,
-  ILineGhostRecord,
-  ISimulationSnapshot,
-  MetroLineId,
-} from './types';
+import {
+  computeGhostDelta,
+  formatGhostScoreDelta,
+  formatGhostTimeDelta,
+} from './ghostDeltaMath';
+import {
+  JsonStorageRepository,
+  type IJsonRepository,
+  type IKeyValueStorage,
+} from './persistence/jsonStorageRepository';
+import type { IGhostStationSplit, ILineGhostRecord, ISimulationSnapshot, MetroLineId } from './types';
 
-export interface IGhostStorage {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
+export type IGhostStorage = IKeyValueStorage;
 
 export interface IGhostRecordService {
   getRecordForLine(lineId: MetroLineId): ILineGhostRecord | null;
@@ -21,6 +22,7 @@ export interface IGhostRecordService {
 }
 
 export const GHOST_RECORDS_STORAGE_KEY = 'warsaw_metro_ghost_records_v1';
+export { computeGhostDelta, formatGhostScoreDelta, formatGhostTimeDelta };
 
 function isValidSplit(raw: unknown): raw is IGhostStationSplit {
   if (!raw || typeof raw !== 'object') {
@@ -55,168 +57,84 @@ function isValidGhostRecord(raw: unknown): raw is ILineGhostRecord {
   );
 }
 
-export function computeGhostDelta(
-  currentSplits: readonly IGhostStationSplit[],
-  ghostRecord: ILineGhostRecord | null,
-): IGhostDeltaSnapshot | null {
-  if (!ghostRecord) {
-    return null;
+function sanitizeGhostMap(raw: unknown): Record<string, ILineGhostRecord> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
+    return {};
   }
-  if (currentSplits.length === 0) {
-    return {
-      lineId: ghostRecord.lineId,
-      ghostBestScore: Math.round(ghostRecord.finalScore),
-      ghostTotalTimeSec: Math.round(ghostRecord.totalTimeSec),
-      hasSplitComparison: false,
-      lastStationCode: null,
-      scoreDelta: 0,
-      timeDeltaSec: 0,
-      isScoreAhead: true,
-      isTimeAhead: true,
-    };
+  const clean: Record<string, ILineGhostRecord> = {};
+  for (const [key, val] of Object.entries(raw as Record<string, unknown>)) {
+    if (isValidGhostRecord(val)) {
+      clean[key] = val;
+    }
   }
-  const latestSplit = currentSplits[currentSplits.length - 1];
-  const ghostSplit = ghostRecord.splits.find((s) => s.stationIndex === latestSplit.stationIndex);
-  if (!ghostSplit) {
-    return {
-      lineId: ghostRecord.lineId,
-      ghostBestScore: Math.round(ghostRecord.finalScore),
-      ghostTotalTimeSec: Math.round(ghostRecord.totalTimeSec),
-      hasSplitComparison: false,
-      lastStationCode: latestSplit.stationCode,
-      scoreDelta: 0,
-      timeDeltaSec: 0,
-      isScoreAhead: true,
-      isTimeAhead: true,
-    };
-  }
+  return clean;
+}
 
-  const scoreDelta = Math.round(latestSplit.score - ghostSplit.score);
-  const timeDeltaSec = Math.round(latestSplit.elapsedTimeSec - ghostSplit.elapsedTimeSec);
+function isRecordEligible(snapshot: ISimulationSnapshot): boolean {
+  return (
+    snapshot.gameMode !== 'sandbox' &&
+    snapshot.gameMode !== 'academy' &&
+    snapshot.gameMode !== 'passenger' &&
+    !snapshot.atoEnabled &&
+    snapshot.stationSplits.length > 0
+  );
+}
+
+function buildGhostRecord(snapshot: ISimulationSnapshot): ILineGhostRecord {
   return {
-    lineId: ghostRecord.lineId,
-    ghostBestScore: Math.round(ghostRecord.finalScore),
-    ghostTotalTimeSec: Math.round(ghostRecord.totalTimeSec),
-    hasSplitComparison: true,
-    lastStationCode: latestSplit.stationCode,
-    scoreDelta,
-    timeDeltaSec,
-    isScoreAhead: scoreDelta >= 0,
-    isTimeAhead: timeDeltaSec <= 0,
+    lineId: snapshot.line.id,
+    finalScore: Math.round(snapshot.score),
+    totalTimeSec: Number(snapshot.elapsedTimeSec.toFixed(1)),
+    recordedAtIso: new Date().toISOString(),
+    splits: snapshot.stationSplits.map((s) => ({
+      stationIndex: s.stationIndex,
+      stationCode: s.stationCode,
+      elapsedTimeSec: Number(s.elapsedTimeSec.toFixed(1)),
+      score: Math.round(s.score),
+    })),
   };
 }
 
-export function formatGhostScoreDelta(delta: number): string {
-  const rounded = Math.round(delta);
-  return rounded >= 0 ? `+${rounded} pkt` : `${rounded} pkt`;
-}
-
-export function formatGhostTimeDelta(deltaSec: number): string {
-  const rounded = Math.round(deltaSec);
-  if (rounded === 0) {
-    return '0s';
-  }
-  return rounded > 0 ? `+${rounded}s` : `${rounded}s`;
-}
-
 export class GhostRecordStorageService implements IGhostRecordService {
-  private readonly storage: IGhostStorage | null;
+  private readonly repo: IJsonRepository<Record<string, ILineGhostRecord>>;
 
   public constructor(storage?: IGhostStorage | null) {
-    if (storage !== undefined) {
-      this.storage = storage;
-    } else if (typeof window !== 'undefined' && window.localStorage) {
-      this.storage = window.localStorage;
-    } else {
-      this.storage = null;
-    }
+    this.repo = new JsonStorageRepository<Record<string, ILineGhostRecord>>(
+      GHOST_RECORDS_STORAGE_KEY,
+      () => ({}),
+      sanitizeGhostMap,
+      storage,
+    );
   }
 
   public getRecordForLine(lineId: MetroLineId): ILineGhostRecord | null {
-    const all = this.loadMap();
-    return all[lineId] ?? null;
+    return this.repo.load()[lineId] ?? null;
   }
 
   public recordIfBest(snapshot: ISimulationSnapshot): {
     readonly updated: boolean;
     readonly record: ILineGhostRecord | null;
   } {
-    if (
-      snapshot.gameMode === 'sandbox' ||
-      snapshot.gameMode === 'academy' ||
-      snapshot.gameMode === 'passenger' ||
-      snapshot.atoEnabled ||
-      snapshot.stationSplits.length === 0
-    ) {
+    if (!isRecordEligible(snapshot)) {
       return { updated: false, record: this.getRecordForLine(snapshot.line.id) };
     }
-    const all = this.loadMap();
+    const all = { ...this.repo.load() };
     const existing = all[snapshot.line.id] ?? null;
-    const roundedScore = Math.round(snapshot.score);
-    const totalTime = Number(snapshot.elapsedTimeSec.toFixed(1));
+    const candidate = buildGhostRecord(snapshot);
     const isBetter =
       !existing ||
-      roundedScore > Math.round(existing.finalScore) ||
-      (roundedScore === Math.round(existing.finalScore) && totalTime < existing.totalTimeSec);
-
+      candidate.finalScore > Math.round(existing.finalScore) ||
+      (candidate.finalScore === Math.round(existing.finalScore) &&
+        candidate.totalTimeSec < existing.totalTimeSec);
     if (!isBetter) {
       return { updated: false, record: existing };
     }
-
-    const nextRecord: ILineGhostRecord = {
-      lineId: snapshot.line.id,
-      finalScore: roundedScore,
-      totalTimeSec: totalTime,
-      recordedAtIso: new Date().toISOString(),
-      splits: snapshot.stationSplits.map((s) => ({
-        stationIndex: s.stationIndex,
-        stationCode: s.stationCode,
-        elapsedTimeSec: Number(s.elapsedTimeSec.toFixed(1)),
-        score: Math.round(s.score),
-      })),
-    };
-    all[snapshot.line.id] = nextRecord;
-    this.saveMap(all);
-    return { updated: true, record: nextRecord };
+    all[snapshot.line.id] = candidate;
+    this.repo.save(all);
+    return { updated: true, record: candidate };
   }
 
   public clear(): void {
-    this.saveMap({});
-  }
-
-  private loadMap(): Record<string, ILineGhostRecord> {
-    if (!this.storage) {
-      return {};
-    }
-    try {
-      const raw = this.storage.getItem(GHOST_RECORDS_STORAGE_KEY);
-      if (!raw) {
-        return {};
-      }
-      const parsed: unknown = JSON.parse(raw);
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        return {};
-      }
-      const clean: Record<string, ILineGhostRecord> = {};
-      for (const [key, val] of Object.entries(parsed as Record<string, unknown>)) {
-        if (isValidGhostRecord(val)) {
-          clean[key] = val;
-        }
-      }
-      return clean;
-    } catch {
-      return {};
-    }
-  }
-
-  private saveMap(map: Record<string, ILineGhostRecord>): void {
-    if (!this.storage) {
-      return;
-    }
-    try {
-      this.storage.setItem(GHOST_RECORDS_STORAGE_KEY, JSON.stringify(map));
-    } catch {
-      // Ignore storage quota errors
-    }
+    this.repo.save({});
   }
 }

@@ -1,60 +1,16 @@
 import { LINE_M1_STATIONS } from './routeData';
 import type { IRadioDispatchState, IStationSpec, RadioDispatchCategory } from './types';
+import {
+  DISPATCH_TEMPLATES,
+  IDLE_RADIO_RESULT,
+  RADIO_ACK_BONUS_POINTS,
+  RADIO_RESPONSE_WINDOW_SEC,
+  RADIO_TRIGGER_SPEED_KMH,
+  type IRadioController,
+  type IRadioStepResult,
+} from './radioCatalog';
 
-export interface IRadioStepResult {
-  readonly dispatchTriggered: boolean;
-  readonly acknowledgedNow: boolean;
-  readonly expiredNow: boolean;
-  readonly bonusPoints: number;
-  readonly feedbackText: string | null;
-}
-
-export interface IRadioController {
-  setStations(stations: readonly IStationSpec[]): void;
-  setEnabled(enabled: boolean): void;
-  setAutoTrigger?(enabled: boolean): void;
-  forceTriggerDispatch?(
-    customText?: string,
-    windowSec?: number,
-    category?: RadioDispatchCategory,
-  ): boolean;
-  reset(): void;
-  step(
-    stationIndex: number,
-    positionM: number,
-    speedKmh: number,
-    ackPressed: boolean,
-    dtSec: number,
-  ): IRadioStepResult;
-  getState(): IRadioDispatchState;
-}
-
-const RADIO_RESPONSE_WINDOW_SEC = 6.0;
-const RADIO_ACK_BONUS_POINTS = 40;
-const RADIO_TRIGGER_SPEED_KMH = 12;
-
-interface ITemplateSpec {
-  readonly category: RadioDispatchCategory;
-  readonly buildText: (stationName: string) => string;
-}
-
-const DISPATCH_TEMPLATES: readonly ITemplateSpec[] = [
-  {
-    category: 'traffic',
-    buildText: () =>
-      'Dyspozytor: Skład przed tobą ma lekkie opóźnienie, zachowaj ostrożność przed kolejnym semaforem.',
-  },
-  {
-    category: 'platform',
-    buildText: (stationName) =>
-      `Dyspozytor: Wzmożony ruch na stacji ${stationName}, pilnuj czasu wymiany pasażerów.`,
-  },
-  {
-    category: 'slippery',
-    buildText: () =>
-      'Dyspozytor: Zgłoszono śliskie szyny na najbliższym spadku, hamuj wcześniej.',
-  },
-];
+export type { IRadioController, IRadioStepResult };
 
 export class DispatcherRadioSystem implements IRadioController {
   private stations: readonly IStationSpec[];
@@ -73,10 +29,7 @@ export class DispatcherRadioSystem implements IRadioController {
   private nextTriggerStationIndex = 0;
   private templateCursor = 0;
 
-  public constructor(
-    stations: readonly IStationSpec[] = LINE_M1_STATIONS,
-    rng: () => number = Math.random,
-  ) {
+  public constructor(stations: readonly IStationSpec[] = LINE_M1_STATIONS, rng: () => number = Math.random) {
     this.stations = stations;
     this.rng = rng;
     this.reset();
@@ -105,14 +58,10 @@ export class DispatcherRadioSystem implements IRadioController {
     windowSec: number = 15,
     category: RadioDispatchCategory = 'traffic',
   ): boolean {
-    if (this.active && category !== 'inspection') {
-      return false;
-    }
+    if (this.active && category !== 'inspection') return false;
     this.messageId += 1;
     this.category = category;
-    this.text =
-      customText ??
-      'Dyspozytor Akademii: Próba łączności radiowej. Potwierdź odbiór przyciskiem [R].';
+    this.text = customText ?? 'Dyspozytor Akademii: Próba łączności radiowej. Potwierdź odbiór przyciskiem [R].';
     this.spokenText = this.text.replace(/^Dyspozytor[^:]*:\s*/, 'Uwaga dyspozytor. ');
     this.stationName = '';
     this.active = true;
@@ -130,7 +79,6 @@ export class DispatcherRadioSystem implements IRadioController {
     this.remainingSec = 0;
     this.acknowledgedCount = 0;
     this.slipperyRailsTimerSec = 0;
-    // First dispatch fires between start and station 1 or 2, then every 1–2 stations
     this.nextTriggerStationIndex = 0;
     this.templateCursor = 0;
   }
@@ -145,88 +93,10 @@ export class DispatcherRadioSystem implements IRadioController {
     if (this.slipperyRailsTimerSec > 0) {
       this.slipperyRailsTimerSec = Math.max(0, this.slipperyRailsTimerSec - dtSec);
     }
-
-    if (!this.enabled) {
-      return {
-        dispatchTriggered: false,
-        acknowledgedNow: false,
-        expiredNow: false,
-        bonusPoints: 0,
-        feedbackText: null,
-      };
-    }
-
-    if (this.active) {
-      if (ackPressed) {
-        this.active = false;
-        this.remainingSec = 0;
-        this.acknowledgedCount += 1;
-        return {
-          dispatchTriggered: false,
-          acknowledgedNow: true,
-          expiredNow: false,
-          bonusPoints: RADIO_ACK_BONUS_POINTS,
-          feedbackText: 'Radio potwierdzone — przyjęto komunikat dyspozytora',
-        };
-      }
-      this.remainingSec = Math.max(0, this.remainingSec - dtSec);
-      if (this.remainingSec <= 0) {
-        this.active = false;
-        return {
-          dispatchTriggered: false,
-          acknowledgedNow: false,
-          expiredNow: true,
-          bonusPoints: 0,
-          feedbackText: 'Centrala: brak potwierdzenia komunikatu radiowego [R]',
-        };
-      }
-      return {
-        dispatchTriggered: false,
-        acknowledgedNow: false,
-        expiredNow: false,
-        bonusPoints: 0,
-        feedbackText: null,
-      };
-    }
-
-    if (!this.autoTrigger) {
-      return {
-        dispatchTriggered: false,
-        acknowledgedNow: false,
-        expiredNow: false,
-        bonusPoints: 0,
-        feedbackText: null,
-      };
-    }
-
-    // Trigger when approaching the scheduled target station (mid-tunnel between stations)
-    const targetStation = this.stations[this.nextTriggerStationIndex];
-    if (
-      targetStation &&
-      stationIndex >= this.nextTriggerStationIndex &&
-      speedKmh >= RADIO_TRIGGER_SPEED_KMH &&
-      positionM >= Math.max(115, targetStation.distanceM - 420) &&
-      positionM <= targetStation.distanceM - 135
-    ) {
-      this.triggerDispatch(targetStation.name);
-      const stride = this.rng() < 0.5 ? 1 : 2;
-      this.nextTriggerStationIndex = stationIndex + stride;
-      return {
-        dispatchTriggered: true,
-        acknowledgedNow: false,
-        expiredNow: false,
-        bonusPoints: 0,
-        feedbackText: null,
-      };
-    }
-
-    return {
-      dispatchTriggered: false,
-      acknowledgedNow: false,
-      expiredNow: false,
-      bonusPoints: 0,
-      feedbackText: null,
-    };
+    if (!this.enabled) return IDLE_RADIO_RESULT;
+    if (this.active) return this.stepActiveDispatch(ackPressed, dtSec);
+    if (!this.autoTrigger) return IDLE_RADIO_RESULT;
+    return this.tryAutoTrigger(stationIndex, positionM, speedKmh);
   }
 
   public getState(): IRadioDispatchState {
@@ -244,6 +114,43 @@ export class DispatcherRadioSystem implements IRadioController {
     };
   }
 
+  private stepActiveDispatch(ackPressed: boolean, dtSec: number): IRadioStepResult {
+    if (ackPressed) {
+      this.active = false;
+      this.remainingSec = 0;
+      this.acknowledgedCount += 1;
+      return {
+        dispatchTriggered: false, acknowledgedNow: true, expiredNow: false,
+        bonusPoints: RADIO_ACK_BONUS_POINTS, feedbackText: 'Radio potwierdzone — przyjęto komunikat dyspozytora',
+      };
+    }
+    this.remainingSec = Math.max(0, this.remainingSec - dtSec);
+    if (this.remainingSec <= 0) {
+      this.active = false;
+      return {
+        dispatchTriggered: false, acknowledgedNow: false, expiredNow: true,
+        bonusPoints: 0, feedbackText: 'Centrala: brak potwierdzenia komunikatu radiowego [R]',
+      };
+    }
+    return IDLE_RADIO_RESULT;
+  }
+
+  private tryAutoTrigger(stationIndex: number, positionM: number, speedKmh: number): IRadioStepResult {
+    const targetStation = this.stations[this.nextTriggerStationIndex];
+    if (
+      targetStation &&
+      stationIndex >= this.nextTriggerStationIndex &&
+      speedKmh >= RADIO_TRIGGER_SPEED_KMH &&
+      positionM >= Math.max(115, targetStation.distanceM - 420) &&
+      positionM <= targetStation.distanceM - 135
+    ) {
+      this.triggerDispatch(targetStation.name);
+      this.nextTriggerStationIndex = stationIndex + (this.rng() < 0.5 ? 1 : 2);
+      return { ...IDLE_RADIO_RESULT, dispatchTriggered: true };
+    }
+    return IDLE_RADIO_RESULT;
+  }
+
   private triggerDispatch(stationName: string): void {
     const template = DISPATCH_TEMPLATES[this.templateCursor % DISPATCH_TEMPLATES.length];
     this.templateCursor += 1;
@@ -254,8 +161,6 @@ export class DispatcherRadioSystem implements IRadioController {
     this.spokenText = this.text.replace(/^Dyspozytor:\s*/, 'Uwaga dyspozytor. ');
     this.active = true;
     this.remainingSec = RADIO_RESPONSE_WINDOW_SEC;
-    if (template.category === 'slippery') {
-      this.slipperyRailsTimerSec = 28;
-    }
+    if (template.category === 'slippery') this.slipperyRailsTimerSec = 28;
   }
 }

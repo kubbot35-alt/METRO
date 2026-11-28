@@ -64,11 +64,25 @@ export class WebSpeechAnnouncer implements ISpeechAnnouncer {
     if (muted || clampedVol <= 0.01 || !this.synth) {
       return false;
     }
+    const voice = this.resolveVoice(language);
+    return voice ? this.speakWithVoice(voice, text, clampedVol, language, style) : false;
+  }
+
+  private resolveVoice(language: LanguageId): SpeechSynthesisVoice | null {
     if (!this.polishVoice || !this.englishVoice) {
       this.refreshVoices();
     }
-    const voice = language === 'en' ? this.englishVoice : this.polishVoice;
-    if (!voice) {
+    return language === 'en' ? this.englishVoice : this.polishVoice;
+  }
+
+  private speakWithVoice(
+    voice: SpeechSynthesisVoice,
+    text: string,
+    volume: number,
+    language: LanguageId,
+    style: SpeechStyle,
+  ): boolean {
+    if (!this.synth) {
       return false;
     }
     try {
@@ -78,7 +92,7 @@ export class WebSpeechAnnouncer implements ISpeechAnnouncer {
       utterance.voice = voice;
       utterance.rate = style === 'pa' ? 0.93 : language === 'en' ? 0.96 : 0.98;
       utterance.pitch = style === 'pa' ? 0.94 : 1.0;
-      utterance.volume = clampedVol;
+      utterance.volume = volume;
       this.synth.speak(utterance);
       return true;
     } catch {

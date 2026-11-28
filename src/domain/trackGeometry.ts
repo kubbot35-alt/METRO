@@ -38,6 +38,18 @@ function smoothstep01(t: number): number {
   return clamped * clamped * (3 - 2 * clamped);
 }
 
+function getStationIslandBlend(distanceM: number, station: IStationSpec): number {
+  if (getStationPlatformLayout(station) !== 'island') return 0;
+  const hallStart = station.distanceM - STATION_HALL_START_OFFSET_M;
+  const hallEnd = station.distanceM + STATION_HALL_END_OFFSET_M;
+  const rampInStart = hallStart - ISLAND_TRANSITION_LEN_M;
+  const rampOutEnd = hallEnd + ISLAND_TRANSITION_LEN_M;
+  if (distanceM <= rampInStart || distanceM >= rampOutEnd) return 0;
+  if (distanceM >= hallStart && distanceM <= hallEnd) return 1;
+  const distFromEdge = distanceM < hallStart ? distanceM - rampInStart : rampOutEnd - distanceM;
+  return smoothstep01(distFromEdge / ISLAND_TRANSITION_LEN_M);
+}
+
 /**
  * Returns world X center of the parallel opposite track at route distance `distanceM`.
  * Standard tunnels and Type B (side-platform) stations keep the opposite track at X = -4.4.
@@ -50,33 +62,10 @@ export function getOppositeTrackX(
 ): number {
   let maxBlend = 0;
   for (let i = 0; i < stations.length; i += 1) {
-    const s = stations[i];
-    if (getStationPlatformLayout(s) !== 'island') {
-      continue;
-    }
-    const hallStart = s.distanceM - STATION_HALL_START_OFFSET_M;
-    const hallEnd = s.distanceM + STATION_HALL_END_OFFSET_M;
-    const rampInStart = hallStart - ISLAND_TRANSITION_LEN_M;
-    const rampOutEnd = hallEnd + ISLAND_TRANSITION_LEN_M;
-
-    if (distanceM <= rampInStart || distanceM >= rampOutEnd) {
-      continue;
-    }
-    if (distanceM >= hallStart && distanceM <= hallEnd) {
-      return ISLAND_OPPOSITE_TRACK_X;
-    }
-    if (distanceM < hallStart) {
-      const t = (distanceM - rampInStart) / ISLAND_TRANSITION_LEN_M;
-      maxBlend = Math.max(maxBlend, smoothstep01(t));
-    } else {
-      const t = (rampOutEnd - distanceM) / ISLAND_TRANSITION_LEN_M;
-      maxBlend = Math.max(maxBlend, smoothstep01(t));
-    }
+    maxBlend = Math.max(maxBlend, getStationIslandBlend(distanceM, stations[i]));
+    if (maxBlend >= 1) return ISLAND_OPPOSITE_TRACK_X;
   }
-  return (
-    STANDARD_OPPOSITE_TRACK_X +
-    (ISLAND_OPPOSITE_TRACK_X - STANDARD_OPPOSITE_TRACK_X) * maxBlend
-  );
+  return STANDARD_OPPOSITE_TRACK_X + (ISLAND_OPPOSITE_TRACK_X - STANDARD_OPPOSITE_TRACK_X) * maxBlend;
 }
 
 /**

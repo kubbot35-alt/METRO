@@ -90,86 +90,60 @@ export class EcoDrivingSystem implements IEcoDrivingController {
 
   public step(input: IEcoDrivingStepInput): IEcoDrivingState {
     const { kinematics, physicsConfig, trainModelId, dtSec } = input;
-    if (dtSec <= 0) {
-      return this.getState();
-    }
-
-    const speedMs = Math.max(0, kinematics.speedMs);
-    const speedKmh = kinematics.speedKmh;
-    const dM = speedMs * dtSec;
+    if (dtSec <= 0) return this.getState();
+    const dM = Math.max(0, kinematics.speedMs) * dtSec;
     this.totalDrivenDistanceM += dM;
+    const auxKw = trainModelId === 'seria81' ? 32 : trainModelId === 'varsovia' ? 22 : 25;
+    this.coastingActive = kinematics.speedKmh > 10 && kinematics.throttle < 0.02 && kinematics.serviceBrake < 0.02 && !kinematics.emergencyBrake;
+    if (this.coastingActive) this.coastingDistanceM += dM;
+    this.integrateEnergyStep(this.computeInstantaneousKw(kinematics, physicsConfig, trainModelId, auxKw, dtSec), dtSec);
+    return this.getState();
+  }
 
-    const hasRegen = trainSupportsRegeneration(trainModelId);
-    const auxPowerKw = trainModelId === 'seria81' ? 32 : trainModelId === 'varsovia' ? 22 : 25;
-
-    this.coastingActive =
-      speedKmh > 10 &&
-      kinematics.throttle < 0.02 &&
-      kinematics.serviceBrake < 0.02 &&
-      !kinematics.emergencyBrake;
-
-    if (this.coastingActive) {
-      this.coastingDistanceM += dM;
-    }
-
-    let instantaneousKw = auxPowerKw;
+  private computeInstantaneousKw(
+    kin: ITrainKinematics,
+    cfg: ITrainPhysicsConfig,
+    modelId: TrainModelId,
+    auxKw: number,
+    dtSec: number,
+  ): number {
     this.regeneratingActive = false;
-
-    if (kinematics.throttle > 0.01 && !kinematics.emergencyBrake && kinematics.serviceBrake < 0.01) {
-      // Efficiency: Seria 81 DC rheostatic startup wastes more energy than IGBT/SiC inverters
-      const motorEfficiency =
-        trainModelId === 'varsovia' ? 0.92 : trainModelId === 'inspiro' ? 0.89 : 0.72;
-      const mechanicalTractionKw =
-        (kinematics.throttle * physicsConfig.maxTractionForceN * Math.max(speedMs, 2.2)) / 1000;
-      const startupExcitationKw =
-        kinematics.throttle * (trainModelId === 'seria81' ? 420 : 260) * Math.max(0, 1 - speedKmh / 45);
-      const tractionElectricalKw = mechanicalTractionKw / motorEfficiency + startupExcitationKw;
-      instantaneousKw = auxPowerKw + Math.min(2850, tractionElectricalKw);
-
-      // Keeping full throttle above 62 km/h is energy-inefficient compared to coasting
-      if (kinematics.throttle > 0.85 && speedKmh > 62) {
-        this.harshThrottlePenaltyAccum += dtSec * 0.45;
-      }
-    } else if (
-      hasRegen &&
-      kinematics.serviceBrake > 0.02 &&
-      !kinematics.emergencyBrake &&
-      speedKmh > 4.5
-    ) {
-      // Smooth electrodynamic braking feeds power back into the 750V DC third rail
-      // Very hard service braking (>0.85) blends friction pads, slightly reducing regen efficiency
-      const smoothBrakeFactor =
-        kinematics.serviceBrake <= 0.8
-          ? 1.0
-          : Math.max(0.45, 1.0 - (kinematics.serviceBrake - 0.8) * 2.2);
-      const regenEfficiency = (trainModelId === 'varsovia' ? 0.68 : 0.62) * smoothBrakeFactor;
-      const mechanicalBrakeKw =
-        (kinematics.serviceBrake * physicsConfig.maxServiceBrakeForceN * speedMs) / 1000;
-      const recoveredKw = Math.min(1650, mechanicalBrakeKw * regenEfficiency);
-
-      if (recoveredKw > auxPowerKw + 8) {
-        this.regeneratingActive = true;
-        instantaneousKw = -(recoveredKw - auxPowerKw);
-      } else {
-        instantaneousKw = Math.max(0, auxPowerKw - recoveredKw);
-      }
-    } else if (kinematics.emergencyBrake && speedKmh > 8) {
-      // Emergency pneumatic brake dumps kinetic energy into brake shoes/discs
-      this.harshThrottlePenaltyAccum += dtSec * 2.5;
+    if (kin.throttle > 0.01 && !kin.emergencyBrake && kin.serviceBrake < 0.01) {
+      return this.computeTractionKw(kin, cfg, modelId, auxKw, dtSec);
     }
+    if (trainSupportsRegeneration(modelId) && kin.serviceBrake > 0.02 && !kin.emergencyBrake && kin.speedKmh > 4.5) {
+      return this.computeRegenKw(kin, cfg, modelId, auxKw);
+    }
+    if (kin.emergencyBrake && kin.speedKmh > 8) this.harshThrottlePenaltyAccum += dtSec * 2.5;
+    return auxKw;
+  }
 
+  private computeTractionKw(kin: ITrainKinematics, cfg: ITrainPhysicsConfig, modelId: TrainModelId, auxKw: number, dtSec: number): number {
+    const motorEff = modelId === 'varsovia' ? 0.92 : modelId === 'inspiro' ? 0.89 : 0.72;
+    const mechKw = (kin.throttle * cfg.maxTractionForceN * Math.max(0, kin.speedMs, 2.2)) / 1000;
+    const excKw = kin.throttle * (modelId === 'seria81' ? 420 : 260) * Math.max(0, 1 - kin.speedKmh / 45);
+    if (kin.throttle > 0.85 && kin.speedKmh > 62) this.harshThrottlePenaltyAccum += dtSec * 0.45;
+    return auxKw + Math.min(2850, mechKw / motorEff + excKw);
+  }
+
+  private computeRegenKw(kin: ITrainKinematics, cfg: ITrainPhysicsConfig, modelId: TrainModelId, auxKw: number): number {
+    const smooth = kin.serviceBrake <= 0.8 ? 1.0 : Math.max(0.45, 1.0 - (kin.serviceBrake - 0.8) * 2.2);
+    const regenEff = (modelId === 'varsovia' ? 0.68 : 0.62) * smooth;
+    const mechKw = (kin.serviceBrake * cfg.maxServiceBrakeForceN * Math.max(0, kin.speedMs)) / 1000;
+    const recovered = Math.min(1650, mechKw * regenEff);
+    if (recovered > auxKw + 8) {
+      this.regeneratingActive = true;
+      return -(recovered - auxKw);
+    }
+    return Math.max(0, auxKw - recovered);
+  }
+
+  private integrateEnergyStep(instantaneousKw: number, dtSec: number): void {
     this.currentPowerKw = instantaneousKw;
     const dtHours = dtSec / 3600;
-
-    if (instantaneousKw >= 0) {
-      this.consumedKwh += instantaneousKw * dtHours;
-    } else {
-      const returnedKwh = Math.abs(instantaneousKw) * dtHours;
-      this.regeneratedKwh += returnedKwh;
-    }
-
+    if (instantaneousKw >= 0) this.consumedKwh += instantaneousKw * dtHours;
+    else this.regeneratedKwh += Math.abs(instantaneousKw) * dtHours;
     this.netEnergyKwh = Math.max(0.01, this.consumedKwh - this.regeneratedKwh);
-    return this.getState();
   }
 
   private computeEcoScore(coastingRatio: number): number {

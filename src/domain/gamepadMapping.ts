@@ -93,6 +93,24 @@ function readTriggerValue(buttons: readonly IRawGamepadButton[], index: number, 
   return Math.max(0, applyDeadzone(raw, deadzone));
 }
 
+function resolveAnalogLeverAxis(
+  buttons: readonly IRawGamepadButton[],
+  axes: readonly number[] | undefined,
+  wasAnalogActive: boolean,
+  deadzone: number,
+): { readonly analogLeverAxis: number | null; readonly analogActive: boolean } {
+  const rt = readTriggerValue(buttons, 7, deadzone);
+  const lt = readTriggerValue(buttons, 6, deadzone);
+  if (rt > 0 || lt > 0) {
+    return { analogLeverAxis: Math.max(-1, Math.min(1, rt - lt)), analogActive: true };
+  }
+  const stickPower = applyDeadzone(-(axes?.[1] ?? 0), deadzone);
+  if (stickPower !== 0) {
+    return { analogLeverAxis: Math.max(-1, Math.min(1, stickPower)), analogActive: true };
+  }
+  return wasAnalogActive ? { analogLeverAxis: 0, analogActive: false } : { analogLeverAxis: null, analogActive: false };
+}
+
 export function sampleGamepadState(
   raw: IRawGamepadLike,
   prevButtons: readonly boolean[],
@@ -102,28 +120,9 @@ export function sampleGamepadState(
   const buttons = raw.buttons ?? [];
   const nextButtons = Array.from({ length: 16 }, (_, idx) => readButtonPressed(buttons, idx));
   const justPressed = (idx: number): boolean => nextButtons[idx] && !Boolean(prevButtons[idx]);
-
-  const rt = readTriggerValue(buttons, 7, deadzone);
-  const lt = readTriggerValue(buttons, 6, deadzone);
-  const stickYRaw = raw.axes?.[1] ?? 0;
-  const stickPower = applyDeadzone(-stickYRaw, deadzone);
-
-  let analogLeverAxis: number | null = null;
-  let analogActive = false;
-  if (rt > 0 || lt > 0) {
-    analogLeverAxis = Math.max(-1, Math.min(1, rt - lt));
-    analogActive = true;
-  } else if (stickPower !== 0) {
-    analogLeverAxis = Math.max(-1, Math.min(1, stickPower));
-    analogActive = true;
-  } else if (wasAnalogActive) {
-    analogLeverAxis = 0;
-    analogActive = false;
-  }
-
+  const analog = resolveAnalogLeverAxis(buttons, raw.axes, wasAnalogActive, deadzone);
   return {
-    analogLeverAxis,
-    analogActive,
+    ...analog,
     hornActive: nextButtons[14] || nextButtons[15],
     acknowledgeCzuwakPressed: justPressed(0),
     emergencyBrakePressed: justPressed(1),

@@ -1,15 +1,18 @@
-import type {
-  GraphicsQualityId,
-  IGameSettings,
-  IGraphicsQualityPreset,
-  LanguageId,
-  TouchControlsMode,
-} from './types';
+import {
+  JsonStorageRepository,
+  type IJsonRepository,
+  type IKeyValueStorage,
+} from './persistence/jsonStorageRepository';
+import {
+  DEFAULT_GAME_SETTINGS,
+  GRAPHICS_QUALITY_PRESETS,
+  SETTINGS_STORAGE_KEY,
+  getDefaultLiveMirrorsForQuality,
+  getGraphicsQualityPreset,
+} from './settingsPresets';
+import type { GraphicsQualityId, IGameSettings, LanguageId, TouchControlsMode } from './types';
 
-export interface ISettingsStorage {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
+export type ISettingsStorage = IKeyValueStorage;
 
 export interface ISettingsService {
   load(): IGameSettings;
@@ -17,61 +20,13 @@ export interface ISettingsService {
   reset(): IGameSettings;
 }
 
-export const SETTINGS_STORAGE_KEY = 'warsaw_metro_settings_v1';
-
-export const DEFAULT_GAME_SETTINGS: IGameSettings = {
-  masterVolume: 0.85,
-  trainVolume: 0.9,
-  voiceVolume: 0.95,
-  alertsVolume: 0.9,
-  graphicsQuality: 'high',
-  cabFovDeg: 64,
-  showFps: false,
-  gamepadVibration: true,
-  touchControlsMode: 'auto',
-  liveMirrorsEnabled: true,
-  language: 'pl',
+export {
+  DEFAULT_GAME_SETTINGS,
+  GRAPHICS_QUALITY_PRESETS,
+  SETTINGS_STORAGE_KEY,
+  getDefaultLiveMirrorsForQuality,
+  getGraphicsQualityPreset,
 };
-
-export const GRAPHICS_QUALITY_PRESETS: readonly IGraphicsQualityPreset[] = [
-  {
-    id: 'low',
-    label: 'Niska',
-    description: 'Krótki zasięg tunelu, mniej pasażerów, wyłączone lusterka na żywo i cienie (maks. FPS).',
-    drawDistanceM: 185,
-    passengerDensity: 0.4,
-    rainDensity: 0.28,
-    pixelRatioCap: 1.0,
-    enableShadows: false,
-    mirrorUpdateInterval: 0,
-  },
-  {
-    id: 'medium',
-    label: 'Średnia',
-    description: 'Zbalansowany zasięg tunelu, 75% pasażerów, lusterka/CCTV ~15 FPS.',
-    drawDistanceM: 285,
-    passengerDensity: 0.75,
-    rainDensity: 0.62,
-    pixelRatioCap: 1.5,
-    enableShadows: false,
-    mirrorUpdateInterval: 4,
-  },
-  {
-    id: 'high',
-    label: 'Wysoka',
-    description: 'Pełny zasięg, komplet pasażerów, lusterka/CCTV ~30 FPS, cienie i AA.',
-    drawDistanceM: 420,
-    passengerDensity: 1.0,
-    rainDensity: 1.0,
-    pixelRatioCap: 2.0,
-    enableShadows: true,
-    mirrorUpdateInterval: 2,
-  },
-];
-
-export function getGraphicsQualityPreset(id: GraphicsQualityId): IGraphicsQualityPreset {
-  return GRAPHICS_QUALITY_PRESETS.find((p) => p.id === id) ?? GRAPHICS_QUALITY_PRESETS[2];
-}
 
 function clampNum(value: unknown, min: number, max: number, fallback: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -80,29 +35,28 @@ function clampNum(value: unknown, min: number, max: number, fallback: number): n
   return Math.max(min, Math.min(max, value));
 }
 
+function roundVol(value: unknown, fallback: number): number {
+  return Math.round(clampNum(value, 0, 1, fallback) * 100) / 100;
+}
+
 function parseGraphicsQuality(value: unknown): GraphicsQualityId {
-  if (value === 'low' || value === 'medium' || value === 'high') {
-    return value;
-  }
-  return DEFAULT_GAME_SETTINGS.graphicsQuality;
+  return value === 'low' || value === 'medium' || value === 'high'
+    ? value
+    : DEFAULT_GAME_SETTINGS.graphicsQuality;
 }
 
 function parseTouchControlsMode(value: unknown): TouchControlsMode {
-  if (value === 'auto' || value === 'on' || value === 'off') {
-    return value;
-  }
-  return DEFAULT_GAME_SETTINGS.touchControlsMode;
+  return value === 'auto' || value === 'on' || value === 'off'
+    ? value
+    : DEFAULT_GAME_SETTINGS.touchControlsMode;
 }
 
 function parseLanguage(value: unknown): LanguageId {
-  if (value === 'pl' || value === 'en') {
-    return value;
-  }
-  return DEFAULT_GAME_SETTINGS.language;
+  return value === 'pl' || value === 'en' ? value : DEFAULT_GAME_SETTINGS.language;
 }
 
-export function getDefaultLiveMirrorsForQuality(quality: GraphicsQualityId): boolean {
-  return quality === 'medium' || quality === 'high';
+function parseBool(value: unknown, fallback: boolean): boolean {
+  return typeof value === 'boolean' ? value : fallback;
 }
 
 export function sanitizeGameSettings(raw: unknown): IGameSettings {
@@ -112,67 +66,42 @@ export function sanitizeGameSettings(raw: unknown): IGameSettings {
   const obj = raw as Record<string, unknown>;
   const graphicsQuality = parseGraphicsQuality(obj.graphicsQuality);
   return {
-    masterVolume: Math.round(clampNum(obj.masterVolume, 0, 1, DEFAULT_GAME_SETTINGS.masterVolume) * 100) / 100,
-    trainVolume: Math.round(clampNum(obj.trainVolume, 0, 1, DEFAULT_GAME_SETTINGS.trainVolume) * 100) / 100,
-    voiceVolume: Math.round(clampNum(obj.voiceVolume, 0, 1, DEFAULT_GAME_SETTINGS.voiceVolume) * 100) / 100,
-    alertsVolume: Math.round(clampNum(obj.alertsVolume, 0, 1, DEFAULT_GAME_SETTINGS.alertsVolume) * 100) / 100,
+    masterVolume: roundVol(obj.masterVolume, DEFAULT_GAME_SETTINGS.masterVolume),
+    trainVolume: roundVol(obj.trainVolume, DEFAULT_GAME_SETTINGS.trainVolume),
+    voiceVolume: roundVol(obj.voiceVolume, DEFAULT_GAME_SETTINGS.voiceVolume),
+    alertsVolume: roundVol(obj.alertsVolume, DEFAULT_GAME_SETTINGS.alertsVolume),
     graphicsQuality,
     cabFovDeg: Math.round(clampNum(obj.cabFovDeg, 60, 95, DEFAULT_GAME_SETTINGS.cabFovDeg)),
-    showFps: typeof obj.showFps === 'boolean' ? obj.showFps : DEFAULT_GAME_SETTINGS.showFps,
-    gamepadVibration:
-      typeof obj.gamepadVibration === 'boolean'
-        ? obj.gamepadVibration
-        : DEFAULT_GAME_SETTINGS.gamepadVibration,
+    showFps: parseBool(obj.showFps, DEFAULT_GAME_SETTINGS.showFps),
+    gamepadVibration: parseBool(obj.gamepadVibration, DEFAULT_GAME_SETTINGS.gamepadVibration),
     touchControlsMode: parseTouchControlsMode(obj.touchControlsMode),
-    liveMirrorsEnabled:
-      typeof obj.liveMirrorsEnabled === 'boolean'
-        ? obj.liveMirrorsEnabled
-        : getDefaultLiveMirrorsForQuality(graphicsQuality),
+    liveMirrorsEnabled: parseBool(obj.liveMirrorsEnabled, getDefaultLiveMirrorsForQuality(graphicsQuality)),
+    sop2InterventionEnabled: parseBool(obj.sop2InterventionEnabled, DEFAULT_GAME_SETTINGS.sop2InterventionEnabled),
     language: parseLanguage(obj.language),
   };
 }
 
 export class SettingsStorageService implements ISettingsService {
-  private readonly storage: ISettingsStorage | null;
+  private readonly repo: IJsonRepository<IGameSettings>;
 
   public constructor(storage?: ISettingsStorage | null) {
-    if (storage !== undefined) {
-      this.storage = storage;
-    } else if (typeof window !== 'undefined' && window.localStorage) {
-      this.storage = window.localStorage;
-    } else {
-      this.storage = null;
-    }
+    this.repo = new JsonStorageRepository<IGameSettings>(
+      SETTINGS_STORAGE_KEY,
+      () => ({ ...DEFAULT_GAME_SETTINGS }),
+      sanitizeGameSettings,
+      storage,
+    );
   }
 
   public load(): IGameSettings {
-    if (!this.storage) {
-      return { ...DEFAULT_GAME_SETTINGS };
-    }
-    try {
-      const raw = this.storage.getItem(SETTINGS_STORAGE_KEY);
-      if (!raw) {
-        return { ...DEFAULT_GAME_SETTINGS };
-      }
-      return sanitizeGameSettings(JSON.parse(raw));
-    } catch {
-      return { ...DEFAULT_GAME_SETTINGS };
-    }
+    return this.repo.load();
   }
 
   public save(settings: IGameSettings): IGameSettings {
-    const clean = sanitizeGameSettings(settings);
-    if (this.storage) {
-      try {
-        this.storage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(clean));
-      } catch {
-        // Ignore storage quota / private mode failures
-      }
-    }
-    return clean;
+    return this.repo.save(settings);
   }
 
   public reset(): IGameSettings {
-    return this.save(DEFAULT_GAME_SETTINGS);
+    return this.repo.save({ ...DEFAULT_GAME_SETTINGS });
   }
 }

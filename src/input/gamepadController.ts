@@ -117,14 +117,9 @@ export class BrowserGamepadController implements IGamepadController {
 
   public triggerRumble(strongMagnitude: number, weakMagnitude: number, durationMs: number): void {
     const now = performance.now();
-    if (now - this.lastRumbleMs < RUMBLE_COOLDOWN_MS) {
-      return;
-    }
-    const pad = this.findActiveGamepad();
-    const actuator = pad?.vibrationActuator;
-    if (!actuator?.playEffect) {
-      return;
-    }
+    if (now - this.lastRumbleMs < RUMBLE_COOLDOWN_MS) return;
+    const actuator = this.findActiveGamepad()?.vibrationActuator;
+    if (!actuator?.playEffect) return;
     this.lastRumbleMs = now;
     try {
       const result = actuator.playEffect('dual-rumble', {

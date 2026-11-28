@@ -2,98 +2,73 @@ import * as THREE from 'three';
 import type { ISimulationSnapshot, TrainVisualTheme } from '../domain/types';
 import { buildInspiroCabInterior } from './inspiroCabBuilder';
 import { buildSeria81CabInterior } from './seria81CabBuilder';
+import type { ICabInterior } from './shared/baseCabInterior';
 import { buildVarsoviaCabInterior } from './varsoviaCabBuilder';
-import { buildWindshieldRainOverlay } from './windshieldRainOverlay';
+import { buildWindshieldRainOverlay, type IWindshieldRainOverlay } from './windshieldRainOverlay';
 
 export interface ICabRig {
   readonly group: THREE.Group;
-  readonly wiperPivot: THREE.Group;
-  readonly leverPivot: THREE.Group;
-  readonly doorLightMat: THREE.MeshStandardMaterial;
-  readonly warningLightMat: THREE.MeshStandardMaterial;
-  readonly headlightLampMat: THREE.MeshStandardMaterial;
-  readonly czuwakLampMat: THREE.MeshStandardMaterial;
   setTheme(theme: TrainVisualTheme): void;
-  setLeverAngle?(angleRad: number): void;
-  setMirrorTextures?(leftTex: THREE.Texture, rightTex: THREE.Texture): void;
-  getActiveInteractiveMonitorMeshes?(): readonly THREE.Mesh[];
-  update?(snapshot: ISimulationSnapshot, dtSec: number): void;
+  setLeverAngle(angleRad: number): void;
+  setMirrorTextures(leftTex: THREE.Texture, rightTex: THREE.Texture): void;
+  getActiveInteractiveMonitorMeshes(): readonly THREE.Mesh[];
+  update(snapshot: ISimulationSnapshot, dtSec: number): void;
   dispose(): void;
 }
 
-function createUnusedLampPlaceholder(): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({ color: 0x111111 });
+class MetroCabRig implements ICabRig {
+  public readonly group = new THREE.Group();
+  private readonly cabs: ReadonlyMap<TrainVisualTheme, ICabInterior>;
+  private readonly windshieldRain: IWindshieldRainOverlay;
+  private activeTheme: TrainVisualTheme = 'modern';
+
+  public constructor(maxAnisotropy: number) {
+    this.group.name = 'MetroCabRig';
+    this.cabs = new Map<TrainVisualTheme, ICabInterior>([
+      ['retro', buildSeria81CabInterior(maxAnisotropy)],
+      ['modern', buildInspiroCabInterior(maxAnisotropy)],
+      ['varsovia', buildVarsoviaCabInterior(maxAnisotropy)],
+    ]);
+    this.windshieldRain = buildWindshieldRainOverlay();
+    this.cabs.forEach((cab) => this.group.add(cab.group));
+    this.group.add(this.windshieldRain.mesh);
+    this.setTheme('modern');
+  }
+
+  public setTheme(theme: TrainVisualTheme): void {
+    this.activeTheme = theme;
+    this.cabs.forEach((cab, cabTheme) => {
+      cab.group.visible = cabTheme === theme;
+    });
+  }
+
+  public setLeverAngle(angleRad: number): void {
+    this.cabs.forEach((cab) => {
+      cab.leverPivot.rotation.x = angleRad;
+    });
+  }
+
+  public setMirrorTextures(leftTex: THREE.Texture, rightTex: THREE.Texture): void {
+    this.cabs.forEach((cab) => {
+      cab.mirrorHardware.setMirrorTextures(leftTex, rightTex);
+    });
+  }
+
+  public getActiveInteractiveMonitorMeshes(): readonly THREE.Mesh[] {
+    return this.cabs.get(this.activeTheme)?.mirrorHardware.interactiveMeshes ?? [];
+  }
+
+  public update(snapshot: ISimulationSnapshot, dtSec: number): void {
+    this.cabs.get(this.activeTheme)?.update(snapshot, dtSec);
+    this.windshieldRain.update(snapshot, dtSec);
+  }
+
+  public dispose(): void {
+    this.cabs.forEach((cab) => cab.dispose());
+    this.windshieldRain.dispose();
+  }
 }
 
 export function buildMetroCabRig(maxAnisotropy = 4): ICabRig {
-  const group = new THREE.Group();
-  group.name = 'MetroCabRig';
-
-  const seria81Cab = buildSeria81CabInterior(maxAnisotropy);
-  const inspiroCab = buildInspiroCabInterior(maxAnisotropy);
-  const varsoviaCab = buildVarsoviaCabInterior(maxAnisotropy);
-  const windshieldRain = buildWindshieldRainOverlay();
-  seria81Cab.group.visible = false;
-  inspiroCab.group.visible = true;
-  varsoviaCab.group.visible = false;
-  group.add(seria81Cab.group, inspiroCab.group, varsoviaCab.group, windshieldRain.mesh);
-
-  const doorLightMat = createUnusedLampPlaceholder();
-  const warningLightMat = createUnusedLampPlaceholder();
-  const headlightLampMat = createUnusedLampPlaceholder();
-  const czuwakLampMat = createUnusedLampPlaceholder();
-
-  return {
-    group,
-    wiperPivot: seria81Cab.wiperPivot,
-    leverPivot: seria81Cab.leverPivot,
-    doorLightMat,
-    warningLightMat,
-    headlightLampMat,
-    czuwakLampMat,
-    setTheme: (theme: TrainVisualTheme): void => {
-      seria81Cab.group.visible = theme === 'retro';
-      inspiroCab.group.visible = theme === 'modern';
-      varsoviaCab.group.visible = theme === 'varsovia';
-    },
-    setLeverAngle: (angleRad: number): void => {
-      seria81Cab.leverPivot.rotation.x = angleRad;
-      inspiroCab.leverPivot.rotation.x = angleRad;
-      varsoviaCab.leverPivot.rotation.x = angleRad;
-    },
-    setMirrorTextures: (leftTex: THREE.Texture, rightTex: THREE.Texture): void => {
-      seria81Cab.mirrorHardware.setMirrorTextures(leftTex, rightTex);
-      inspiroCab.mirrorHardware.setMirrorTextures(leftTex, rightTex);
-      varsoviaCab.mirrorHardware.setMirrorTextures(leftTex, rightTex);
-    },
-    getActiveInteractiveMonitorMeshes: (): readonly THREE.Mesh[] => {
-      if (varsoviaCab.group.visible) {
-        return varsoviaCab.mirrorHardware.interactiveMeshes;
-      }
-      if (inspiroCab.group.visible) {
-        return inspiroCab.mirrorHardware.interactiveMeshes;
-      }
-      return seria81Cab.mirrorHardware.interactiveMeshes;
-    },
-    update: (snapshot: ISimulationSnapshot, dtSec: number): void => {
-      if (varsoviaCab.group.visible) {
-        varsoviaCab.update(snapshot, dtSec);
-      } else if (inspiroCab.group.visible) {
-        inspiroCab.update(snapshot, dtSec);
-      } else {
-        seria81Cab.update(snapshot, dtSec);
-      }
-      windshieldRain.update(snapshot, dtSec);
-    },
-    dispose: (): void => {
-      seria81Cab.dispose();
-      inspiroCab.dispose();
-      varsoviaCab.dispose();
-      windshieldRain.dispose();
-      doorLightMat.dispose();
-      warningLightMat.dispose();
-      headlightLampMat.dispose();
-      czuwakLampMat.dispose();
-    },
-  };
+  return new MetroCabRig(maxAnisotropy);
 }

@@ -85,86 +85,61 @@ export class MetroWeatherSystem implements IWeatherController {
     toggleWipersPressed: boolean,
     dtSec: number,
   ): IWeatherStepResult {
-    if (toggleWipersPressed) {
-      this.wipersOn = !this.wipersOn;
-    }
-
+    if (toggleWipersPressed) this.wipersOn = !this.wipersOn;
     const dt = Math.max(0, Math.min(dtSec, 0.05));
     const clampedOutdoor = Math.max(0, Math.min(1, outdoorBlend));
-    const isRain = this.mode === 'rain';
     const isSnow = this.mode === 'snow';
-
-    this.rainIntensity = isRain ? clampedOutdoor : 0;
+    this.rainIntensity = this.mode === 'rain' ? clampedOutdoor : 0;
     this.snowIntensity = isSnow ? clampedOutdoor : 0;
-
-    if (isSnow) {
-      if (this.wipersOn) {
-        this.frostIntensity = Math.max(0.06, this.frostIntensity - dt * 0.35);
-      } else if (clampedOutdoor > 0.05) {
-        const targetFrost = Math.min(0.85, 0.32 + clampedOutdoor * 0.48);
-        this.frostIntensity = Math.min(
-          targetFrost,
-          this.frostIntensity + dt * (0.12 + clampedOutdoor * 0.14),
-        );
-      } else {
-        // Slowly thaws inside the warmer underground tunnel
-        this.frostIntensity = Math.max(0, this.frostIntensity - dt * 0.06);
-      }
-    } else {
-      this.frostIntensity = 0;
-    }
-
-    // Slippery rails on STP Kabaty surface section and the first 150 m (rain) or 200 m (snow) inside the tunnel
+    this.updateFrostIntensity(isSnow, clampedOutdoor, dt);
     const carryoverM = isSnow ? SNOW_TUNNEL_CARRYOVER_M : WET_TUNNEL_CARRYOVER_M;
-    this.wetRailsActive =
-      (isRain || isSnow) && hasSurfaceStart && positionM <= M1_TUNNEL_PORTAL_M + carryoverM;
+    this.wetRailsActive = (this.mode === 'rain' || isSnow) && hasSurfaceStart && positionM <= M1_TUNNEL_PORTAL_M + carryoverM;
+    this.wheelSlipActive = this.wetRailsActive && (emergencyBrake || serviceBrake >= (isSnow ? 0.35 : 0.45)) && speedKmh >= 5;
+    const wiperSweepTick = this.updateWipers(dt);
+    const brakeGripMultiplier = !this.wetRailsActive ? 1.0 : isSnow ? SNOW_RAIL_GRIP_MULTIPLIER : WET_RAIL_GRIP_MULTIPLIER;
+    return { wiperSweepTick, brakeGripMultiplier, state: this.getState() };
+  }
 
-    const slipThreshold = isSnow ? 0.35 : 0.45;
-    const hardBraking = emergencyBrake || serviceBrake >= slipThreshold;
-    this.wheelSlipActive = this.wetRailsActive && hardBraking && speedKmh >= 5;
+  public getState(): IWeatherState {
+    return {
+      mode: this.mode, wipersOn: this.wipersOn, wiperPhaseRad: this.wiperPhaseRad,
+      rainIntensity: this.rainIntensity, snowIntensity: this.snowIntensity,
+      frostIntensity: Number(this.frostIntensity.toFixed(3)),
+      wetRailsActive: this.wetRailsActive, wheelSlipActive: this.wheelSlipActive,
+    };
+  }
 
-    let wiperSweepTick = false;
+  private updateFrostIntensity(isSnow: boolean, clampedOutdoor: number, dt: number): void {
+    if (!isSnow) {
+      this.frostIntensity = 0;
+      return;
+    }
+    if (this.wipersOn) {
+      this.frostIntensity = Math.max(0.06, this.frostIntensity - dt * 0.35);
+    } else if (clampedOutdoor > 0.05) {
+      const targetFrost = Math.min(0.85, 0.32 + clampedOutdoor * 0.48);
+      this.frostIntensity = Math.min(targetFrost, this.frostIntensity + dt * (0.12 + clampedOutdoor * 0.14));
+    } else {
+      this.frostIntensity = Math.max(0, this.frostIntensity - dt * 0.06);
+    }
+  }
+
+  private updateWipers(dt: number): boolean {
     if (this.wipersOn) {
       this.wiperCycleRad += dt * WIPER_ANGULAR_SPEED_RAD_S;
       const halfIndex = Math.floor(this.wiperCycleRad / Math.PI);
-      if (halfIndex > this.lastCycleHalf) {
-        this.lastCycleHalf = halfIndex;
-        wiperSweepTick = true;
-      }
-      // Smooth back-and-forth sweep in [0, 1]
+      const tick = halfIndex > this.lastCycleHalf;
+      if (tick) this.lastCycleHalf = halfIndex;
       this.wiperPhaseRad = 0.5 - 0.5 * Math.cos(this.wiperCycleRad);
-    } else if (this.wiperPhaseRad > 0.002) {
-      // Smoothly return wiper to parked rest position
+      return tick;
+    }
+    if (this.wiperPhaseRad > 0.002) {
       this.wiperPhaseRad = Math.max(0, this.wiperPhaseRad - dt * 1.9);
       this.wiperCycleRad = 0;
       this.lastCycleHalf = 0;
     } else {
       this.wiperPhaseRad = 0;
     }
-
-    const brakeGripMultiplier = !this.wetRailsActive
-      ? 1.0
-      : isSnow
-        ? SNOW_RAIL_GRIP_MULTIPLIER
-        : WET_RAIL_GRIP_MULTIPLIER;
-
-    return {
-      wiperSweepTick,
-      brakeGripMultiplier,
-      state: this.getState(),
-    };
-  }
-
-  public getState(): IWeatherState {
-    return {
-      mode: this.mode,
-      wipersOn: this.wipersOn,
-      wiperPhaseRad: this.wiperPhaseRad,
-      rainIntensity: this.rainIntensity,
-      snowIntensity: this.snowIntensity,
-      frostIntensity: Number(this.frostIntensity.toFixed(3)),
-      wetRailsActive: this.wetRailsActive,
-      wheelSlipActive: this.wheelSlipActive,
-    };
+    return false;
   }
 }

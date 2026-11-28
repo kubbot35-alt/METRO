@@ -95,36 +95,10 @@ export class LightingAndSparksSystem implements ILightingAndSparksController {
 
   public step(ctx: ILightingStepContext): ILightingStepResult {
     const dt = Math.max(0, Math.min(ctx.dtSec, 0.1));
-    const inGlareRange = this.isOncomingInGlareRange(ctx.playerPositionM, ctx.oncomingTrain);
-    if (!ctx.oncomingTrain.active || ctx.oncomingTrain.positionM - ctx.playerPositionM < -12) {
-      this.encounterRewarded = false;
-    }
-
     const prevMode = this.headlightMode;
-    let headlightChangedTo: HeadlightMode | null = null;
-    if (ctx.toggleHeadlightsPressed) {
-      headlightChangedTo = this.cycleHeadlightMode();
-    }
-
-    let cabLightChangedTo: boolean | null = null;
-    if (ctx.toggleCabLightPressed) {
-      cabLightChangedTo = this.toggleCabLight();
-    }
-
-    let dimCourtesyBonusAwarded = false;
-    if (
-      inGlareRange &&
-      !this.encounterRewarded &&
-      prevMode === 'high' &&
-      this.headlightMode !== 'high'
-    ) {
-      this.encounterRewarded = true;
-      this.highBeamCourtesyCount += 1;
-      dimCourtesyBonusAwarded = true;
-    }
-    this.dimHighBeamPromptActive =
-      inGlareRange && !this.encounterRewarded && this.headlightMode === 'high';
-
+    const headlightChangedTo = ctx.toggleHeadlightsPressed ? this.cycleHeadlightMode() : null;
+    const cabLightChangedTo = ctx.toggleCabLightPressed ? this.toggleCabLight() : null;
+    const dimCourtesyBonusAwarded = this.evaluateGlareCourtesy(ctx, prevMode);
     const sparkTriggeredNow = this.stepThirdRailSparks(ctx, dt);
     return {
       headlightChangedTo,
@@ -147,13 +121,26 @@ export class LightingAndSparksSystem implements ILightingAndSparksController {
     };
   }
 
+  private evaluateGlareCourtesy(ctx: ILightingStepContext, prevMode: HeadlightMode): boolean {
+    const inGlareRange = this.isOncomingInGlareRange(ctx.playerPositionM, ctx.oncomingTrain);
+    if (!ctx.oncomingTrain.active || ctx.oncomingTrain.positionM - ctx.playerPositionM < -12) {
+      this.encounterRewarded = false;
+    }
+    let awarded = false;
+    if (inGlareRange && !this.encounterRewarded && prevMode === 'high' && this.headlightMode !== 'high') {
+      this.encounterRewarded = true;
+      this.highBeamCourtesyCount += 1;
+      awarded = true;
+    }
+    this.dimHighBeamPromptActive = inGlareRange && !this.encounterRewarded && this.headlightMode === 'high';
+    return awarded;
+  }
+
   private isOncomingInGlareRange(
     playerPositionM: number,
     oncoming: IOncomingTrainState,
   ): boolean {
-    if (!oncoming.active) {
-      return false;
-    }
+    if (!oncoming.active) return false;
     const distAhead = oncoming.positionM - playerPositionM;
     return distAhead >= GLARE_MIN_AHEAD_M && distAhead <= GLARE_MAX_AHEAD_M;
   }
@@ -161,26 +148,15 @@ export class LightingAndSparksSystem implements ILightingAndSparksController {
   private stepThirdRailSparks(ctx: ILightingStepContext, dt: number): boolean {
     this.sparkIntensity = Math.max(0, this.sparkIntensity - dt * SPARK_DECAY_PER_SEC);
     this.sparkCooldownSec = Math.max(0, this.sparkCooldownSec - dt);
-    if (this.sparkCooldownSec > 0 || ctx.speedKmh < 7) {
-      return false;
-    }
-
+    if (this.sparkCooldownSec > 0 || ctx.speedKmh < 7) return false;
     const isTurnout = Math.abs(ctx.turnoutSwayFactor) >= 0.14 && ctx.speedKmh >= 8;
-    const isStrongAccel =
-      ctx.throttle >= 0.72 && ctx.netAccelerationMs2 >= 0.45 && ctx.speedKmh >= 8;
-    const isHardBrake =
-      (ctx.serviceBrake >= 0.65 || ctx.emergencyBrake) && ctx.speedKmh >= 12;
-
-    if (!isTurnout && !isStrongAccel && !isHardBrake) {
-      return false;
-    }
-
+    const isStrongAccel = ctx.throttle >= 0.72 && ctx.netAccelerationMs2 >= 0.45 && ctx.speedKmh >= 8;
+    const isHardBrake = (ctx.serviceBrake >= 0.65 || ctx.emergencyBrake) && ctx.speedKmh >= 12;
+    if (!isTurnout && !isStrongAccel && !isHardBrake) return false;
     this.sparkEventId += 1;
     this.sparkSide = this.rng() < 0.5 ? 'left' : 'right';
     this.sparkIntensity = isTurnout ? 1.0 : isHardBrake ? 0.88 : 0.76;
-    this.sparkCooldownSec = isTurnout
-      ? 0.24 + this.rng() * 0.34
-      : 0.52 + this.rng() * 0.82;
+    this.sparkCooldownSec = isTurnout ? 0.24 + this.rng() * 0.34 : 0.52 + this.rng() * 0.82;
     return true;
   }
 }

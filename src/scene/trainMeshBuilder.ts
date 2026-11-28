@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import type { DoorSide, ITrainVisualProfile, MetroLineId } from '../domain/types';
+import type { DoorSide, ITrainVisualProfile, MetroLineId, TrainVisualTheme } from '../domain/types';
 import { buildInspiroConsist } from './inspiroTrainBuilder';
 import { buildSeria81Consist } from './seria81TrainBuilder';
+import type { ITrainConsist } from './shared/baseTrainConsist';
 import { buildVarsoviaConsist } from './varsoviaTrainBuilder';
 
 export interface ITrainConsistRig {
@@ -14,69 +15,66 @@ export interface ITrainConsistRig {
   dispose(): void;
 }
 
+class MetroConsistRig implements ITrainConsistRig {
+  public readonly group = new THREE.Group();
+  private readonly scene: THREE.Scene;
+  private readonly consists: ReadonlyMap<TrainVisualTheme, ITrainConsist>;
+  private activeTheme: TrainVisualTheme;
+
+  public constructor(
+    scene: THREE.Scene,
+    visual: ITrainVisualProfile,
+    maxAnisotropy: number,
+    isOncoming: boolean,
+  ) {
+    this.scene = scene;
+    this.group.name = 'MetroTrainConsist';
+    this.consists = new Map<TrainVisualTheme, ITrainConsist>([
+      ['retro', buildSeria81Consist(maxAnisotropy)],
+      ['modern', buildInspiroConsist(maxAnisotropy)],
+      ['varsovia', buildVarsoviaConsist(maxAnisotropy, !isOncoming)],
+    ]);
+    this.activeTheme = visual.theme;
+    this.consists.forEach((consist) => this.group.add(consist.group));
+    this.setTheme(visual);
+    this.scene.add(this.group);
+  }
+
+  public setTheme(visual: ITrainVisualProfile): void {
+    this.activeTheme = visual.theme;
+    this.consists.forEach((consist, theme) => {
+      consist.group.visible = theme === visual.theme;
+    });
+    this.consists.get(visual.theme)?.setVisualProfile(visual);
+  }
+
+  public setDoorsOpen(openSide: DoorSide | null, dtSec: number): void {
+    this.consists.forEach((consist) => consist.setDoorsOpen(openSide, dtSec));
+  }
+
+  public setHeadlights(on: boolean): void {
+    this.consists.forEach((consist) => consist.setHeadlights(on));
+  }
+
+  public setLine(lineId: MetroLineId, destinationLed: string): void {
+    this.consists.forEach((consist) => consist.setLine(lineId, destinationLed));
+  }
+
+  public updateMotion(speedMs: number, dtSec: number): void {
+    this.consists.get(this.activeTheme)?.updateMotion(speedMs, dtSec);
+  }
+
+  public dispose(): void {
+    this.scene.remove(this.group);
+    this.consists.forEach((consist) => consist.dispose());
+  }
+}
+
 export function buildMetroConsist(
   scene: THREE.Scene,
   visual: ITrainVisualProfile,
   maxAnisotropy = 4,
+  isOncoming = false,
 ): ITrainConsistRig {
-  const group = new THREE.Group();
-  group.name = 'MetroTrainConsist';
-
-  const seria81 = buildSeria81Consist(maxAnisotropy);
-  const inspiro = buildInspiroConsist(maxAnisotropy);
-  const varsovia = buildVarsoviaConsist(maxAnisotropy);
-
-  const applyThemeVisibility = (v: ITrainVisualProfile): void => {
-    seria81.group.visible = v.theme === 'retro';
-    inspiro.group.visible = v.theme === 'modern';
-    varsovia.group.visible = v.theme === 'varsovia';
-    if (v.theme === 'retro') {
-      seria81.setVisualProfile?.(v);
-    } else if (v.theme === 'modern') {
-      inspiro.setVisualProfile?.(v);
-    } else if (v.theme === 'varsovia') {
-      varsovia.setVisualProfile?.(v);
-    }
-  };
-
-  applyThemeVisibility(visual);
-  group.add(seria81.group, inspiro.group, varsovia.group);
-  scene.add(group);
-
-  return {
-    group,
-    setTheme: (next: ITrainVisualProfile): void => {
-      applyThemeVisibility(next);
-    },
-    setDoorsOpen: (openSide: DoorSide | null, dtSec: number): void => {
-      inspiro.setDoorsOpen(openSide, dtSec);
-      seria81.setDoorsOpen(openSide, dtSec);
-      varsovia.setDoorsOpen(openSide, dtSec);
-    },
-    setHeadlights: (on: boolean): void => {
-      inspiro.setHeadlights(on);
-      seria81.setHeadlights(on);
-      varsovia.setHeadlights(on);
-    },
-    setLine: (lineId: MetroLineId, destinationLed: string): void => {
-      inspiro.setLine(lineId, destinationLed);
-      seria81.setLine(lineId, destinationLed);
-      varsovia.setLine(lineId, destinationLed);
-    },
-    updateMotion: (speedMs: number, dtSec: number): void => {
-      if (varsovia.group.visible) {
-        varsovia.updateWheelSpin(speedMs, dtSec);
-      } else if (inspiro.group.visible) {
-        inspiro.updateWheelSpin(speedMs, dtSec);
-      } else {
-        seria81.updateWheelSpin(speedMs, dtSec);
-      }
-    },
-    dispose: (): void => {
-      scene.remove(group);
-      inspiro.dispose();
-      seria81.dispose();
-      varsovia.dispose();
-    },
-  };
+  return new MetroConsistRig(scene, visual, maxAnisotropy, isOncoming);
 }

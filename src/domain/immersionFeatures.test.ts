@@ -30,8 +30,13 @@ test('Warsaw Metro M1 route has 21 real stations from Kabaty to Młociny and 42 
   assert.equal(LINE_M1_STATIONS[20].distanceM, 12600);
   assert.equal(SEMAPHORE_DISTANCES_M.length, 42);
   for (const station of LINE_M1_STATIONS) {
-    assert.ok(station.waitingPassengers >= 12 && station.waitingPassengers <= 18);
+    assert.ok(station.waitingPassengers >= 8 && station.waitingPassengers <= 30);
   }
+  const kabaty = LINE_M1_STATIONS[0];
+  const centrum = LINE_M1_STATIONS[11];
+  const swietokrzyska = LINE_M1_STATIONS[12];
+  assert.ok(centrum.waitingPassengers > kabaty.waitingPassengers);
+  assert.ok(swietokrzyska.waitingPassengers > kabaty.waitingPassengers);
 });
 
 test('headlights default to LOW and cycle low -> high -> off -> low via L input', () => {

@@ -1,9 +1,11 @@
+import {
+  JsonStorageRepository,
+  type IJsonRepository,
+  type IKeyValueStorage,
+} from './persistence/jsonStorageRepository';
 import type { DriverGrade, ILeaderboardEntry, TimeOfDayId, TrainModelId } from './types';
 
-export interface ILeaderboardStorage {
-  getItem(key: string): string | null;
-  setItem(key: string, value: string): void;
-}
+export type ILeaderboardStorage = IKeyValueStorage;
 
 export interface ILeaderboardRecordInput {
   readonly score: number;
@@ -45,48 +47,30 @@ function isValidEntry(candidate: unknown): candidate is ILeaderboardEntry {
   );
 }
 
-export class LocalStorageLeaderboardStore implements ILeaderboardStorage {
-  public getItem(key: string): string | null {
-    try {
-      return window.localStorage.getItem(key);
-    } catch {
-      return null;
-    }
+function sanitizeLeaderboardEntries(raw: unknown): readonly ILeaderboardEntry[] {
+  if (!Array.isArray(raw)) {
+    return [];
   }
-
-  public setItem(key: string, value: string): void {
-    try {
-      window.localStorage.setItem(key, value);
-    } catch {
-      // Ignore storage quota or privacy-mode write errors gracefully
-    }
-  }
+  return raw
+    .filter(isValidEntry)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_ENTRIES);
 }
 
 export class LeaderboardService implements ILeaderboardService {
-  private readonly storage: ILeaderboardStorage;
+  private readonly repo: IJsonRepository<readonly ILeaderboardEntry[]>;
 
-  public constructor(storage: ILeaderboardStorage = new LocalStorageLeaderboardStore()) {
-    this.storage = storage;
+  public constructor(storage?: ILeaderboardStorage | null) {
+    this.repo = new JsonStorageRepository<readonly ILeaderboardEntry[]>(
+      STORAGE_KEY,
+      () => [],
+      sanitizeLeaderboardEntries,
+      storage,
+    );
   }
 
   public getTopEntries(): readonly ILeaderboardEntry[] {
-    const raw = this.storage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return [];
-    }
-    try {
-      const parsed: unknown = JSON.parse(raw);
-      if (!Array.isArray(parsed)) {
-        return [];
-      }
-      return parsed
-        .filter(isValidEntry)
-        .sort((a, b) => b.score - a.score)
-        .slice(0, MAX_ENTRIES);
-    } catch {
-      return [];
-    }
+    return this.repo.load();
   }
 
   public recordRun(input: ILeaderboardRecordInput): ILeaderboardSaveResult {
@@ -105,10 +89,7 @@ export class LeaderboardService implements ILeaderboardService {
       timeOfDayLabel: input.timeOfDayLabel,
       dateIso,
     };
-    const nextEntries = [...existing, newEntry]
-      .sort((a, b) => b.score - a.score)
-      .slice(0, MAX_ENTRIES);
-    this.storage.setItem(STORAGE_KEY, JSON.stringify(nextEntries));
+    const nextEntries = this.repo.save([...existing, newEntry]);
     return { entries: nextEntries, isNewRecord };
   }
 }
@@ -118,8 +99,9 @@ export function formatLeaderboardDate(dateIso: string): string {
   if (Number.isNaN(parsed.getTime())) {
     return dateIso.slice(0, 10);
   }
-  const day = String(parsed.getDate()).padStart(2, '0');
-  const month = String(parsed.getMonth() + 1).padStart(2, '0');
-  const year = parsed.getFullYear();
-  return `${day}.${month}.${year}`;
+  return parsed.toLocaleDateString('pl-PL', {
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
+  });
 }

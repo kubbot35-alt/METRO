@@ -49,6 +49,13 @@ export interface ISeria81Geometries {
 }
 
 export function createSeria81Materials(destBoardTex: THREE.CanvasTexture): ISeria81Materials {
+  return { ...createSeria81BodyMaterials(), ...createSeria81GlassAndLightMaterials(destBoardTex) };
+}
+
+function createSeria81BodyMaterials(): Pick<
+  ISeria81Materials,
+  'upperBody' | 'roofNavy' | 'warsawRed' | 'warsawYellow' | 'chevronWhite' | 'corrugatedRed' | 'rubberBlack' | 'chromeSteel' | 'darkSteel' | 'wheelSteel'
+> {
   return {
     upperBody: new THREE.MeshStandardMaterial({ color: 0x526173, roughness: 0.44, metalness: 0.32 }),
     roofNavy: new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.56, metalness: 0.28 }),
@@ -60,52 +67,24 @@ export function createSeria81Materials(destBoardTex: THREE.CanvasTexture): ISeri
     chromeSteel: new THREE.MeshStandardMaterial({ color: 0xdbe2ea, roughness: 0.22, metalness: 0.85 }),
     darkSteel: new THREE.MeshStandardMaterial({ color: 0x1b2029, roughness: 0.78, metalness: 0.52 }),
     wheelSteel: new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.32, metalness: 0.85 }),
-    sideGlass: new THREE.MeshStandardMaterial({
-      color: 0xfef3c7,
-      emissive: 0xfde68a,
-      emissiveIntensity: 0.88,
-      roughness: 0.18,
-      metalness: 0.22,
-    }),
-    windshieldGlass: new THREE.MeshStandardMaterial({
-      color: 0x0d1726,
-      roughness: 0.12,
-      metalness: 0.76,
-    }),
-    warmHeadlamp: new THREE.MeshStandardMaterial({
-      color: 0xfff8dc,
-      emissive: 0xffd57a,
-      emissiveIntensity: 4.4,
-      roughness: 0.14,
-    }),
-    redTaillamp: new THREE.MeshStandardMaterial({
-      color: 0xfca5a5,
-      emissive: 0xef4444,
-      emissiveIntensity: 3.1,
-      roughness: 0.18,
-    }),
+  };
+}
+
+function createSeria81GlassAndLightMaterials(
+  destBoardTex: THREE.CanvasTexture,
+): Pick<ISeria81Materials, 'sideGlass' | 'windshieldGlass' | 'warmHeadlamp' | 'redTaillamp' | 'destBoardMat'> {
+  return {
+    sideGlass: new THREE.MeshStandardMaterial({ color: 0xfef3c7, emissive: 0xfde68a, emissiveIntensity: 0.88, roughness: 0.18, metalness: 0.22 }),
+    windshieldGlass: new THREE.MeshStandardMaterial({ color: 0x0d1726, roughness: 0.12, metalness: 0.76 }),
+    warmHeadlamp: new THREE.MeshStandardMaterial({ color: 0xfff8dc, emissive: 0xffd57a, emissiveIntensity: 4.4, roughness: 0.14 }),
+    redTaillamp: new THREE.MeshStandardMaterial({ color: 0xfca5a5, emissive: 0xef4444, emissiveIntensity: 3.1, roughness: 0.18 }),
     destBoardMat: new THREE.MeshStandardMaterial({
-      map: destBoardTex,
-      emissiveMap: destBoardTex,
-      emissive: 0xffffff,
-      emissiveIntensity: 0.34,
-      roughness: 0.68,
-      polygonOffset: true,
-      polygonOffsetFactor: -1,
+      map: destBoardTex, emissiveMap: destBoardTex, emissive: 0xffffff, emissiveIntensity: 0.34, roughness: 0.68, polygonOffset: true, polygonOffsetFactor: -1,
     }),
   };
 }
 
 export function createSeria81Geometries(): ISeria81Geometries {
-  const wheel = new THREE.CylinderGeometry(0.41, 0.41, 0.14, 14);
-  wheel.rotateZ(Math.PI / 2);
-  const axle = new THREE.CylinderGeometry(0.085, 0.085, 1.65, 8);
-  axle.rotateZ(Math.PI / 2);
-  const headlampBezel = new THREE.CylinderGeometry(0.135, 0.145, 0.12, 16);
-  headlampBezel.rotateX(Math.PI / 2);
-  const headlampLens = new THREE.CylinderGeometry(0.11, 0.11, 0.135, 16);
-  headlampLens.rotateX(Math.PI / 2);
-
   return {
     carShell: createChamfered81ShellGeometry(),
     redSkirt: new THREE.BoxGeometry(SERIA81_CAR_WIDTH + 0.06, 0.82, SERIA81_CAR_LENGTH - 0.1),
@@ -117,19 +96,32 @@ export function createSeria81Geometries(): ISeria81Geometries {
     doorLeaf: new THREE.BoxGeometry(0.06, 1.98, 0.56),
     doorGlass: new THREE.BoxGeometry(0.072, 0.72, 0.36),
     gangway: new THREE.BoxGeometry(2.08, 2.52, SERIA81_CAR_GAP + 0.14),
+    ...createSeria81FrontAndBogieGeos(),
+  };
+}
+
+function createSeria81FrontAndBogieGeos(): Pick<
+  ISeria81Geometries,
+  | 'frontPlate' | 'frontGasketFrame' | 'frontWindshieldPane' | 'frontCenterPillar'
+  | 'chevronBar' | 'headlampBezel' | 'headlampLens' | 'wiperArm' | 'destBoardPlane'
+  | 'coupler' | 'bogieFrame' | 'axle' | 'wheel'
+> {
+  const wheel = new THREE.CylinderGeometry(0.41, 0.41, 0.14, 14); wheel.rotateZ(Math.PI / 2);
+  const axle = new THREE.CylinderGeometry(0.085, 0.085, 1.65, 8); axle.rotateZ(Math.PI / 2);
+  const headlampBezel = new THREE.CylinderGeometry(0.135, 0.145, 0.12, 16); headlampBezel.rotateX(Math.PI / 2);
+  const headlampLens = new THREE.CylinderGeometry(0.11, 0.11, 0.135, 16); headlampLens.rotateX(Math.PI / 2);
+  return {
     frontPlate: new THREE.BoxGeometry(SERIA81_CAR_WIDTH + 0.04, 2.74, 0.24),
     frontGasketFrame: new THREE.BoxGeometry(1.06, 0.98, 0.08),
     frontWindshieldPane: new THREE.BoxGeometry(0.92, 0.84, 0.095),
     frontCenterPillar: new THREE.BoxGeometry(0.14, 1.02, 0.11),
     chevronBar: new THREE.BoxGeometry(1.48, 0.16, 0.05),
-    headlampBezel,
-    headlampLens,
+    headlampBezel, headlampLens,
     wiperArm: new THREE.BoxGeometry(0.032, 0.52, 0.032),
     destBoardPlane: new THREE.PlaneGeometry(0.84, 0.21),
     coupler: new THREE.BoxGeometry(0.46, 0.28, 0.68),
     bogieFrame: new THREE.BoxGeometry(1.94, 0.32, 2.55),
-    axle,
-    wheel,
+    axle, wheel,
   };
 }
 

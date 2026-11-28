@@ -1,5 +1,7 @@
 import type { ISimulationSnapshot } from '../domain/types';
 import { useI18n } from '../i18n/LanguageContext';
+import { ModalDialogShell } from './shared/ModalDialogShell';
+import { StatTileCard } from './shared/ModalUiPrimitives';
 
 interface IStatusModalProps {
   readonly snapshot: ISimulationSnapshot;
@@ -16,130 +18,68 @@ function formatDuration(seconds: number): string {
   return `${mins}:${secs.toString().padStart(2, '0')}`;
 }
 
-export function StatusModal({
-  snapshot,
-  onResume,
-  onRestart,
-  onOpenPhotoMode,
-  onOpenSettings,
-  onTitle,
-}: IStatusModalProps) {
+function PauseExtraButtons({ onOpenPhotoMode, onOpenSettings, onRestart }: {
+  readonly onOpenPhotoMode?: () => void;
+  readonly onOpenSettings?: () => void;
+  readonly onRestart: () => void;
+}) {
   const { tr } = useI18n();
-  const isPause = snapshot.phase === 'paused';
-  const avgError =
-    snapshot.stationsServed > 0
-      ? `${(snapshot.totalStopErrorM / snapshot.stationsServed).toFixed(1)} m`
-      : '—';
-
   return (
-    <div className="fixed inset-0 z-30 bg-[#07090e]/82 flex items-center justify-center p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="status-modal-title"
-        className="w-full max-w-md bg-[#121721] border border-slate-700 rounded-lg p-6 shadow-2xl"
-      >
-        <p className="text-xs font-mono-tabular uppercase tracking-widest text-amber-400">
-          {isPause
-            ? tr('Symulacja wstrzymana', 'Simulation Paused')
-            : tr(`Kurs zakończony · ${snapshot.line.name}`, `Run Finished · ${snapshot.line.name}`)}
-        </p>
-        <h2
-          id="status-modal-title"
-          className="font-display text-2xl font-bold text-slate-50 mt-1 mb-5"
-        >
-          {isPause ? tr('Pauza', 'Paused') : tr('Podsumowanie kursu', 'Run Summary')}
-        </h2>
+    <>
+      {onOpenPhotoMode && (
+        <button type="button" data-testid="pause-photo-mode-btn" onClick={onOpenPhotoMode} className="w-full py-2.5 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/70 text-cyan-100 font-display font-bold rounded-md cursor-pointer">
+          {tr('Tryb Fotograficzny (wolna kamera) [F]', 'Photo Mode (Free Camera) [F]')}
+        </button>
+      )}
+      {onOpenSettings && (
+        <button type="button" data-testid="pause-settings-btn" onClick={onOpenSettings} className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-100 font-medium rounded-md cursor-pointer">
+          {tr('⚙ Ustawienia (dźwięk, grafika, FOV)', '⚙ Settings (Audio, Graphics, FOV)')}
+        </button>
+      )}
+      <button type="button" onClick={onRestart} className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 font-medium rounded-md cursor-pointer">
+        {tr('Restartuj kurs', 'Restart Run')}
+      </button>
+    </>
+  );
+}
 
-        <div className="grid grid-cols-2 gap-3 mb-6">
-          <StatTile label={tr('Wynik', 'Score')} value={`${Math.round(snapshot.score)} ${tr('pkt', 'pts')}`} />
-          <StatTile
-            label={tr('Obsłużone stacje', 'Stations Served')}
-            value={`${snapshot.stationsServed} / ${snapshot.totalStations}`}
-          />
-          <StatTile label={tr('Przewiezieni pasażerowie', 'Passengers Carried')} value={String(snapshot.passengersCarried)} />
-          <StatTile
-            label={isPause ? tr('Czas jazdy', 'Elapsed Time') : tr('Błąd / Czas', 'Error / Time')}
-            value={
-              isPause
-                ? formatDuration(snapshot.elapsedTimeSec)
-                : `${avgError} · ${formatDuration(snapshot.elapsedTimeSec)}`
-            }
-          />
-        </div>
-
-        <div className="flex flex-col gap-2.5">
-          {isPause ? (
-            <button
-              type="button"
-              onClick={onResume}
-              className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-display font-bold rounded-md cursor-pointer"
-            >
-              {tr('Wznów jazdę', 'Resume Drive')}
-            </button>
-          ) : (
-            <button
-              type="button"
-              data-start="true"
-              onClick={onRestart}
-              className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-display font-bold rounded-md cursor-pointer"
-            >
-              {tr('Nowy kurs', 'New Run')}
-            </button>
-          )}
-
-          {isPause && onOpenPhotoMode && (
-            <button
-              type="button"
-              data-testid="pause-photo-mode-btn"
-              onClick={onOpenPhotoMode}
-              className="w-full py-2.5 bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-400/70 text-cyan-100 font-display font-bold rounded-md cursor-pointer"
-            >
-              {tr('Tryb Fotograficzny (wolna kamera) [F]', 'Photo Mode (Free Camera) [F]')}
-            </button>
-          )}
-
-          {isPause && onOpenSettings && (
-            <button
-              type="button"
-              data-testid="pause-settings-btn"
-              onClick={onOpenSettings}
-              className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-100 font-medium rounded-md cursor-pointer"
-            >
-              {tr('⚙ Ustawienia (dźwięk, grafika, FOV)', '⚙ Settings (Audio, Graphics, FOV)')}
-            </button>
-          )}
-
-          {isPause && (
-            <button
-              type="button"
-              onClick={onRestart}
-              className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-100 font-medium rounded-md cursor-pointer"
-            >
-              {tr('Restartuj kurs', 'Restart Run')}
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={onTitle}
-            className="w-full py-2.5 bg-transparent hover:bg-slate-800/70 border border-slate-700 text-slate-300 font-medium rounded-md cursor-pointer"
-          >
-            {tr('Ekran startowy', 'Main Menu')}
-          </button>
-        </div>
-      </div>
+function StatusActionButtons({ isPause, onResume, onRestart, onOpenPhotoMode, onOpenSettings, onTitle }: Omit<IStatusModalProps, 'snapshot'> & { readonly isPause: boolean }) {
+  const { tr } = useI18n();
+  return (
+    <div className="flex flex-col gap-2.5">
+      <button type="button" data-start={isPause ? undefined : 'true'} onClick={isPause ? onResume : onRestart} className="w-full py-2.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-display font-bold rounded-md cursor-pointer">
+        {isPause ? tr('Wznów jazdę', 'Resume Drive') : tr('Nowy kurs', 'New Run')}
+      </button>
+      {isPause && <PauseExtraButtons onOpenPhotoMode={onOpenPhotoMode} onOpenSettings={onOpenSettings} onRestart={onRestart} />}
+      <button type="button" onClick={onTitle} className="w-full py-2.5 bg-transparent hover:bg-slate-800/70 border border-slate-700 text-slate-300 font-medium rounded-md cursor-pointer">
+        {tr('Ekran startowy', 'Main Menu')}
+      </button>
     </div>
   );
 }
 
-function StatTile({ label, value }: { readonly label: string; readonly value: string }) {
+export function StatusModal({ snapshot, onResume, onRestart, onOpenPhotoMode, onOpenSettings, onTitle }: IStatusModalProps) {
+  const { tr } = useI18n();
+  const isPause = snapshot.phase === 'paused';
+  const avgError = snapshot.stationsServed > 0 ? `${(snapshot.totalStopErrorM / snapshot.stationsServed).toFixed(1)} m` : '—';
   return (
-    <div className="bg-[#0b0e14] border border-slate-800 rounded-md px-3 py-2.5">
-      <div className="text-[11px] font-mono-tabular uppercase tracking-wider text-slate-400">
-        {label}
+    <ModalDialogShell
+      titleId="status-modal-title"
+      zIndexClassName="z-30"
+      maxWidthClassName="max-w-md"
+      backdropClassName="bg-[#07090e]/82"
+      panelClassName="bg-[#121721] border border-slate-700 rounded-lg p-6 shadow-2xl"
+      eyebrow={isPause ? tr('Symulacja wstrzymana', 'Simulation Paused') : tr(`Kurs zakończony · ${snapshot.line.name}`, `Run Finished · ${snapshot.line.name}`)}
+      eyebrowClassName="text-xs font-mono-tabular uppercase tracking-widest text-amber-400"
+      title={isPause ? tr('Pauza', 'Paused') : tr('Podsumowanie kursu', 'Run Summary')}
+    >
+      <div className="grid grid-cols-2 gap-3 mb-6">
+        <StatTileCard label={tr('Wynik', 'Score')} value={`${Math.round(snapshot.score)} ${tr('pkt', 'pts')}`} cardClassName="bg-[#0b0e14] border border-slate-800 rounded-md px-3 py-2.5" />
+        <StatTileCard label={tr('Obsłużone stacje', 'Stations Served')} value={`${snapshot.stationsServed} / ${snapshot.totalStations}`} cardClassName="bg-[#0b0e14] border border-slate-800 rounded-md px-3 py-2.5" />
+        <StatTileCard label={tr('Przewiezieni pasażerowie', 'Passengers Carried')} value={String(snapshot.passengersCarried)} cardClassName="bg-[#0b0e14] border border-slate-800 rounded-md px-3 py-2.5" />
+        <StatTileCard label={isPause ? tr('Czas jazdy', 'Elapsed Time') : tr('Błąd / Czas', 'Error / Time')} value={isPause ? formatDuration(snapshot.elapsedTimeSec) : `${avgError} · ${formatDuration(snapshot.elapsedTimeSec)}`} cardClassName="bg-[#0b0e14] border border-slate-800 rounded-md px-3 py-2.5" />
       </div>
-      <div className="font-mono-tabular text-lg font-bold text-slate-100 mt-0.5">{value}</div>
-    </div>
+      <StatusActionButtons isPause={isPause} onResume={onResume} onRestart={onRestart} onOpenPhotoMode={onOpenPhotoMode} onOpenSettings={onOpenSettings} onTitle={onTitle} />
+    </ModalDialogShell>
   );
 }

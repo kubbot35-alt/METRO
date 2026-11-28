@@ -78,6 +78,25 @@ export function createDefaultPhotoCameraState(): IPhotoCameraState {
   };
 }
 
+function computeCameraMoveDelta(
+  input: IPhotoMoveInput,
+  yaw: number,
+  pitch: number,
+): readonly [number, number, number] {
+  const fwdInput = (input.forward ? 1 : 0) - (input.backward ? 1 : 0);
+  const rightInput = (input.right ? 1 : 0) - (input.left ? 1 : 0);
+  const upInput = (input.up ? 1 : 0) - (input.down ? 1 : 0);
+  if (fwdInput === 0 && rightInput === 0 && upInput === 0) return [0, 0, 0];
+  const cosY = Math.cos(yaw);
+  const sinY = Math.sin(yaw);
+  const cosP = Math.cos(pitch);
+  const moveX = -sinY * cosP * fwdInput + cosY * rightInput;
+  const moveY = Math.sin(pitch) * fwdInput + upInput;
+  const moveZ = -cosY * cosP * fwdInput - sinY * rightInput;
+  const len = Math.hypot(moveX, moveY, moveZ);
+  return len > 1e-4 ? [moveX / len, moveY / len, moveZ / len] : [0, 0, 0];
+}
+
 export class PhotoCameraController implements IPhotoCameraController {
   private state: IPhotoCameraState = createDefaultPhotoCameraState();
   private initialPose: IPhotoCameraState = this.state;
@@ -115,43 +134,14 @@ export class PhotoCameraController implements IPhotoCameraController {
   }
 
   public stepMovement(input: IPhotoMoveInput, dtSec: number): IPhotoCameraState {
-    const dt = clamp(dtSec, 0, 0.1);
-    const fwdInput = (input.forward ? 1 : 0) - (input.backward ? 1 : 0);
-    const rightInput = (input.right ? 1 : 0) - (input.left ? 1 : 0);
-    const upInput = (input.up ? 1 : 0) - (input.down ? 1 : 0);
-    if (fwdInput === 0 && rightInput === 0 && upInput === 0) {
-      return this.state;
-    }
-
-    const speedMs = input.boost ? 22 : 9.5;
-    const cosYaw = Math.cos(this.state.yaw);
-    const sinYaw = Math.sin(this.state.yaw);
-    const cosPitch = Math.cos(this.state.pitch);
-    const sinPitch = Math.sin(this.state.pitch);
-
-    // Three.js camera looks down -Z when yaw=0, pitch=0
-    const fwdX = -sinYaw * cosPitch;
-    const fwdY = sinPitch;
-    const fwdZ = -cosYaw * cosPitch;
-
-    const rightX = cosYaw;
-    const rightZ = -sinYaw;
-
-    let moveX = fwdX * fwdInput + rightX * rightInput;
-    let moveY = fwdY * fwdInput + upInput;
-    let moveZ = fwdZ * fwdInput + rightZ * rightInput;
-    const len = Math.hypot(moveX, moveY, moveZ);
-    if (len > 1e-4) {
-      moveX /= len;
-      moveY /= len;
-      moveZ /= len;
-    }
-
+    const [dx, dy, dz] = computeCameraMoveDelta(input, this.state.yaw, this.state.pitch);
+    if (dx === 0 && dy === 0 && dz === 0) return this.state;
+    const stepM = (input.boost ? 22 : 9.5) * clamp(dtSec, 0, 0.1);
     this.state = {
       ...this.state,
-      x: this.state.x + moveX * speedMs * dt,
-      y: clamp(this.state.y + moveY * speedMs * dt, 0.35, 36),
-      z: this.state.z + moveZ * speedMs * dt,
+      x: this.state.x + dx * stepM,
+      y: clamp(this.state.y + dy * stepM, 0.35, 36),
+      z: this.state.z + dz * stepM,
     };
     return this.state;
   }

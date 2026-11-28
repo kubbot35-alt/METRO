@@ -98,90 +98,57 @@ export interface IChallengeEvalInput {
   readonly nightCrewViolated?: number;
 }
 
-export function evaluateChallengeOutcome(input: IChallengeEvalInput): IChallengeOutcome {
-  const { challenge } = input;
-  if (challenge.id === 'inverter_fault') {
-    const worstDelay = Math.max(input.averageDeviationSec, input.finalDeviationSec);
-    if (input.stationsMissed > 0) {
-      return {
-        passed: false,
-        reason: `Pominięto stacje (${input.stationsMissed}) — wymagana obsługa całej trasy.`,
-      };
-    }
-    if (worstDelay >= (challenge.maxAllowedDelaySec ?? 20)) {
-      return {
-        passed: false,
-        reason: `Opóźnienie ${Math.round(worstDelay)} s przekroczyło limit ${challenge.maxAllowedDelaySec ?? 20} s.`,
-      };
-    }
-    return {
-      passed: true,
-      reason: `Ukończono z mocą 60% i opóźnieniem ${Math.max(0, Math.round(worstDelay))} s (< 20 s).`,
-    };
-  }
-
-  if (challenge.id === 'technical_run') {
-    if (input.redSignalViolations > 0) {
-      return {
-        passed: false,
-        reason: `Przejechano czerwony semafor (${input.redSignalViolations}x).`,
-      };
-    }
-    if (input.czuwakViolations > 0) {
-      return {
-        passed: false,
-        reason: `Brak potwierdzenia czuwaka (${input.czuwakViolations}x).`,
-      };
-    }
-    if (input.overspeedViolations > 2) {
-      return {
-        passed: false,
-        reason: `Zbyt wiele przekroczeń prędkości (${input.overspeedViolations}x, maks. 2).`,
-      };
-    }
-    return {
-      passed: true,
-      reason: 'Bezpieczny przejazd techniczny przez całą trasę zgodnie z limitami.',
-    };
-  }
-
-  if (challenge.id === 'night_service') {
-    const total = input.nightCrewTotal ?? 0;
-    const passed = input.nightCrewPassed ?? 0;
-    const violated = input.nightCrewViolated ?? 0;
-    if (violated > 0) {
-      return {
-        passed: false,
-        reason: `Naruszenie zasad BHP przy ekipach torowych (${violated} z ${total}) — wymagane ≤ 20 km/h i klakson [H].`,
-      };
-    }
-    if (input.redSignalViolations > 0 || input.czuwakViolations > 0) {
-      return {
-        passed: false,
-        reason: 'Naruszenie sygnalizacji ATP lub czuwaka podczas nocnej inspekcji tunelu.',
-      };
-    }
-    return {
-      passed: true,
-      reason: `Bezbłędna inspekcja nocna! Wszystkie punkty kontrolne (${passed}/${total}) zaliczone bezpiecznie.`,
-    };
-  }
-
-  // black_series
+function evaluateInverterFault(input: IChallengeEvalInput): IChallengeOutcome {
+  const worstDelay = Math.max(input.averageDeviationSec, input.finalDeviationSec);
+  const limit = input.challenge.maxAllowedDelaySec ?? 20;
   if (input.stationsMissed > 0) {
-    return {
-      passed: false,
-      reason: `Pominięto stacje (${input.stationsMissed}) podczas Czarnej serii.`,
-    };
+    return { passed: false, reason: `Pominięto stacje (${input.stationsMissed}) — wymagana obsługa całej trasy.` };
+  }
+  if (worstDelay >= limit) {
+    return { passed: false, reason: `Opóźnienie ${Math.round(worstDelay)} s przekroczyło limit ${limit} s.` };
+  }
+  return { passed: true, reason: `Ukończono z mocą 60% i opóźnieniem ${Math.max(0, Math.round(worstDelay))} s (< 20 s).` };
+}
+
+function evaluateTechnicalRun(input: IChallengeEvalInput): IChallengeOutcome {
+  if (input.redSignalViolations > 0) {
+    return { passed: false, reason: `Przejechano czerwony semafor (${input.redSignalViolations}x).` };
+  }
+  if (input.czuwakViolations > 0) {
+    return { passed: false, reason: `Brak potwierdzenia czuwaka (${input.czuwakViolations}x).` };
+  }
+  if (input.overspeedViolations > 2) {
+    return { passed: false, reason: `Zbyt wiele przekroczeń prędkości (${input.overspeedViolations}x, maks. 2).` };
+  }
+  return { passed: true, reason: 'Bezpieczny przejazd techniczny przez całą trasę zgodnie z limitami.' };
+}
+
+function evaluateNightService(input: IChallengeEvalInput): IChallengeOutcome {
+  const total = input.nightCrewTotal ?? 0;
+  const passed = input.nightCrewPassed ?? 0;
+  const violated = input.nightCrewViolated ?? 0;
+  if (violated > 0) {
+    return { passed: false, reason: `Naruszenie zasad BHP przy ekipach torowych (${violated} z ${total}) — wymagane ≤ 20 km/h i klakson [H].` };
+  }
+  if (input.redSignalViolations > 0 || input.czuwakViolations > 0) {
+    return { passed: false, reason: 'Naruszenie sygnalizacji ATP lub czuwaka podczas nocnej inspekcji tunelu.' };
+  }
+  return { passed: true, reason: `Bezbłędna inspekcja nocna! Wszystkie punkty kontrolne (${passed}/${total}) zaliczone bezpiecznie.` };
+}
+
+function evaluateBlackSeries(input: IChallengeEvalInput): IChallengeOutcome {
+  if (input.stationsMissed > 0) {
+    return { passed: false, reason: `Pominięto stacje (${input.stationsMissed}) podczas Czarnej serii.` };
   }
   if (input.redSignalViolations > 1 || input.czuwakViolations > 1) {
-    return {
-      passed: false,
-      reason: 'Zbyt wiele poważnych naruszeń ATP lub czuwaka w trybie Czarna seria.',
-    };
+    return { passed: false, reason: 'Zbyt wiele poważnych naruszeń ATP lub czuwaka w trybie Czarna seria.' };
   }
-  return {
-    passed: true,
-    reason: 'Przetrwałeś Czarną serię i doprowadziłeś skład bezpiecznie do końca trasy!',
-  };
+  return { passed: true, reason: 'Przetrwałeś Czarną serię i doprowadziłeś skład bezpiecznie do końca trasy!' };
+}
+
+export function evaluateChallengeOutcome(input: IChallengeEvalInput): IChallengeOutcome {
+  const id = input.challenge.id;
+  if (id === 'inverter_fault') return evaluateInverterFault(input);
+  if (id === 'technical_run') return evaluateTechnicalRun(input);
+  return id === 'night_service' ? evaluateNightService(input) : evaluateBlackSeries(input);
 }

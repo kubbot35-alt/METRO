@@ -2,6 +2,15 @@ import * as THREE from 'three';
 import { DEFAULT_SCENE_CULL_RANGE_M, isWithinCullingRange } from '../domain/routeVariant';
 import type { TrackAlignment } from '../domain/trackAlignment';
 import type { ISemaphoreState, SignalAspect } from '../domain/types';
+import {
+  createSemaphoreAssets,
+  createSemaphoreLensMaterial,
+  getSemaphoreAspectColor,
+  SEMAPHORE_LENS_Y,
+  SEMAPHORE_OFF_INTENSITY,
+  SEMAPHORE_ON_INTENSITY,
+  type ISemaphoreSharedAssets,
+} from './semaphoreAssets';
 
 export interface ISemaphoreRig {
   sync(signals: readonly ISemaphoreState[], playerPosM?: number): void;
@@ -21,206 +30,88 @@ interface ISemaphoreVisual {
   visible: boolean;
 }
 
-const OFF_INTENSITY = 0.04;
-const ON_INTENSITY = 5.0;
-const LENS_Y: Record<SignalAspect, number> = {
-  red: 3.18,
-  yellow: 2.75,
-  green: 2.32,
-};
-
-function createGlowTexture(): THREE.CanvasTexture {
-  const canvas = document.createElement('canvas');
-  canvas.width = 64;
-  canvas.height = 64;
-  const ctx = canvas.getContext('2d');
-  if (ctx) {
-    const grad = ctx.createRadialGradient(32, 32, 4, 32, 32, 32);
-    grad.addColorStop(0, 'rgba(255,255,255,0.95)');
-    grad.addColorStop(0.35, 'rgba(255,255,255,0.55)');
-    grad.addColorStop(1, 'rgba(255,255,255,0)');
-    ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 64, 64);
-  }
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
-function aspectColor(aspect: SignalAspect): number {
-  if (aspect === 'red') {
-    return 0xff3b3b;
-  }
-  if (aspect === 'yellow') {
-    return 0xffb020;
-  }
-  return 0x10f59d;
-}
-
-export function buildTunnelSemaphores(
-  scene: THREE.Scene,
-  alignment: TrackAlignment,
-  initialSignals: readonly ISemaphoreState[],
-): ISemaphoreRig {
-  const disposables: Array<{ dispose(): void }> = [];
+export function buildTunnelSemaphores(scene: THREE.Scene, alignment: TrackAlignment, initialSignals: readonly ISemaphoreState[]): ISemaphoreRig {
   const root = new THREE.Group();
   root.name = 'TunnelSemaphoresGroup';
   scene.add(root);
-
-  const glowTex = createGlowTexture();
-  const postGeo = new THREE.CylinderGeometry(0.06, 0.08, 2.9, 8);
-  const baseGeo = new THREE.BoxGeometry(0.36, 0.12, 0.36);
-  const headGeo = new THREE.BoxGeometry(0.54, 1.44, 0.3);
-  const visorGeo = new THREE.CylinderGeometry(0.19, 0.19, 0.22, 12, 1, true, -Math.PI * 0.55, Math.PI * 1.1);
-  const lensGeo = new THREE.CircleGeometry(0.165, 16);
-  const haloGeo = new THREE.PlaneGeometry(1.15, 1.15);
-
-  const postMat = new THREE.MeshStandardMaterial({ color: 0x334155, roughness: 0.55, metalness: 0.7 });
-  const headMat = new THREE.MeshStandardMaterial({ color: 0x090c12, roughness: 0.85, metalness: 0.2 });
-  disposables.push(glowTex, postGeo, baseGeo, headGeo, visorGeo, lensGeo, haloGeo, postMat, headMat);
-
-  const visuals: ISemaphoreVisual[] = initialSignals.map((sig) =>
-    createSingleSemaphore(
-      root,
-      alignment,
-      sig,
-      { postGeo, baseGeo, headGeo, visorGeo, lensGeo, haloGeo },
-      { postMat, headMat, glowTex },
-      disposables,
-    ),
-  );
-
+  const assets = createSemaphoreAssets();
+  const visuals = initialSignals.map((sig) => createSingleSemaphore(root, alignment, sig, assets));
   const rig: ISemaphoreRig = {
-    sync: (signals: readonly ISemaphoreState[], playerPosM?: number): void =>
-      syncSemaphoreVisuals(visuals, signals, playerPosM),
-    dispose: (): void => {
-      scene.remove(root);
-      disposables.forEach((d) => d.dispose());
-    },
+    sync: (signals, playerPosM) => syncSemaphoreVisuals(visuals, signals, playerPosM),
+    dispose: () => { scene.remove(root); assets.disposables.forEach((d) => d.dispose()); },
   };
   rig.sync(initialSignals, 0);
   return rig;
 }
 
-interface ISemaphoreGeos {
-  postGeo: THREE.CylinderGeometry;
-  baseGeo: THREE.BoxGeometry;
-  headGeo: THREE.BoxGeometry;
-  visorGeo: THREE.CylinderGeometry;
-  lensGeo: THREE.CircleGeometry;
-  haloGeo: THREE.PlaneGeometry;
-}
-
-interface ISemaphoreBaseMats {
-  postMat: THREE.MeshStandardMaterial;
-  headMat: THREE.MeshStandardMaterial;
-  glowTex: THREE.CanvasTexture;
-}
-
-function createSingleSemaphore(
-  root: THREE.Group,
-  alignment: TrackAlignment,
-  sig: ISemaphoreState,
-  geos: ISemaphoreGeos,
-  mats: ISemaphoreBaseMats,
-  disposables: Array<{ dispose(): void }>,
-): ISemaphoreVisual {
+function createSingleSemaphore(root: THREE.Group, alignment: TrackAlignment, sig: ISemaphoreState, assets: ISemaphoreSharedAssets): ISemaphoreVisual {
   const group = new THREE.Group();
   const frame = alignment.sample(sig.distanceM);
   const pt = alignment.toWorldPoint(sig.distanceM, 2.02, 0, false);
   group.position.set(pt.x, pt.y, pt.z);
   group.rotation.set(0, frame.yaw, 0);
+  const { base, post, head } = buildSemaphorePostHead(assets);
+  const lensMats = { red: createSemaphoreLensMaterial(0xff3b3b), yellow: createSemaphoreLensMaterial(0xffb020), green: createSemaphoreLensMaterial(0x10f59d) };
+  const haloMat = new THREE.MeshBasicMaterial({ map: assets.mats.glowTex, color: 0x10f59d, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+  assets.disposables.push(lensMats.red, lensMats.yellow, lensMats.green, haloMat);
+  attachLensesToGroup(group, assets, lensMats);
+  const haloMesh = new THREE.Mesh(assets.geos.haloGeo, haloMat);
+  haloMesh.position.set(0, SEMAPHORE_LENS_Y.green, 0.28);
+  group.add(base, post, head, haloMesh);
+  root.add(group);
+  return { id: sig.id, distanceM: sig.distanceM, group, redMat: lensMats.red, yellowMat: lensMats.yellow, greenMat: lensMats.green, haloMesh, haloMat, lastAspect: null, visible: true };
+}
 
-  const base = new THREE.Mesh(geos.baseGeo, mats.postMat);
+function buildSemaphorePostHead(assets: ISemaphoreSharedAssets) {
+  const base = new THREE.Mesh(assets.geos.baseGeo, assets.mats.postMat);
   base.position.y = 0.06;
-  const post = new THREE.Mesh(geos.postGeo, mats.postMat);
+  const post = new THREE.Mesh(assets.geos.postGeo, assets.mats.postMat);
   post.position.y = 1.48;
-  const head = new THREE.Mesh(geos.headGeo, mats.headMat);
+  const head = new THREE.Mesh(assets.geos.headGeo, assets.mats.headMat);
   head.position.set(0, 2.75, 0);
+  return { base, post, head };
+}
 
-  const redMat = createLensMaterial(0xff3b3b);
-  const yellowMat = createLensMaterial(0xffb020);
-  const greenMat = createLensMaterial(0x10f59d);
-  const haloMat = new THREE.MeshBasicMaterial({
-    map: mats.glowTex,
-    color: 0x10f59d,
-    transparent: true,
-    opacity: 0.9,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-    fog: false,
-  });
-  disposables.push(redMat, yellowMat, greenMat, haloMat);
-
-  const lensSpecs: ReadonlyArray<{ y: number; mat: THREE.MeshStandardMaterial }> = [
-    { y: LENS_Y.red, mat: redMat },
-    { y: LENS_Y.yellow, mat: yellowMat },
-    { y: LENS_Y.green, mat: greenMat },
+function attachLensesToGroup(
+  group: THREE.Group,
+  assets: ISemaphoreSharedAssets,
+  mats: { red: THREE.MeshStandardMaterial; yellow: THREE.MeshStandardMaterial; green: THREE.MeshStandardMaterial },
+): void {
+  const specs: ReadonlyArray<{ y: number; mat: THREE.MeshStandardMaterial }> = [
+    { y: SEMAPHORE_LENS_Y.red, mat: mats.red },
+    { y: SEMAPHORE_LENS_Y.yellow, mat: mats.yellow },
+    { y: SEMAPHORE_LENS_Y.green, mat: mats.green },
   ];
-  lensSpecs.forEach(({ y, mat }) => {
-    const lens = new THREE.Mesh(geos.lensGeo, mat);
+  specs.forEach(({ y, mat }) => {
+    const lens = new THREE.Mesh(assets.geos.lensGeo, mat);
     lens.position.set(0, y, 0.16);
-    const visor = new THREE.Mesh(geos.visorGeo, mats.headMat);
+    const visor = new THREE.Mesh(assets.geos.visorGeo, assets.mats.headMat);
     visor.rotation.x = Math.PI / 2;
     visor.position.set(0, y + 0.02, 0.24);
     group.add(lens, visor);
   });
-
-  const haloMesh = new THREE.Mesh(geos.haloGeo, haloMat);
-  haloMesh.position.set(0, LENS_Y.green, 0.28);
-  group.add(base, post, head, haloMesh);
-  root.add(group);
-  return {
-    id: sig.id,
-    distanceM: sig.distanceM,
-    group,
-    redMat,
-    yellowMat,
-    greenMat,
-    haloMesh,
-    haloMat,
-    lastAspect: null,
-    visible: true,
-  };
 }
 
-function createLensMaterial(hex: number): THREE.MeshStandardMaterial {
-  return new THREE.MeshStandardMaterial({
-    color: hex,
-    emissive: hex,
-    emissiveIntensity: OFF_INTENSITY,
-    roughness: 0.15,
-    metalness: 0.05,
-    fog: false,
-  });
-}
-
-function syncSemaphoreVisuals(
-  visuals: readonly ISemaphoreVisual[],
-  signals: readonly ISemaphoreState[],
-  playerPosM?: number,
-): void {
+function syncSemaphoreVisuals(visuals: readonly ISemaphoreVisual[], signals: readonly ISemaphoreState[], playerPosM?: number): void {
   for (let i = 0; i < visuals.length; i += 1) {
     const vis = visuals[i];
-    if (playerPosM !== undefined) {
-      const nextVis = isWithinCullingRange(vis.distanceM, playerPosM, DEFAULT_SCENE_CULL_RANGE_M);
-      if (vis.visible !== nextVis) {
-        vis.visible = nextVis;
-        vis.group.visible = nextVis;
-      }
-      if (!nextVis) {
-        continue;
-      }
-    }
+    if (playerPosM !== undefined && !updateVisualVisibility(vis, playerPosM)) continue;
     const sig = signals[i];
-    if (!sig || vis.lastAspect === sig.aspect) {
-      continue;
-    }
+    if (!sig || vis.lastAspect === sig.aspect) continue;
     vis.lastAspect = sig.aspect;
-    vis.redMat.emissiveIntensity = sig.aspect === 'red' ? ON_INTENSITY : OFF_INTENSITY;
-    vis.yellowMat.emissiveIntensity = sig.aspect === 'yellow' ? ON_INTENSITY : OFF_INTENSITY;
-    vis.greenMat.emissiveIntensity = sig.aspect === 'green' ? ON_INTENSITY : OFF_INTENSITY;
-    vis.haloMesh.position.y = LENS_Y[sig.aspect];
-    vis.haloMat.color.setHex(aspectColor(sig.aspect));
+    vis.redMat.emissiveIntensity = sig.aspect === 'red' ? SEMAPHORE_ON_INTENSITY : SEMAPHORE_OFF_INTENSITY;
+    vis.yellowMat.emissiveIntensity = sig.aspect === 'yellow' ? SEMAPHORE_ON_INTENSITY : SEMAPHORE_OFF_INTENSITY;
+    vis.greenMat.emissiveIntensity = sig.aspect === 'green' ? SEMAPHORE_ON_INTENSITY : SEMAPHORE_OFF_INTENSITY;
+    vis.haloMesh.position.y = SEMAPHORE_LENS_Y[sig.aspect];
+    vis.haloMat.color.setHex(getSemaphoreAspectColor(sig.aspect));
   }
+}
+
+function updateVisualVisibility(vis: ISemaphoreVisual, playerPosM: number): boolean {
+  const nextVis = isWithinCullingRange(vis.distanceM, playerPosM, DEFAULT_SCENE_CULL_RANGE_M);
+  if (vis.visible !== nextVis) {
+    vis.visible = nextVis;
+    vis.group.visible = nextVis;
+  }
+  return nextVis;
 }

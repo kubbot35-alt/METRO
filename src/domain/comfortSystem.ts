@@ -1,55 +1,23 @@
-import type { ComfortEventKind, IPassengerComfortState } from './types';
+import type { IPassengerComfortState } from './types';
+import {
+  calculateComfortEndBonus,
+  clampComfortPercent,
+  type IComfortEvent,
+  type IComfortStepInput,
+  type IComfortStepResult,
+  type IPassengerComfortController,
+} from './comfortRules';
 
-export interface IComfortStepInput {
-  readonly dtSec: number;
-  readonly speedKmh: number;
-  readonly netAccelerationMs2: number;
-  readonly leverTarget: number;
-  readonly emergencyBrake: boolean;
-  readonly curvatureRadPerM: number;
-  readonly curveLimitKmh: number | null;
-  readonly distanceToStationM: number;
-  readonly doorsOpen: boolean;
-}
-
-export interface IComfortEvent {
-  readonly kind: ComfortEventKind;
-  readonly penaltyAmount: number;
-  readonly messagePl: string;
-}
-
-export interface IComfortStepResult {
-  readonly state: IPassengerComfortState;
-  readonly event: IComfortEvent | null;
-}
-
-export interface IPassengerComfortController {
-  reset(): void;
-  step(input: IComfortStepInput): IComfortStepResult;
-  applyBoost(deltaPercent: number): number;
-  computeEndBonus(isFreeRide: boolean): number;
-  getState(): IPassengerComfortState;
-}
+export {
+  calculateComfortEndBonus,
+  type IComfortEvent,
+  type IComfortStepInput,
+  type IComfortStepResult,
+  type IPassengerComfortController,
+} from './comfortRules';
 
 const GRAVITY_MS2 = 9.81;
-const MIN_COMFORT = 0;
 const MAX_COMFORT = 100;
-
-export function calculateComfortEndBonus(averagePercent: number, isFreeRide: boolean): number {
-  if (isFreeRide) {
-    return 0;
-  }
-  if (averagePercent >= 95) {
-    return 150;
-  }
-  if (averagePercent >= 88) {
-    return 100;
-  }
-  if (averagePercent >= 78) {
-    return 50;
-  }
-  return 0;
-}
 
 export class PassengerComfortSystem implements IPassengerComfortController {
   private currentPercent = 100;
@@ -86,7 +54,7 @@ export class PassengerComfortSystem implements IPassengerComfortController {
 
   public applyBoost(deltaPercent: number): number {
     const before = this.currentPercent;
-    this.currentPercent = clampComfort(this.currentPercent + deltaPercent);
+    this.currentPercent = clampComfortPercent(this.currentPercent + deltaPercent);
     return Number((this.currentPercent - before).toFixed(1));
   }
 
@@ -99,21 +67,18 @@ export class PassengerComfortSystem implements IPassengerComfortController {
     const dt = Math.max(0.001, input.dtSec);
     this.tickCooldowns(dt);
     this.updateGForces(input.speedKmh, input.netAccelerationMs2, input.curvatureRadPerM);
-
     const event = this.detectDiscomfortEvent(input, dt);
     if (event) {
-      this.currentPercent = clampComfort(this.currentPercent - event.penaltyAmount);
+      this.currentPercent = clampComfortPercent(this.currentPercent - event.penaltyAmount);
       this.harshEventsCount += 1;
       this.smoothDrivingActive = false;
     } else {
       this.applySmoothRegeneration(input, dt);
     }
-
     this.prevLeverTarget = input.leverTarget;
     this.prevEmergencyBrake = input.emergencyBrake;
     this.weightedSum += this.currentPercent * dt;
     this.weightedTimeSec += dt;
-
     return { state: this.getState(), event };
   }
 
@@ -131,10 +96,8 @@ export class PassengerComfortSystem implements IPassengerComfortController {
   }
 
   private getAveragePercent(): number {
-    if (this.weightedTimeSec <= 0.01) {
-      return this.currentPercent;
-    }
-    return clampComfort(this.weightedSum / this.weightedTimeSec);
+    if (this.weightedTimeSec <= 0.01) return this.currentPercent;
+    return clampComfortPercent(this.weightedSum / this.weightedTimeSec);
   }
 
   private tickCooldowns(dt: number): void {
@@ -155,72 +118,52 @@ export class PassengerComfortSystem implements IPassengerComfortController {
   private detectDiscomfortEvent(input: IComfortStepInput, dt: number): IComfortEvent | null {
     if (input.emergencyBrake && !this.prevEmergencyBrake && input.speedKmh > 6) {
       this.harshBrakeCooldownSec = 2.6;
-      return {
-        kind: 'emergency_brake',
-        penaltyAmount: 14,
-        messagePl: 'Hamowanie awaryjne — gwałtowne szarpnięcie!',
-      };
+      return { kind: 'emergency_brake', penaltyAmount: 14, messagePl: 'Hamowanie awaryjne — gwałtowne szarpnięcie!' };
     }
+    return this.checkCurveEvent(input) ?? this.checkHarshBrakeEvent(input) ?? this.checkLeverJerkEvent(input, dt);
+  }
 
-    if (this.fastCurveCooldownSec <= 0 && input.speedKmh > 12) {
-      const overCurveLimit = input.curveLimitKmh !== null && input.speedKmh > input.curveLimitKmh + 4;
-      if (Math.abs(this.lateralG) > 0.14 || overCurveLimit) {
-        this.fastCurveCooldownSec = 2.8;
-        return {
-          kind: 'fast_curve',
-          penaltyAmount: 6,
-          messagePl: 'Zbyt szybki wjazd w zakręt!',
-        };
-      }
+  private checkCurveEvent(input: IComfortStepInput): IComfortEvent | null {
+    if (this.fastCurveCooldownSec > 0 || input.speedKmh <= 12) return null;
+    const overCurveLimit = input.curveLimitKmh !== null && input.speedKmh > input.curveLimitKmh + 4;
+    if (Math.abs(this.lateralG) > 0.14 || overCurveLimit) {
+      this.fastCurveCooldownSec = 2.8;
+      return { kind: 'fast_curve', penaltyAmount: 6, messagePl: 'Zbyt szybki wjazd w zakręt!' };
     }
+    return null;
+  }
 
-    if (this.harshBrakeCooldownSec <= 0 && !input.emergencyBrake && input.speedKmh > 4) {
-      const lastSecondHardBrake =
-        input.distanceToStationM > -8 &&
-        input.distanceToStationM < 90 &&
-        input.netAccelerationMs2 < -0.96;
-      if (input.netAccelerationMs2 < -1.16 || lastSecondHardBrake) {
-        this.harshBrakeCooldownSec = 2.4;
-        return {
-          kind: 'harsh_brake',
-          penaltyAmount: lastSecondHardBrake ? 7 : 5,
-          messagePl: 'Zbyt ostre hamowanie!',
-        };
-      }
+  private checkHarshBrakeEvent(input: IComfortStepInput): IComfortEvent | null {
+    if (this.harshBrakeCooldownSec > 0 || input.emergencyBrake || input.speedKmh <= 4) return null;
+    const lastSecondHard =
+      input.distanceToStationM > -8 && input.distanceToStationM < 90 && input.netAccelerationMs2 < -0.96;
+    if (input.netAccelerationMs2 < -1.16 || lastSecondHard) {
+      this.harshBrakeCooldownSec = 2.4;
+      return { kind: 'harsh_brake', penaltyAmount: lastSecondHard ? 7 : 5, messagePl: 'Zbyt ostre hamowanie!' };
     }
+    return null;
+  }
 
-    if (this.leverJerkCooldownSec <= 0 && input.speedKmh > 4 && !input.doorsOpen) {
-      const leverDelta = Math.abs(input.leverTarget - this.prevLeverTarget);
-      const leverRate = leverDelta / dt;
-      const signFlip = input.leverTarget * this.prevLeverTarget < -0.18 && leverDelta > 0.6;
-      if (leverRate > 12.5 || signFlip) {
-        this.leverJerkCooldownSec = 2.4;
-        return {
-          kind: 'lever_jerk',
-          penaltyAmount: 4,
-          messagePl: 'Gwałtowne szarpnięcie nastawnikiem!',
-        };
-      }
+  private checkLeverJerkEvent(input: IComfortStepInput, dt: number): IComfortEvent | null {
+    if (this.leverJerkCooldownSec > 0 || input.speedKmh <= 4 || input.doorsOpen) return null;
+    const leverDelta = Math.abs(input.leverTarget - this.prevLeverTarget);
+    const signFlip = input.leverTarget * this.prevLeverTarget < -0.18 && leverDelta > 0.6;
+    if (leverDelta / dt > 12.5 || signFlip) {
+      this.leverJerkCooldownSec = 2.4;
+      return { kind: 'lever_jerk', penaltyAmount: 4, messagePl: 'Gwałtowne szarpnięcie nastawnikiem!' };
     }
-
     return null;
   }
 
   private applySmoothRegeneration(input: IComfortStepInput, dt: number): void {
-    const absAccel = Math.abs(input.netAccelerationMs2);
     const gentleAccel = input.netAccelerationMs2 >= 0.14 && input.netAccelerationMs2 <= 0.85;
     const gentleBrake = input.netAccelerationMs2 <= -0.16 && input.netAccelerationMs2 >= -0.86;
     const lowLateral = Math.abs(this.lateralG) < 0.09;
-    const steadyCruise = input.speedKmh >= 18 && absAccel <= 0.15 && lowLateral;
-
+    const steadyCruise = input.speedKmh >= 18 && Math.abs(input.netAccelerationMs2) <= 0.15 && lowLateral;
     this.smoothDrivingActive = !input.doorsOpen && lowLateral && (gentleAccel || gentleBrake || steadyCruise);
     if (this.smoothDrivingActive && this.currentPercent < MAX_COMFORT) {
       const rate = gentleAccel || gentleBrake ? 1.8 : 0.75;
-      this.currentPercent = clampComfort(this.currentPercent + rate * dt);
+      this.currentPercent = clampComfortPercent(this.currentPercent + rate * dt);
     }
   }
-}
-
-function clampComfort(value: number): number {
-  return Math.max(MIN_COMFORT, Math.min(MAX_COMFORT, value));
 }

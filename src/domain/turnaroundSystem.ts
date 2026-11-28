@@ -112,63 +112,17 @@ export class TerminusTurnaroundSystem implements ITurnaroundController {
 
   public step(positionM: number, speedKmh: number, dtSec: number): ITurnaroundStepResult {
     if (this.phase === 'inactive') {
-      return {
-        bufferCollision: false,
-        clampedPositionM: null,
-        cabSwitchMidpointReached: false,
-        cabSwitchFinished: false,
-      };
+      return { bufferCollision: false, clampedPositionM: null, cabSwitchMidpointReached: false, cabSwitchFinished: false };
     }
-
     if (this.phase === 'switching_cab') {
-      this.switchTimerSec += Math.max(0, dtSec);
-      const half = CAB_SWITCH_DURATION_SEC * 0.5;
-      let midpointNow = false;
-      if (!this.midpointTriggered && this.switchTimerSec >= half) {
-        this.midpointTriggered = true;
-        midpointNow = true;
-      }
-      if (this.switchTimerSec >= CAB_SWITCH_DURATION_SEC) {
-        this.phase = 'inactive';
-        this.switchTimerSec = 0;
-        this.midpointTriggered = false;
-        return {
-          bufferCollision: false,
-          clampedPositionM: null,
-          cabSwitchMidpointReached: midpointNow,
-          cabSwitchFinished: true,
-        };
-      }
-      return {
-        bufferCollision: false,
-        clampedPositionM: null,
-        cabSwitchMidpointReached: midpointNow,
-        cabSwitchFinished: false,
-      };
+      return this.stepCabSwitch(dtSec);
     }
-
-    const maxAllowedPos = this.bufferStopM - TURNAROUND_BUFFER_CLEARANCE_M;
-    const hitBuffer = positionM >= maxAllowedPos;
-    const clampedPos = hitBuffer ? maxAllowedPos : null;
-    const effectivePos = clampedPos ?? positionM;
-    const inStopZone = this.isInTurnaroundStopZone(effectivePos);
-    const stopped = speedKmh <= 0.35;
-    this.phase = inStopZone && stopped ? 'ready_to_switch' : 'entering_siding';
-
-    return {
-      bufferCollision: hitBuffer && speedKmh > 1.2,
-      clampedPositionM: clampedPos,
-      cabSwitchMidpointReached: false,
-      cabSwitchFinished: false,
-    };
+    return this.stepSidingEntry(positionM, speedKmh);
   }
 
   public getState(positionM: number): ITurnaroundState {
     const distanceToBufferM = Math.max(0, this.bufferStopM - positionM);
-    const switchProgress =
-      this.phase === 'switching_cab'
-        ? Math.min(1, this.switchTimerSec / CAB_SWITCH_DURATION_SEC)
-        : 0;
+    const switchProgress = this.phase === 'switching_cab' ? Math.min(1, this.switchTimerSec / CAB_SWITCH_DURATION_SEC) : 0;
     return {
       phase: this.phase,
       canEnterSiding: this.canEnterSidingFlag,
@@ -181,6 +135,31 @@ export class TerminusTurnaroundSystem implements ITurnaroundController {
       legsCompleted: this.legsCompleted,
       cumulativeDistanceM: this.cumulativeDistanceM,
     };
+  }
+
+  private stepCabSwitch(dtSec: number): ITurnaroundStepResult {
+    this.switchTimerSec += Math.max(0, dtSec);
+    let midpointNow = false;
+    if (!this.midpointTriggered && this.switchTimerSec >= CAB_SWITCH_DURATION_SEC * 0.5) {
+      this.midpointTriggered = true;
+      midpointNow = true;
+    }
+    const finished = this.switchTimerSec >= CAB_SWITCH_DURATION_SEC;
+    if (finished) {
+      this.phase = 'inactive';
+      this.switchTimerSec = 0;
+      this.midpointTriggered = false;
+    }
+    return { bufferCollision: false, clampedPositionM: null, cabSwitchMidpointReached: midpointNow, cabSwitchFinished: finished };
+  }
+
+  private stepSidingEntry(positionM: number, speedKmh: number): ITurnaroundStepResult {
+    const maxAllowedPos = this.bufferStopM - TURNAROUND_BUFFER_CLEARANCE_M;
+    const hitBuffer = positionM >= maxAllowedPos;
+    const clampedPos = hitBuffer ? maxAllowedPos : null;
+    const effectivePos = clampedPos ?? positionM;
+    this.phase = this.isInTurnaroundStopZone(effectivePos) && speedKmh <= 0.35 ? 'ready_to_switch' : 'entering_siding';
+    return { bufferCollision: hitBuffer && speedKmh > 1.2, clampedPositionM: clampedPos, cabSwitchMidpointReached: false, cabSwitchFinished: false };
   }
 
   private isInTurnaroundStopZone(positionM: number): boolean {

@@ -96,11 +96,10 @@ export function cycleCctvChannel(current: CctvPreviewChannel): CctvPreviewChanne
   return 'auto';
 }
 
-export function resolveStationCameraMode(
+function findNearestStation(
   stations: readonly IStationSpec[],
   positionM: number,
-  thresholdM: number = STATION_CAMERA_MAX_RANGE_M,
-): IStationCameraResolution {
+): { readonly station: IStationSpec | null; readonly distance: number } {
   let nearest: IStationSpec | null = null;
   let nearestDist = Number.POSITIVE_INFINITY;
   for (const station of stations) {
@@ -110,16 +109,17 @@ export function resolveStationCameraMode(
       nearest = station;
     }
   }
-  if (nearest && nearestDist <= thresholdM) {
-    return {
-      mode: 'station-ceiling',
-      station: nearest,
-      distanceToStationM: nearestDist,
-    };
+  return { station: nearest, distance: nearestDist };
+}
+
+export function resolveStationCameraMode(
+  stations: readonly IStationSpec[],
+  positionM: number,
+  thresholdM: number = STATION_CAMERA_MAX_RANGE_M,
+): IStationCameraResolution {
+  const { station, distance } = findNearestStation(stations, positionM);
+  if (station && distance <= thresholdM) {
+    return { mode: 'station-ceiling', station, distanceToStationM: distance };
   }
-  return {
-    mode: 'tunnel-roof',
-    station: null,
-    distanceToStationM: nearest ? nearestDist : null,
-  };
+  return { mode: 'tunnel-roof', station: null, distanceToStationM: station ? distance : null };
 }

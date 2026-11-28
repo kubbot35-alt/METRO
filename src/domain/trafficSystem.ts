@@ -1,50 +1,21 @@
 import { getStationPlatformSide } from './trackGeometry';
-import type {
-  DoorSide,
-  IOncomingTrainState,
-  IStationSpec,
-  OncomingTrainMode,
-  TrainModelId,
-} from './types';
+import type { DoorSide, IOncomingTrainState, IStationSpec, OncomingTrainMode, TrainModelId } from './types';
+import {
+  TRAFFIC_CONSTANTS as C,
+  pickRandomTrafficModel,
+  type ITrafficController,
+  type ITrafficStepResult,
+} from './trafficContracts';
 
-export interface ITrafficStepResult {
-  readonly passingTrainWhoosh: boolean;
-}
-
-export interface ITrafficController {
-  setSpawnIntervalRange?(minSec: number, maxSec: number): void;
-  setStations?(stations: readonly IStationSpec[]): void;
-  forceSpawnAhead?(playerPositionM: number): void;
-  forceSpawnAtStation?(station: IStationSpec, stationIndex: number, arriving?: boolean): void;
-  reset(): void;
-  step(playerPositionM: number, dtSec: number): ITrafficStepResult;
-  getState(): IOncomingTrainState;
-}
-
-const SPAWN_MIN_INTERVAL_SEC = 40;
-const SPAWN_MAX_INTERVAL_SEC = 70;
-const SPAWN_AHEAD_DIST_M = 270;
-const DESPAWN_BEHIND_DIST_M = 125;
-const WHOOSH_TRIGGER_DIST_M = 20;
-
-const STATION_ENCOUNTER_PROBABILITY = 0.35;
-const STATION_TRIGGER_MIN_AHEAD_M = 35;
-const STATION_TRIGGER_MAX_AHEAD_M = 235;
-const STATION_STOP_OFFSET_M = 68;
-const STATION_ARRIVAL_START_OFFSET_M = 58;
-const AI_BRAKE_DECEL_MS2 = 1.05;
-const AI_DEPART_ACCEL_MS2 = 1.25;
-const AI_CRUISE_MAX_SPEED_MS = 22.0;
-const DOOR_CLOSE_LEAD_SEC = 1.0;
+export type { ITrafficController, ITrafficStepResult };
 
 export class OppositeTrackTrafficSystem implements ITrafficController {
   private readonly rng: () => number;
   private stations: readonly IStationSpec[] = [];
   private readonly rolledStationIds = new Set<number>();
-  private spawnMinSec = SPAWN_MIN_INTERVAL_SEC;
-  private spawnMaxSec = SPAWN_MAX_INTERVAL_SEC;
+  private spawnMinSec: number = C.SPAWN_MIN_INTERVAL_SEC;
+  private spawnMaxSec: number = C.SPAWN_MAX_INTERVAL_SEC;
   private nextSpawnCountdownSec = 45;
-
   private active = false;
   private mode: OncomingTrainMode = 'cruise';
   private stationIndex: number | null = null;
@@ -60,10 +31,7 @@ export class OppositeTrackTrafficSystem implements ITrafficController {
   private departHoldSec = 0;
   private whooshTriggeredForPass = false;
 
-  public constructor(
-    rng: () => number = Math.random,
-    stations: readonly IStationSpec[] = [],
-  ) {
+  public constructor(rng: () => number = Math.random, stations: readonly IStationSpec[] = []) {
     this.rng = rng;
     this.stations = stations;
     this.reset();
@@ -85,95 +53,70 @@ export class OppositeTrackTrafficSystem implements ITrafficController {
     this.positionM = playerPositionM + 200;
   }
 
-  public forceSpawnAtStation(
-    station: IStationSpec,
-    stationIndex: number,
-    arriving = false,
-  ): void {
+  public forceSpawnAtStation(station: IStationSpec, stationIndex: number, arriving = false): void {
     this.rolledStationIds.add(station.id);
     this.spawnStationTrain(station, stationIndex, arriving);
   }
 
   public reset(): void {
-    this.active = false;
-    this.mode = 'cruise';
-    this.stationIndex = null;
-    this.positionM = 0;
-    this.speedMs = 21;
-    this.doorsOpen = false;
-    this.doorSide = null;
-    this.headlightsOn = true;
-    this.dwellRemainingSec = 0;
-    this.departHoldSec = 0;
-    this.whooshTriggeredForPass = false;
+    this.active = false; this.mode = 'cruise'; this.stationIndex = null;
+    this.positionM = 0; this.speedMs = 21; this.doorsOpen = false;
+    this.doorSide = null; this.headlightsOn = true; this.dwellRemainingSec = 0;
+    this.departHoldSec = 0; this.whooshTriggeredForPass = false;
     this.rolledStationIds.clear();
     this.nextSpawnCountdownSec = this.rollNextInterval();
   }
 
   public step(playerPositionM: number, dtSec: number): ITrafficStepResult {
     if (!this.active) {
-      if (this.tryTriggerStationEncounter(playerPositionM)) {
-        return { passingTrainWhoosh: false };
-      }
-      this.nextSpawnCountdownSec -= dtSec;
-      if (this.nextSpawnCountdownSec <= 0) {
-        this.spawnCruiseAhead(playerPositionM);
-      }
+      this.stepIdleSpawn(playerPositionM, dtSec);
       return { passingTrainWhoosh: false };
     }
-
     const prevDist = this.positionM - playerPositionM;
     this.advanceActiveTrain(dtSec);
     const nextDist = this.positionM - playerPositionM;
-
-    let whoosh = false;
-    if (
-      !this.whooshTriggeredForPass &&
-      this.speedMs > 5 &&
-      prevDist > WHOOSH_TRIGGER_DIST_M &&
-      nextDist <= WHOOSH_TRIGGER_DIST_M
-    ) {
-      this.whooshTriggeredForPass = true;
-      whoosh = true;
-    }
-
-    if (nextDist < -DESPAWN_BEHIND_DIST_M) {
-      this.active = false;
-      this.mode = 'cruise';
-      this.stationIndex = null;
-      this.doorsOpen = false;
-      this.doorSide = null;
-      this.nextSpawnCountdownSec = this.rollNextInterval();
-    }
+    const whoosh = this.checkPassWhoosh(prevDist, nextDist);
+    if (nextDist < -C.DESPAWN_BEHIND_DIST_M) this.despawnTrain();
     return { passingTrainWhoosh: whoosh };
   }
 
   public getState(): IOncomingTrainState {
     return {
-      active: this.active,
-      mode: this.mode,
-      stationIndex: this.stationIndex,
-      positionM: this.positionM,
-      speedMs: this.speedMs,
-      modelId: this.modelId,
-      doorsOpen: this.doorsOpen,
-      doorSide: this.doorSide,
-      headlightsOn: this.headlightsOn,
+      active: this.active, mode: this.mode, stationIndex: this.stationIndex,
+      positionM: this.positionM, speedMs: this.speedMs, modelId: this.modelId,
+      doorsOpen: this.doorsOpen, doorSide: this.doorSide, headlightsOn: this.headlightsOn,
     };
+  }
+
+  private stepIdleSpawn(playerPositionM: number, dtSec: number): void {
+    if (this.tryTriggerStationEncounter(playerPositionM)) return;
+    this.nextSpawnCountdownSec -= dtSec;
+    if (this.nextSpawnCountdownSec <= 0) this.spawnCruiseAhead(playerPositionM);
+  }
+
+  private checkPassWhoosh(prevDist: number, nextDist: number): boolean {
+    if (this.whooshTriggeredForPass || this.speedMs <= 5) return false;
+    if (prevDist > C.WHOOSH_TRIGGER_DIST_M && nextDist <= C.WHOOSH_TRIGGER_DIST_M) {
+      this.whooshTriggeredForPass = true;
+      return true;
+    }
+    return false;
+  }
+
+  private despawnTrain(): void {
+    this.active = false; this.mode = 'cruise'; this.stationIndex = null;
+    this.doorsOpen = false; this.doorSide = null; this.nextSpawnCountdownSec = this.rollNextInterval();
   }
 
   private tryTriggerStationEncounter(playerPositionM: number): boolean {
     for (let i = 0; i < this.stations.length; i += 1) {
       const st = this.stations[i];
-      if (this.rolledStationIds.has(st.id)) {
-        continue;
-      }
+      if (this.rolledStationIds.has(st.id)) continue;
       const distAhead = st.distanceM - playerPositionM;
-      if (distAhead >= STATION_TRIGGER_MIN_AHEAD_M && distAhead <= STATION_TRIGGER_MAX_AHEAD_M) {
+      if (distAhead >= C.STATION_TRIGGER_MIN_AHEAD_M && distAhead <= C.STATION_TRIGGER_MAX_AHEAD_M) {
         this.rolledStationIds.add(st.id);
-        if (this.rng() < STATION_ENCOUNTER_PROBABILITY) {
-          const arriving = this.rng() < 0.5;
-          this.spawnStationTrain(st, i, arriving);
+        if (this.rng() < C.STATION_ENCOUNTER_PROBABILITY) {
+          this.spawnStationTrain(st, i, this.rng() < 0.5);
           return true;
         }
       }
@@ -181,99 +124,66 @@ export class OppositeTrackTrafficSystem implements ITrafficController {
     return false;
   }
 
-  private spawnStationTrain(
-    station: IStationSpec,
-    stationIndex: number,
-    arriving: boolean,
-  ): void {
-    const stopPosM = station.distanceM - STATION_STOP_OFFSET_M;
-    this.active = true;
-    this.stationIndex = stationIndex;
-    this.targetStopPosM = stopPosM;
-    const modelRoll = this.rng();
-    this.modelId = modelRoll < 0.34 ? 'seria81' : modelRoll < 0.67 ? 'inspiro' : 'varsovia';
-    this.doorSide = getStationPlatformSide(station);
-    this.cruiseTargetSpeedMs = 19 + this.rng() * 4.5;
-    this.dwellRemainingSec = 4.5 + this.rng() * 2.0;
-    this.departHoldSec = DOOR_CLOSE_LEAD_SEC;
-    this.whooshTriggeredForPass = false;
+  private spawnStationTrain(station: IStationSpec, stationIndex: number, arriving: boolean): void {
+    const stopPosM = station.distanceM - C.STATION_STOP_OFFSET_M;
+    this.active = true; this.stationIndex = stationIndex; this.targetStopPosM = stopPosM;
+    this.modelId = pickRandomTrafficModel(this.rng); this.doorSide = getStationPlatformSide(station);
+    this.cruiseTargetSpeedMs = 19 + this.rng() * 4.5; this.dwellRemainingSec = 4.5 + this.rng() * 2.0;
+    this.departHoldSec = C.DOOR_CLOSE_LEAD_SEC; this.whooshTriggeredForPass = false;
+    this.mode = arriving ? 'station-arriving' : 'station-dwelling';
+    this.positionM = arriving ? station.distanceM + C.STATION_ARRIVAL_START_OFFSET_M : stopPosM;
+    this.speedMs = arriving ? 14.5 : 0; this.doorsOpen = !arriving; this.headlightsOn = arriving;
+  }
 
-    if (arriving) {
-      this.mode = 'station-arriving';
-      this.positionM = station.distanceM + STATION_ARRIVAL_START_OFFSET_M;
-      this.speedMs = 14.5;
-      this.doorsOpen = false;
-      this.headlightsOn = true;
-    } else {
-      this.mode = 'station-dwelling';
-      this.positionM = stopPosM;
+  private advanceActiveTrain(dtSec: number): void {
+    if (this.mode === 'cruise') { this.positionM -= this.speedMs * dtSec; return; }
+    if (this.mode === 'station-arriving') { this.advanceArriving(dtSec); return; }
+    if (this.mode === 'station-dwelling') { this.advanceDwelling(dtSec); return; }
+    this.advanceDeparting(dtSec);
+  }
+
+  private advanceArriving(dtSec: number): void {
+    const remainingM = Math.max(0, this.positionM - this.targetStopPosM);
+    const desiredSpeed = Math.min(15.0, Math.sqrt(2 * C.AI_BRAKE_DECEL_MS2 * remainingM));
+    this.speedMs = Math.max(0, Math.min(this.speedMs, desiredSpeed));
+    this.positionM -= this.speedMs * dtSec;
+    if (this.positionM <= this.targetStopPosM + 0.15 || this.speedMs <= 0.12) {
+      this.positionM = this.targetStopPosM;
       this.speedMs = 0;
+      this.mode = 'station-dwelling';
       this.doorsOpen = true;
       this.headlightsOn = false;
     }
   }
 
-  private advanceActiveTrain(dtSec: number): void {
-    if (this.mode === 'cruise') {
-      this.positionM -= this.speedMs * dtSec;
-      return;
+  private advanceDwelling(dtSec: number): void {
+    this.speedMs = 0;
+    this.dwellRemainingSec -= dtSec;
+    if (this.dwellRemainingSec <= 0) {
+      this.mode = 'station-departing';
+      this.doorsOpen = false;
+      this.headlightsOn = true;
+      this.departHoldSec = C.DOOR_CLOSE_LEAD_SEC;
     }
+  }
 
-    if (this.mode === 'station-arriving') {
-      const remainingM = Math.max(0, this.positionM - this.targetStopPosM);
-      const desiredSpeed = Math.min(
-        15.0,
-        Math.sqrt(2 * AI_BRAKE_DECEL_MS2 * remainingM),
-      );
-      this.speedMs = Math.max(0, Math.min(this.speedMs, desiredSpeed));
-      this.positionM -= this.speedMs * dtSec;
-      if (this.positionM <= this.targetStopPosM + 0.15 || this.speedMs <= 0.12) {
-        this.positionM = this.targetStopPosM;
-        this.speedMs = 0;
-        this.mode = 'station-dwelling';
-        this.doorsOpen = true;
-        this.headlightsOn = false;
-      }
-      return;
-    }
-
-    if (this.mode === 'station-dwelling') {
-      this.speedMs = 0;
-      this.dwellRemainingSec -= dtSec;
-      if (this.dwellRemainingSec <= 0) {
-        this.mode = 'station-departing';
-        this.doorsOpen = false;
-        this.headlightsOn = true;
-        this.departHoldSec = DOOR_CLOSE_LEAD_SEC;
-      }
-      return;
-    }
-
-    // station-departing: wait briefly for doors to finish closing, then smoothly accelerate out
+  private advanceDeparting(dtSec: number): void {
     if (this.departHoldSec > 0) {
       this.departHoldSec = Math.max(0, this.departHoldSec - dtSec);
       return;
     }
-    this.speedMs = Math.min(
-      Math.min(AI_CRUISE_MAX_SPEED_MS, this.cruiseTargetSpeedMs),
-      this.speedMs + AI_DEPART_ACCEL_MS2 * dtSec,
-    );
+    const maxSpeed = Math.min(C.AI_CRUISE_MAX_SPEED_MS, this.cruiseTargetSpeedMs);
+    this.speedMs = Math.min(maxSpeed, this.speedMs + C.AI_DEPART_ACCEL_MS2 * dtSec);
     this.positionM -= this.speedMs * dtSec;
   }
 
   private spawnCruiseAhead(playerPositionM: number): void {
-    this.active = true;
-    this.mode = 'cruise';
-    this.stationIndex = null;
-    this.positionM = playerPositionM + SPAWN_AHEAD_DIST_M;
-    this.speedMs = 19 + this.rng() * 5.5;
-    this.cruiseTargetSpeedMs = this.speedMs;
-    const modelRoll = this.rng();
-    this.modelId = modelRoll < 0.34 ? 'seria81' : modelRoll < 0.67 ? 'inspiro' : 'varsovia';
-    this.doorsOpen = false;
-    this.doorSide = null;
-    this.headlightsOn = true;
-    this.whooshTriggeredForPass = false;
+    this.active = true; this.mode = 'cruise'; this.stationIndex = null;
+    this.positionM = playerPositionM + C.SPAWN_AHEAD_DIST_M;
+    this.speedMs = 19 + this.rng() * 5.5; this.cruiseTargetSpeedMs = this.speedMs;
+    this.modelId = pickRandomTrafficModel(this.rng);
+    this.doorsOpen = false; this.doorSide = null;
+    this.headlightsOn = true; this.whooshTriggeredForPass = false;
   }
 
   private rollNextInterval(): number {

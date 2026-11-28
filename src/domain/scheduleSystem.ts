@@ -97,21 +97,13 @@ export class MetroScheduleController implements IScheduleController {
     return deviation;
   }
 
-  public getSnapshot(
-    stationIndex: number,
-    positionM: number,
-    elapsedSec: number,
-  ): IScheduleSnapshot {
+  public getSnapshot(stationIndex: number, positionM: number, elapsedSec: number): IScheduleSnapshot {
     const targetArrival = this.getTargetArrivalSec(stationIndex);
-    const expectedElapsed = this.computeExpectedElapsed(stationIndex, positionM);
-    const deviationSec = elapsedSec - expectedElapsed;
+    const deviationSec = elapsedSec - this.computeExpectedElapsed(stationIndex, positionM);
     const avg =
       this.arrivalDeviations.length > 0
         ? this.arrivalDeviations.reduce((sum, v) => sum + v, 0) / this.arrivalDeviations.length
         : deviationSec;
-
-    const punctualArrivalsCount = this.arrivalDeviations.filter((d) => d <= 10).length;
-
     return {
       currentClockSec: this.startClockSec + elapsedSec,
       nextArrivalClockSec: this.startClockSec + targetArrival,
@@ -119,7 +111,7 @@ export class MetroScheduleController implements IScheduleController {
       status: classifyPunctuality(deviationSec),
       averageDeviationSec: avg,
       punctualitySamples: this.arrivalDeviations.length,
-      punctualArrivalsCount,
+      punctualArrivalsCount: this.arrivalDeviations.filter((d) => d <= 10).length,
     };
   }
 
