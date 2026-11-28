@@ -74,17 +74,22 @@ export class SceneWorldBuilder implements ISceneWorldBuilder {
     atmosphere: ISceneAtmosphereController,
   ): void {
     const { line, stations } = snapshot;
-    const sig = `${line.id}|${line.name}|${line.destinationLed}|${line.oppositeDestinationLed}|${line.direction ?? 'normal'}|${line.startStationIndex ?? 0}|${line.cssColor}|${line.hasSurfaceStart ? 1 : 0}|${line.alignmentIntensity ?? 'moderate'}|${stations.map((s) => `${s.name}@${s.distanceM}:${s.platformLayout ?? 'island'}:${s.accentHex}`).join(',')}`;
+    const hallFlag = snapshot.depotZone.depotHallStartEnabled ? 1 : 0;
+    const sig = `${line.id}|${line.name}|${line.destinationLed}|${line.oppositeDestinationLed}|${line.direction ?? 'normal'}|${line.startStationIndex ?? 0}|${line.cssColor}|${line.hasSurfaceStart ? 1 : 0}|${hallFlag}|${line.alignmentIntensity ?? 'moderate'}|${stations.map((s) => `${s.name}@${s.distanceM}:${s.platformLayout ?? 'island'}:${s.accentHex}`).join(',')}`;
     if (ctx.appliedLineSignature === sig || !ctx.scene) return;
     ctx.appliedLineSignature = sig;
     ctx.alignment = getLineTrackAlignment(line.id, stations, {
-      hasSurfaceStart: line.hasSurfaceStart, tunnelPortalDistanceM: line.tunnelPortalDistanceM, alignmentIntensity: line.alignmentIntensity,
+      hasSurfaceStart: line.hasSurfaceStart,
+      tunnelPortalDistanceM: line.tunnelPortalDistanceM,
+      alignmentIntensity: line.alignmentIntensity,
+      depotHallStart: snapshot.depotZone.depotHallStartEnabled,
     });
     disposeLineWorldRigs(ctx);
     this.rebuildLineWorldRigs(ctx, snapshot);
     const badge = line.badgeCode ?? line.id;
     ctx.playerTrainRig?.setLine?.(badge, line.destinationLed);
     ctx.oncomingTrainRig?.setLine?.(badge, line.oppositeDestinationLed);
+    ctx.leadingTrainRig?.setLine?.(badge, line.destinationLed);
     atmosphere.updateStationLights(ctx, snapshot.currentStation.station);
   }
 
@@ -101,6 +106,10 @@ export class SceneWorldBuilder implements ISceneWorldBuilder {
     if (ctx.appliedOncomingModelId !== snapshot.oncomingTrain.modelId) {
       ctx.appliedOncomingModelId = snapshot.oncomingTrain.modelId;
       ctx.oncomingTrainRig?.setTheme(getTrainModelSpec(snapshot.oncomingTrain.modelId).visual);
+    }
+    if (ctx.appliedLeadingModelId !== snapshot.leadingTrain.modelId) {
+      ctx.appliedLeadingModelId = snapshot.leadingTrain.modelId;
+      ctx.leadingTrainRig?.setTheme(getTrainModelSpec(snapshot.leadingTrain.modelId).visual);
     }
   }
 
@@ -141,6 +150,10 @@ export class SceneWorldBuilder implements ISceneWorldBuilder {
     ctx.oncomingTrainRig.group.rotation.order = 'YXZ';
     ctx.oncomingTrainRig.group.rotation.y = Math.PI;
     ctx.oncomingTrainRig.group.visible = false;
+    ctx.leadingTrainRig = buildMetroConsist(scene, SIEMENS_INSPIRO_SPEC.visual, ctx.maxAniso, true);
+    ctx.leadingTrainRig.setLine?.(METRO_LINE_M1.id, METRO_LINE_M1.destinationLed);
+    ctx.leadingTrainRig.group.rotation.order = 'YXZ';
+    ctx.leadingTrainRig.group.visible = false;
     ctx.cabRig = buildMetroCabRig(ctx.maxAniso);
     ctx.liveMirrorSystem = new LiveMirrorSystem();
     ctx.usingLiveMirrorTextures = null;

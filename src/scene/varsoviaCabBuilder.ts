@@ -3,6 +3,7 @@ import type { ISimulationSnapshot } from '../domain/types';
 import { addModernCabCctvMonitors, type ICabMirrorHardware } from './cabMirrorAttachments';
 import { BaseCabInterior, type ICabInterior } from './shared/baseCabInterior';
 import { addSingleCabWiper } from './shared/cabDeskHelpers';
+import { attachInteractiveCabButtons, VARSOVIA_BUTTON_LAYOUT } from './shared/cabInteractiveButtons';
 import { createGlowMaterial } from './shared/canvasTextureFactory';
 import {
   addMinimalistThreeScreenDesk,
@@ -39,6 +40,7 @@ export class VarsoviaCabInterior extends BaseCabInterior {
       { offsetX: 0.74, posY: 0.37, posZ: -0.93, pitchRad: 0.14, yawRad: 0.28, width: 0.225, height: 0.142 },
       this.disposables, deskCctv,
     );
+    this.interactiveButtons = attachInteractiveCabButtons(this.group, VARSOVIA_BUTTON_LAYOUT, this.disposables);
     this.addAmbientLight();
   }
 

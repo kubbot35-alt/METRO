@@ -141,6 +141,22 @@ export interface IOncomingTrainState {
   readonly headlightsOn: boolean;
 }
 
+export interface ILeadingTrainState {
+  readonly active: boolean;
+  readonly mode: OncomingTrainMode;
+  readonly stationIndex: number | null;
+  readonly positionM: number;
+  readonly speedMs: number;
+  readonly speedKmh: number;
+  readonly modelId: TrainModelId;
+  readonly doorsOpen: boolean;
+  readonly doorSide: DoorSide | null;
+  readonly headlightsOn: boolean;
+  readonly delayed: boolean;
+  readonly distanceAheadM: number | null;
+  readonly blocksAhead: number | null;
+}
+
 export interface ISemaphoreState {
   readonly id: number;
   readonly distanceM: number;

@@ -1,6 +1,7 @@
 import type { ISemaphoreState, SignalAspect } from './types';
 import {
   SEMAPHORE_DISTANCES_M,
+  applyLeadingTrainBlockOverrides,
   buildSemaphoreDistances,
   toSemaphoreSnapshot,
   type IMutableSemaphore,
@@ -54,8 +55,8 @@ export class TunnelSignalSystem implements ISignalController {
     this.cautionActive = false;
     this.distances = configs.map((c) => c.distanceM);
     this.signals = configs.map((cfg, idx) => ({
-      id: idx + 1, distanceM: cfg.distanceM, aspect: cfg.aspect,
-      waitRequiredSec: cfg.waitSec, waitElapsedSec: 0, violated: false,
+      id: idx + 1, distanceM: cfg.distanceM, aspect: cfg.aspect, baseAspect: cfg.aspect,
+      blockOverride: null, waitRequiredSec: cfg.waitSec, waitElapsedSec: 0, violated: false,
     }));
   }
 
@@ -65,16 +66,22 @@ export class TunnelSignalSystem implements ISignalController {
     const nextAspect: SignalAspect =
       next.aspect === 'green' ? 'yellow' : next.aspect === 'yellow' ? 'red' : 'green';
     next.aspect = nextAspect;
+    next.baseAspect = nextAspect;
+    next.blockOverride = null;
     next.waitElapsedSec = 0;
     next.violated = false;
     if (nextAspect === 'green') this.cautionActive = false;
     return nextAspect;
   }
 
+  public syncLeadingTrainBlocks(leadPosM: number | null, trainLengthM = 118): void {
+    applyLeadingTrainBlockOverrides(this.signals, leadPosM, trainLengthM);
+  }
+
   public reset(): void {
     this.cautionActive = false;
     this.signals = this.distances.map((distanceM, idx) => ({
-      id: idx + 1, distanceM, aspect: 'green',
+      id: idx + 1, distanceM, aspect: 'green', baseAspect: 'green', blockOverride: null,
       waitRequiredSec: WAIT_MIN_SEC + this.rng() * (WAIT_MAX_SEC - WAIT_MIN_SEC),
       waitElapsedSec: 0, violated: false,
     }));
@@ -109,7 +116,11 @@ export class TunnelSignalSystem implements ISignalController {
       const prevWasRed = i > 0 && this.signals[i - 1].aspect === 'red';
       if (!prevWasRed && this.rng() < this.redProbability) {
         this.signals[i].aspect = 'red';
-        if (i > 0 && this.signals[i - 1].aspect === 'green') this.signals[i - 1].aspect = 'yellow';
+        this.signals[i].baseAspect = 'red';
+        if (i > 0 && this.signals[i - 1].aspect === 'green') {
+          this.signals[i - 1].aspect = 'yellow';
+          this.signals[i - 1].baseAspect = 'yellow';
+        }
       }
     }
   }
@@ -137,12 +148,12 @@ export class TunnelSignalSystem implements ISignalController {
   }
 
   private updateRedClearance(
-    positionM: number,
-    speedKmh: number,
-    dtSec: number,
+    positionM: number, speedKmh: number, dtSec: number,
   ): { clearedToGreen: boolean; waitingRemaining: number | null } {
     const next = this.findNextMutable(positionM);
-    if (!next || next.aspect !== 'red') return { clearedToGreen: false, waitingRemaining: null };
+    if (!next || next.aspect !== 'red' || next.blockOverride === 'red') {
+      return { clearedToGreen: false, waitingRemaining: null };
+    }
     const distAhead = next.distanceM - positionM;
     if (distAhead <= 0 || distAhead > STOP_DETECT_RANGE_M || speedKmh > STOPPED_KMH) {
       return { clearedToGreen: false, waitingRemaining: null };
@@ -150,6 +161,7 @@ export class TunnelSignalSystem implements ISignalController {
     next.waitElapsedSec += dtSec;
     if (next.waitElapsedSec >= next.waitRequiredSec) {
       next.aspect = 'green';
+      next.baseAspect = 'green';
       this.cautionActive = false;
       return { clearedToGreen: true, waitingRemaining: null };
     }

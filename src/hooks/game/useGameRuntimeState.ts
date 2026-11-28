@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import type { ICabHoverTooltip } from '../../domain/cabControlsCatalog';
 import { PhotoCameraController } from '../../domain/photoMode';
 import { METRO_LINE_M1 } from '../../domain/routeData';
 import type { SelectedLiveryMap } from '../../domain/trainLiveryCatalog';
@@ -45,7 +46,8 @@ function createModeAndUiRefs(settings: IGameSettings, liveries: SelectedLiveryMa
     activeToastRef: { current: null as IAchievementToast | null }, photoModeActiveRef: { current: false },
     photoKeepInteriorRef: { current: false }, photoKeysRef: { current: new Set<string>() },
     cctvPreviewOpenRef: { current: false }, cctvChannelRef: { current: 'auto' as CctvPreviewChannel },
-    cctvCanvasRef: { current: null }, paPanelOpenRef: { current: false }, cabSwitchAppliedRef: { current: false },
+    cctvCanvasRef: { current: null }, paPanelOpenRef: { current: false },
+    dispatchMapOpenRef: { current: false }, cabSwitchAppliedRef: { current: false },
   };
 }
 
@@ -90,9 +92,11 @@ function useDeviceAndToastState() {
     connected: false, name: '', brand: 'generic', supportsVibration: false,
   });
   const [gamepadToast, setGamepadToast] = useState<IGamepadToastState | null>(null);
+  const [cabHoverTooltip, setCabHoverTooltip] = useState<ICabHoverTooltip | null>(null);
   return {
     fps, setFps, muted, setMuted, helpOpen, setHelpOpen, achievementToast, setAchievementToast,
     isNewRecord, setIsNewRecord, gamepadStatus, setGamepadStatus, gamepadToast, setGamepadToast,
+    cabHoverTooltip, setCabHoverTooltip,
   };
 }
 

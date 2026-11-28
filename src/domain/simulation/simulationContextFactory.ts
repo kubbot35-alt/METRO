@@ -42,6 +42,7 @@ export function createEngineRuntimeContext(
     new SimulationStepPipeline(new ControlStepCoordinator(), new DoorBoardingCoordinator(), modeRules, commands);
   const snapshotAssembler = collaborators?.snapshotAssembler ?? new SnapshotAssembler();
   sys.traffic.setStations?.(stations);
+  sys.leadingTrain.setStations(stations);
   sys.turnaround.setStations(stations);
   state.alignment = getLineTrackAlignment(state.line.id, stations);
   sys.physics.setConfig?.(state.trainModel.physics);

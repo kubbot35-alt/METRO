@@ -1,8 +1,10 @@
 import { CHALLENGE_CATALOG, getChallengeSpec } from '../../domain/challengeCatalog';
 import { getLocalizedChallenge, getLocalizedTimeOfDay } from '../../domain/i18nCatalog';
 import { TIME_OF_DAY_CATALOG } from '../../domain/timeOfDayCatalog';
+import { buildTrainspottingSpots } from '../../domain/trainspottingSystem';
 import type { ChallengeId, GameModeId, IChallengeSpec, IMetroLineSpec, ITimeOfDaySpec, TimeOfDayId, WeatherModeId } from '../../domain/types';
 import { useI18n } from '../../i18n/LanguageContext';
+import { PassengerAndSpottingPanel } from './PassengerAndSpottingPanel';
 
 interface IConditionsAndModeSectionProps {
   readonly activeLine: IMetroLineSpec;
@@ -10,10 +12,12 @@ interface IConditionsAndModeSectionProps {
   readonly selectedWeatherMode: WeatherModeId;
   readonly selectedGameMode: GameModeId;
   readonly selectedChallengeId: ChallengeId;
+  readonly trainspottingSpotIndex: number;
   readonly onSelectTimeOfDay: (id: TimeOfDayId) => void;
   readonly onSelectWeatherMode: (mode: WeatherModeId) => void;
   readonly onSelectGameMode: (mode: GameModeId) => void;
   readonly onSelectChallenge: (id: ChallengeId) => void;
+  readonly onSelectTrainspottingSpot: (spotIndex: number) => void;
   readonly onStart: () => void;
   readonly onStartPassengerAto: () => void;
   readonly onStartAcademy: () => void;
@@ -23,6 +27,7 @@ const MODE_OPTIONS: ReadonlyArray<{ readonly id: GameModeId; readonly titlePl: s
   { id: 'duty', titlePl: 'Tryb Służbowy', titleEn: 'Duty Mode', badgePl: 'REKORDY', badgeEn: 'RECORDS', descPl: 'Rozkład jazdy, punktacja, czuwak, losowe awarie i zapis w TOP 5.', descEn: 'Timetable, scoring, Czuwak vigilance, random faults, and TOP 5 records.' },
   { id: 'sandbox', titlePl: 'Wolna Jazda', titleEn: 'Sandbox', badgePl: 'BEZ KAR · ATO', badgeEn: 'NO PENALTY · ATO', descPl: 'Swobodna jazda bez kar, sterowanie semaforami i opcjonalny Autopilot [A].', descEn: 'Free driving without penalties, signal control, and optional ATO Autopilot [A].' },
   { id: 'challenge', titlePl: 'Wyzwania', titleEn: 'Challenges', badgePl: '4 SCENARIUSZE', badgeEn: '4 SCENARIOS', descPl: 'Scenariusze specjalne z osobnymi odznakami w Osiągnięciach.', descEn: 'Special scenarios with dedicated badges in Achievements.' },
+  { id: 'passenger', titlePl: 'Pasażer / Spotting', titleEn: 'Passenger / Spotting', badgePl: 'ATO · PERON', badgeEn: 'ATO · PLATFORM', descPl: 'Jazda w 6-wagonowym składzie lub obserwacja pociągów AI na peronie.', descEn: 'Ride inside the 6-car train or watch live AI trains from any station platform.' },
 ];
 
 function TimeOfDayCard({ spec, selected, onSelect }: { readonly spec: ITimeOfDaySpec; readonly selected: boolean; readonly onSelect: () => void }) {
@@ -99,18 +104,24 @@ function GameModeOptionCard({ opt, selected, onSelect }: { readonly opt: (typeof
   );
 }
 
-function GameModeSelectorBlock({ selectedGameMode, selectedChallengeId, onSelectGameMode, onSelectChallenge }: Pick<IConditionsAndModeSectionProps, 'selectedGameMode' | 'selectedChallengeId' | 'onSelectGameMode' | 'onSelectChallenge'>) {
+function GameModeSelectorBlock({ activeLine, selectedGameMode, selectedChallengeId, trainspottingSpotIndex, onSelectGameMode, onSelectChallenge, onSelectTrainspottingSpot }: Pick<IConditionsAndModeSectionProps, 'activeLine' | 'selectedGameMode' | 'selectedChallengeId' | 'trainspottingSpotIndex' | 'onSelectGameMode' | 'onSelectChallenge' | 'onSelectTrainspottingSpot'>) {
   const { tr } = useI18n();
+  const isObserver = selectedGameMode === 'passenger' || selectedGameMode === 'trainspotting';
   return (
     <div className="mb-2.5">
       <p className="text-[10px] font-mono-tabular uppercase tracking-[0.18em] text-slate-400 mb-1">{tr('4. Tryb gry', '4. Game Mode')}</p>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-        {MODE_OPTIONS.map((opt) => <GameModeOptionCard key={opt.id} opt={opt} selected={opt.id === selectedGameMode} onSelect={() => onSelectGameMode(opt.id)} />)}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+        {MODE_OPTIONS.map((opt) => (
+          <GameModeOptionCard key={opt.id} opt={opt} selected={opt.id === selectedGameMode || (opt.id === 'passenger' && isObserver)} onSelect={() => onSelectGameMode(opt.id)} />
+        ))}
       </div>
       {selectedGameMode === 'challenge' && (
         <div data-testid="challenge-selector" className="mt-2 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
           {CHALLENGE_CATALOG.map((challenge) => <ChallengeScenarioCard key={challenge.id} spec={challenge} selected={challenge.id === selectedChallengeId} onSelect={() => onSelectChallenge(challenge.id)} />)}
         </div>
+      )}
+      {isObserver && (
+        <PassengerAndSpottingPanel activeLine={activeLine} selectedGameMode={selectedGameMode} selectedSpotIndex={trainspottingSpotIndex} onSelectGameMode={onSelectGameMode} onSelectTrainspottingSpot={onSelectTrainspottingSpot} />
       )}
     </div>
   );
@@ -136,15 +147,21 @@ export function ConditionsAndModeSection(props: IConditionsAndModeSectionProps) 
   const activeChallengeRaw = getChallengeSpec(props.selectedChallengeId);
   const activeChallenge = getLocalizedChallenge(lang, activeChallengeRaw.id, activeChallengeRaw);
   const activeBadge = props.activeLine.badgeCode ?? props.activeLine.id;
-  const startLabel = props.selectedGameMode === 'sandbox'
-    ? tr(`Uruchom Wolną Jazdę (${activeBadge})`, `Start Sandbox (${activeBadge})`)
-    : props.selectedGameMode === 'challenge'
-      ? tr(`Start wyzwania: ${activeChallenge.title} (${activeBadge})`, `Start Challenge: ${activeChallenge.title} (${activeBadge})`)
-      : tr(`Rozpocznij kurs (${activeBadge})`, `Start Course (${activeBadge})`);
+  const spots = buildTrainspottingSpots(props.activeLine, props.activeLine.stations);
+  const spot = spots[props.trainspottingSpotIndex] ?? spots[0];
+  const startLabel = props.selectedGameMode === 'trainspotting'
+    ? tr(`Start Trainspotting: ${spot?.namePl ?? activeBadge}`, `Start Trainspotting: ${spot?.nameEn ?? activeBadge}`)
+    : props.selectedGameMode === 'passenger'
+      ? tr(`Jedź jako Pasażer (${activeBadge})`, `Ride as Passenger (${activeBadge})`)
+      : props.selectedGameMode === 'sandbox'
+        ? tr(`Uruchom Wolną Jazdę (${activeBadge})`, `Start Sandbox (${activeBadge})`)
+        : props.selectedGameMode === 'challenge'
+          ? tr(`Start wyzwania: ${activeChallenge.title} (${activeBadge})`, `Start Challenge: ${activeChallenge.title} (${activeBadge})`)
+          : tr(`Rozpocznij kurs (${activeBadge})`, `Start Course (${activeBadge})`);
   return (
     <>
       <TimeAndWeatherGrid selectedTimeOfDayId={props.selectedTimeOfDayId} selectedWeatherMode={props.selectedWeatherMode} onSelectTimeOfDay={props.onSelectTimeOfDay} onSelectWeatherMode={props.onSelectWeatherMode} />
-      <GameModeSelectorBlock selectedGameMode={props.selectedGameMode} selectedChallengeId={props.selectedChallengeId} onSelectGameMode={props.onSelectGameMode} onSelectChallenge={props.onSelectChallenge} />
+      <GameModeSelectorBlock activeLine={props.activeLine} selectedGameMode={props.selectedGameMode} selectedChallengeId={props.selectedChallengeId} trainspottingSpotIndex={props.trainspottingSpotIndex} onSelectGameMode={props.onSelectGameMode} onSelectChallenge={props.onSelectChallenge} onSelectTrainspottingSpot={props.onSelectTrainspottingSpot} />
       <TitleStartActionsRow startLabel={startLabel} onStart={props.onStart} onStartPassengerAto={props.onStartPassengerAto} onStartAcademy={props.onStartAcademy} />
     </>
   );

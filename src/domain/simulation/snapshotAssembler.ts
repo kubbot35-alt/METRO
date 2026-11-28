@@ -1,5 +1,7 @@
+import { computeDepotZoneState } from '../depotHallSystem';
 import { SOP2_LOOKAHEAD_M, resolveSop2Target } from '../sop2TargetResolver';
 import { getStationPlatformSide } from '../trackGeometry';
+import { buildTrainspottingSpots, buildTrainspottingState } from '../trainspottingSystem';
 import type { ISimulationSnapshot, ISop2State, IStationProgress } from '../types';
 import {
   OVERSPEED_TOLERANCE_KMH,
@@ -139,6 +141,9 @@ export class SnapshotAssembler implements ISnapshotAssembler {
     const currentStation = buildStationProgress(state);
     const posM = state.kinematics.positionM;
     const speedLimitKmh = computeEffectiveSpeedLimit(state, sys);
+    const depotZone = computeDepotZoneState(posM, state.kinematics.speedKmh, state.alignment.hasSurfaceStart, state.depotHallStart);
+    const spots = buildTrainspottingSpots(state.line, state.stations);
+    const trainspotting = buildTrainspottingState(state.gameMode === 'trainspotting', spots, state.trainspottingSpotIndex, state.trainspottingWalkOffsetM);
     return {
       phase: state.phase, gameMode: state.gameMode,
       atoEnabled: state.atoEnabled, atoStatus: state.atoEnabled ? state.atoStatus : 'off',
@@ -146,12 +151,15 @@ export class SnapshotAssembler implements ISnapshotAssembler {
       academy: state.gameMode === 'academy' ? sys.academy.getSnapshot(currentStation.inStopZone, getStationPlatformSide(currentStation.station), state.doorState) : null,
       line: state.line, stations: state.stations, trainModel: state.trainModel, timeOfDay: state.timeOfDay,
       cameraMode: state.cameraMode, cameraNotice: state.cameraNotice,
-      oncomingTrain: sys.traffic.getState(), kinematics: state.kinematics,
+      oncomingTrain: sys.traffic.getState(), leadingTrain: sys.leadingTrain.getState(), kinematics: state.kinematics,
       trackProfile: buildTrackProfileSnapshot(state, posM),
       ...buildDoorSignalSnapshot(state, sys, currentStation, speedLimitKmh),
       ...buildTrainSubsystemsSnapshot(state, sys, posM),
       ...buildWorldAndIncidentsSnapshot(state, sys, currentStation, posM),
       ...buildRunSummarySnapshot(state, sys),
+      depotZone,
+      passengerView: { seatId: state.passengerSeatId, carIndex: state.passengerCarIndex },
+      trainspotting,
     };
   }
 }

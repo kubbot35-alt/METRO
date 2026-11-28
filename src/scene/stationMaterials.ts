@@ -10,10 +10,11 @@ export function createSharedStationMaterials(
   clockTexPlayer: THREE.CanvasTexture,
   clockTexOpp: THREE.CanvasTexture,
   liveClockTex: THREE.CanvasTexture,
+  exitSignTex: THREE.CanvasTexture,
 ): ISharedStationMats {
   return {
     ...createStructureAndLightingMaterials(platformTex, stopTex),
-    ...createFurnitureAndClockMaterials(clockTexPlayer, clockTexOpp, liveClockTex),
+    ...createFurnitureAndClockMaterials(clockTexPlayer, clockTexOpp, liveClockTex, exitSignTex),
   };
 }
 
@@ -36,6 +37,7 @@ function createFurnitureAndClockMaterials(
   clockTexPlayer: THREE.CanvasTexture,
   clockTexOpp: THREE.CanvasTexture,
   liveClockTex: THREE.CanvasTexture,
+  exitSignTex: THREE.CanvasTexture,
 ) {
   return {
     benchWood: new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.76, metalness: 0.05 }),
@@ -52,5 +54,6 @@ function createFurnitureAndClockMaterials(
     escalatorGlass: new THREE.MeshStandardMaterial({ color: 0x93c5fd, roughness: 0.14, metalness: 0.2, transparent: true, opacity: 0.45 }),
     handrailBlack: new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.5, metalness: 0.15 }),
     exitGlow: new THREE.MeshStandardMaterial({ color: 0x34d399, emissive: 0x10b981, emissiveIntensity: 1.8, roughness: 0.25 }),
+    exitSign: new THREE.MeshStandardMaterial({ map: exitSignTex, emissiveMap: exitSignTex, emissive: 0xffffff, emissiveIntensity: 1.35, roughness: 0.28 }),
   };
 }

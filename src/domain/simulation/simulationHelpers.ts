@@ -1,4 +1,5 @@
 import { getChallengeSpec } from '../challengeCatalog';
+import { computeDepotZoneState } from '../depotHallSystem';
 import { BOARDING_DURATION_SEC, getSpeedLimitAt } from '../routeData';
 import { computeEffectivePassengers } from '../timeOfDayCatalog';
 import { CAMERA_MODE_LABELS, getNextCameraMode } from '../trainCatalog';
@@ -24,7 +25,7 @@ export function getActiveChallenge(state: ISimulationState): IChallengeSpec | nu
 }
 
 export function isFreeRideMode(state: ISimulationState): boolean {
-  return state.gameMode === 'sandbox' || state.gameMode === 'passenger';
+  return state.gameMode === 'sandbox' || state.gameMode === 'passenger' || state.gameMode === 'trainspotting';
 }
 
 export function isNightServiceActive(state: ISimulationState): boolean {
@@ -116,6 +117,10 @@ export function computeEffectiveSpeedLimit(
   const posM = state.kinematics.positionM;
   if (sys.turnaround.getState(posM).phase !== 'inactive') {
     return TURNAROUND_SPEED_LIMIT_KMH;
+  }
+  const depotZone = computeDepotZoneState(posM, state.kinematics.speedKmh, state.alignment.hasSurfaceStart, state.depotHallStart);
+  if (depotZone.depotSpeedLimitKmh !== null) {
+    return depotZone.depotSpeedLimitKmh;
   }
   let limit = getSpeedLimitAt(posM, state.speedZones);
   const curveLimit = state.alignment.getCurveSpeedLimitAt(posM);

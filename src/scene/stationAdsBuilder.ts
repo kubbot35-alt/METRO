@@ -30,7 +30,7 @@ function addTrackWallBanners(
 ): void {
   const rightWallX = layout === 'side' ? 6.62 : 4.32;
   const leftWallX = layout === 'side' ? -11.02 : -9.22;
-  [-18, 14, 46, 72].forEach((zOff, i) => {
+  [4, 26, 48, 70, 92, 114].forEach((zOff, i) => {
     const rightMat = adPool.getBannerMaterial(indices[i % indices.length]);
     const leftMat = adPool.getBannerMaterial(indices[(i + 1) % indices.length]);
     group.add(buildWallBannerUnit(rightWallX, 2.45, zOff, -1, rightMat, ctx));
@@ -66,7 +66,7 @@ function addPlatformCitylights(
   adPool: IAdTexturePool,
   ctx: IStationAdsBuildContext,
 ): void {
-  const zOffsets = [-13, 18, 49];
+  const zOffsets = [16, 37, 58, 79, 100];
   if (layout === 'island') {
     const xPos = ISLAND_PLATFORM_CENTER_X + 1.25;
     zOffsets.forEach((zOff, i) => {
@@ -104,7 +104,7 @@ function buildCitylightUnit(
 function addDoohScreens(group: THREE.Group, layout: 'island' | 'side', doohSlotIndex: number, adPool: IAdTexturePool, ctx: IStationAdsBuildContext): void {
   const xPos = layout === 'island' ? -3.35 : SIDE_RIGHT_PLATFORM_CENTER_X - 0.65;
   const yawRad = layout === 'island' ? 0.28 : -0.28;
-  [-7.5, 41.5].forEach((zOff, idx) => {
+  [22, 58, 94].forEach((zOff, idx) => {
     group.add(buildDoohUnit(xPos, zOff, yawRad, adPool.getDoohMaterial(doohSlotIndex + idx), ctx));
   });
 }

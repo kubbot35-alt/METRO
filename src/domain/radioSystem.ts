@@ -58,7 +58,7 @@ export class DispatcherRadioSystem implements IRadioController {
     windowSec: number = 15,
     category: RadioDispatchCategory = 'traffic',
   ): boolean {
-    if (this.active && category !== 'inspection') return false;
+    if (this.active && category !== 'inspection' && category !== 'headway') return false;
     this.messageId += 1;
     this.category = category;
     this.text = customText ?? 'Dyspozytor Akademii: Próba łączności radiowej. Potwierdź odbiór przyciskiem [R].';

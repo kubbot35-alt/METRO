@@ -5,6 +5,7 @@ import type { IPassengerComfortController } from '../comfortSystem';
 import type { IEcoDrivingController } from '../ecoDrivingSystem';
 import type { IFeedbackTracker } from '../feedbackTracker';
 import type { IIncidentController } from '../incidentSystem';
+import type { ILeadingTrainController } from '../leadingTrainSystem';
 import type { ILightingAndSparksController } from '../lightingAndSparksSystem';
 import type { INightInspectionController } from '../nightInspectionSystem';
 import type { IPaIntercomController } from '../paIntercomSystem';
@@ -15,6 +16,7 @@ import type { ISop2Controller } from '../sop2System';
 import type { ITachographRecorder } from '../tachographSystem';
 import type { TrackAlignment } from '../trackAlignment';
 import type { ITrafficController } from '../trafficSystem';
+import type { PassengerSeatId } from '../passengerViewModel';
 import type { ITurnaroundController } from '../turnaroundSystem';
 import type {
   AtoStatus,
@@ -60,6 +62,7 @@ export interface ISimulationSystems {
   readonly paIntercom: IPaIntercomController;
   readonly turnaround: ITurnaroundController;
   readonly sop2: ISop2Controller;
+  readonly leadingTrain: ILeadingTrainController;
 }
 
 export interface ISimulationState {
@@ -117,4 +120,9 @@ export interface ISimulationState {
   turnoutThudCooldownSec: number;
   sop2SettingEnabled: boolean;
   sop2SandboxOverride: boolean;
+  depotHallStart: boolean;
+  passengerSeatId: PassengerSeatId;
+  passengerCarIndex: number;
+  trainspottingSpotIndex: number;
+  trainspottingWalkOffsetM: number;
 }

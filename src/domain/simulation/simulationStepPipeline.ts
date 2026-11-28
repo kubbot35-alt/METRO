@@ -15,6 +15,7 @@ import {
   updateCameraState,
 } from './simulationHelpers';
 import type { ISimulationState, ISimulationSystems } from './simulationState';
+import { stepTrainspottingSimulation } from './trainspottingStepHelper';
 
 export interface ISimulationStepPipeline {
   step(state: ISimulationState, sys: ISimulationSystems, input: IControlInput, dtSec: number): IAudioEvents;
@@ -40,6 +41,9 @@ export class SimulationStepPipeline implements ISimulationStepPipeline {
     const cabSwitchChimeNow = state.pendingCabSwitchChime;
     state.pendingPaAudio = false;
     state.pendingCabSwitchChime = false;
+    if (state.gameMode === 'trainspotting') {
+      return stepTrainspottingSimulation(state, sys, input, dt);
+    }
     if (sys.turnaround.getState(state.kinematics.positionM).phase === 'switching_cab') {
       sys.turnaround.step(state.kinematics.positionM, 0, dt);
       sys.feedback.tick(dt);
@@ -97,7 +101,7 @@ export class SimulationStepPipeline implements ISimulationStepPipeline {
       railJointPulse: checkRailJoint(state), brakeStopHiss, atpTriggered: step.atp.violated, signalClearedChime: step.atp.cleared,
       czuwakAlertTriggered: step.inc.czuwakAlertTriggered || step.acad.czuwakTriggered, czuwakAckChime: step.inc.czuwakAckChime,
       doorFaultBeep: step.doorRes.faultBeep, passingTrainWhoosh: step.traffic.passingTrainWhoosh,
-      radioDispatchTriggered: step.radio.dispatchTriggered || step.night.radioTriggered || step.acad.radioTriggered,
+      radioDispatchTriggered: step.radio.dispatchTriggered || step.night.radioTriggered || step.acad.radioTriggered || step.headwayRadio,
       radioAckChime: step.radio.acknowledgedNow, wiperSweepTick, academyStepCompleted: step.acad.stepCompleted,
       thirdRailSparkCrackle: step.light.sparkTriggeredNow, highBeamDimBonusChime: step.light.dimCourtesyBonusAwarded,
       nightCrewClearedChime: step.night.clearedNow, nightCrewViolationBuzz: step.night.violatedNow,
@@ -112,6 +116,11 @@ export class SimulationStepPipeline implements ISimulationStepPipeline {
     dt: number, prevPosM: number, emergencyTriggered: boolean,
   ) {
     const inSiding = sys.turnaround.getState(state.kinematics.positionM).phase !== 'inactive';
+    const leadStep = sys.leadingTrain.step(state.kinematics.positionM, state.kinematics.speedKmh, sys.signals.getSignals(), dt);
+    const leadState = sys.leadingTrain.getState();
+    sys.signals.syncLeadingTrainBlocks?.(leadState.active ? leadState.positionM : null);
+    const headwayRadio = leadStep.headwayWarningTriggeredNow
+      && Boolean(sys.radio.forceTriggerDispatch?.('Dyspozytor: Zwolnij, przed tobą opóźniony skład — zachowaj odstęp blokowy!', 15, 'headway'));
     const atp = this.controls.evaluateSignals(state, sys, prevPosM, dt);
     const inc = this.controls.evaluateIncidents(state, sys, Boolean(eff.acknowledgeCzuwakPressed), dt);
     const radio = this.controls.evaluateRadio(state, sys, Boolean(eff.acknowledgeRadioPressed), dt);
@@ -123,7 +132,7 @@ export class SimulationStepPipeline implements ISimulationStepPipeline {
     const { doorRes, boardingDone, acad } = this.stepDoorsAndAcademy(state, sys, eff, dt, inSiding, atp.cleared, inc.czuwakAckChime, radio.acknowledgedNow, inc.doorFaultResolvedClose);
     const sop2 = this.controls.evaluateSop2(state, sys, dt);
     sys.tachograph.recordStep(state.elapsedTimeSec, state.kinematics.positionM, state.kinematics.speedKmh, computeEffectiveSpeedLimit(state, sys));
-    return { atp, inc, radio, traffic, light, mech, night, doorRes, boardingDone, acad, sop2 };
+    return { atp, inc, radio, traffic, light, mech, night, doorRes, boardingDone, acad, sop2, headwayRadio };
   }
 
   private stepDoorsAndAcademy(

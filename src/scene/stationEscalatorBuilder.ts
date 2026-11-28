@@ -16,7 +16,10 @@ export interface IStationFurnitureMaterials {
   readonly escalatorGlass: THREE.MeshStandardMaterial;
   readonly handrailBlack: THREE.MeshStandardMaterial;
   readonly exitGlow: THREE.MeshStandardMaterial;
+  readonly exitSign: THREE.MeshStandardMaterial;
 }
+
+const STEP_DUMMY = new THREE.Object3D();
 
 export function addEscalatorStructure(
   group: THREE.Group,
@@ -25,6 +28,7 @@ export function addEscalatorStructure(
   totalWidth: number,
   mats: IStationFurnitureMaterials,
   disposables: Array<{ dispose(): void }>,
+  facingDirZ: 1 | -1 = 1,
 ): void {
   const runLength = 12.6;
   const riseHeight = 4.35;
@@ -32,20 +36,16 @@ export function addEscalatorStructure(
   const pitchRad = Math.atan2(riseHeight, runLength);
   const escGroup = new THREE.Group();
   escGroup.position.set(centerX, 1.08, centerZ);
+  escGroup.rotation.y = facingDirZ === 1 ? 0 : Math.PI;
   addEscalatorTrussAndSteps(escGroup, totalWidth, runLength, riseHeight, slopeLen, pitchRad, mats, disposables);
   addEscalatorRailsAndLanding(escGroup, totalWidth, runLength, riseHeight, slopeLen, pitchRad, mats, disposables);
+  addExitSignboard(escGroup, totalWidth, runLength, riseHeight, mats, disposables);
   group.add(escGroup);
 }
 
 function addEscalatorTrussAndSteps(
-  escGroup: THREE.Group,
-  totalWidth: number,
-  runLength: number,
-  riseHeight: number,
-  slopeLen: number,
-  pitchRad: number,
-  mats: IStationFurnitureMaterials,
-  disposables: Array<{ dispose(): void }>,
+  escGroup: THREE.Group, totalWidth: number, runLength: number, riseHeight: number,
+  slopeLen: number, pitchRad: number, mats: IStationFurnitureMaterials, disposables: Array<{ dispose(): void }>,
 ): void {
   const trussGeo = new THREE.BoxGeometry(totalWidth, 0.58, slopeLen);
   const truss = new THREE.Mesh(trussGeo, mats.escalatorMetal);
@@ -54,12 +54,17 @@ function addEscalatorTrussAndSteps(
   escGroup.add(truss);
   const stepCount = 20;
   const stepGeo = new THREE.BoxGeometry(totalWidth - 0.24, 0.14, 0.42);
+  const steps = new THREE.InstancedMesh(stepGeo, mats.escalatorStep, stepCount);
   for (let i = 0; i < stepCount; i += 1) {
     const t = (i + 0.5) / stepCount;
-    const step = new THREE.Mesh(stepGeo, mats.escalatorStep);
-    step.position.set(0, t * riseHeight + 0.08, runLength * 0.5 - t * runLength);
-    escGroup.add(step);
+    STEP_DUMMY.position.set(0, t * riseHeight + 0.08, runLength * 0.5 - t * runLength);
+    STEP_DUMMY.rotation.set(0, 0, 0);
+    STEP_DUMMY.updateMatrix();
+    steps.setMatrixAt(i, STEP_DUMMY.matrix);
   }
+  steps.instanceMatrix.needsUpdate = true;
+  steps.computeBoundingSphere();
+  escGroup.add(steps);
   disposables.push(trussGeo, stepGeo);
 }
 
@@ -79,6 +84,31 @@ function addEscalatorRailsAndLanding(
   topGlow.position.set(0, riseHeight - 0.12, -runLength * 0.5);
   escGroup.add(bottomLanding, topArch, topGlow);
   disposables.push(landingGeo, archBeamGeo, archGlowGeo);
+}
+
+function addExitSignboard(
+  escGroup: THREE.Group, totalWidth: number, runLength: number, riseHeight: number,
+  mats: IStationFurnitureMaterials, disposables: Array<{ dispose(): void }>,
+): void {
+  const signW = Math.min(2.6, totalWidth + 0.35);
+  const frameGeo = new THREE.BoxGeometry(signW, 0.64, 0.18);
+  const faceGeo = new THREE.PlaneGeometry(signW - 0.1, 0.56);
+  const rodGeo = new THREE.CylinderGeometry(0.03, 0.03, 1.05, 8);
+  const zSign = runLength * 0.5 + 0.35;
+  const ySign = Math.min(3.55, riseHeight - 0.65);
+  const frame = new THREE.Mesh(frameGeo, mats.clockFrame);
+  frame.position.set(0, ySign, zSign);
+  const frontFace = new THREE.Mesh(faceGeo, mats.exitSign);
+  frontFace.position.set(0, ySign, zSign + 0.095);
+  const rearFace = new THREE.Mesh(faceGeo, mats.exitSign);
+  rearFace.position.set(0, ySign, zSign - 0.095);
+  rearFace.rotation.y = Math.PI;
+  const rodL = new THREE.Mesh(rodGeo, mats.benchMetal);
+  rodL.position.set(-signW * 0.38, ySign + 0.82, zSign);
+  const rodR = new THREE.Mesh(rodGeo, mats.benchMetal);
+  rodR.position.set(signW * 0.38, ySign + 0.82, zSign);
+  escGroup.add(frame, frontFace, rearFace, rodL, rodR);
+  disposables.push(frameGeo, faceGeo, rodGeo);
 }
 
 function addEscalatorBalustrades(

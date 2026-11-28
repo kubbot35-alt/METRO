@@ -43,14 +43,17 @@ function buildMountCallbacks(
   modals: ReturnType<typeof useOverlayModalsController>,
   photo: ReturnType<typeof usePhotoModeController>,
   session: ReturnType<typeof createSessionLifecycleActions>,
+  handle3dCabControlClick: ReturnType<typeof createGameplayQuickActions>['handle3dCabControlClick'],
 ): IEngineMountCallbacks {
   return {
     ...buildSetterCallbacks(state, photo.setPhotoState),
     startGame: session.startGame, toggleHelp: session.toggleHelp, togglePhotoMode: photo.togglePhotoMode,
-    toggleCctvPreview: cctvPa.toggleCctvPreview, togglePaPanel: cctvPa.togglePaPanel, triggerCabSwitch: session.triggerCabSwitch,
+    toggleCctvPreview: cctvPa.toggleCctvPreview, togglePaPanel: cctvPa.togglePaPanel,
+    toggleDispatchMap: cctvPa.toggleDispatchMap, closeDispatchMap: cctvPa.closeDispatchMap, triggerCabSwitch: session.triggerCabSwitch,
     toggleMute: session.toggleMute, restartGame: session.restartGame, pauseGame: session.pauseGame,
     resumeGame: session.resumeGame, exitPhotoMode: photo.exitPhotoMode, closePaPanel: cctvPa.closePaPanel,
     closeSettings: modals.closeSettings, closeHelp: session.closeHelp, handle3dMonitorClick: cctvPa.handle3dMonitorClick,
+    setCabHoverTooltip: state.setCabHoverTooltip, handle3dCabControlClick,
   };
 }
 
@@ -68,7 +71,8 @@ function buildTelemetrySnapshotFields(state: ReturnType<typeof useGameRuntimeSta
     unlockedAchievements: state.unlockedAchievements, achievementToast: state.achievementToast,
     leaderboard: state.leaderboard, isNewRecord: state.isNewRecord, gamepadStatus: state.gamepadStatus,
     gamepadToast: state.gamepadToast, touchControlsActive: viewport.touchControlsActive,
-    showPortraitHint: viewport.showPortraitHint, ghostDelta, selectedLiveryId, dismissPortraitHint: viewport.dismissPortraitHint,
+    showPortraitHint: viewport.showPortraitHint, ghostDelta, selectedLiveryId,
+    cabHoverTooltip: state.cabHoverTooltip, dismissPortraitHint: viewport.dismissPortraitHint,
   };
 }
 
@@ -78,14 +82,14 @@ export function useMetroGame(mountRef: RefObject<HTMLDivElement | null>): IMetro
   const viewport = useViewportAndTouch(state.settings);
   const cctvPa = useCctvAndPaController(state.refs, syncNow);
   const photo = usePhotoModeController(state.refs, state.setSnapshot, syncNow);
-  const gameplay = useMemo(() => createGameplayQuickActions({ ...state, syncNow }), [state, syncNow]);
+  const gameplay = useMemo(() => createGameplayQuickActions({ ...state, syncNow, togglePaPanel: cctvPa.togglePaPanel }), [cctvPa.togglePaPanel, state, syncNow]);
   const modals = useOverlayModalsController({ ...state, applyRouteVariant: gameplay.applyRouteVariant });
   const session = useMemo(
     () => createSessionLifecycleActions({ ...state, syncNow, ...cctvPa, setSettingsOpen: modals.setSettingsOpen }),
     [cctvPa, modals.setSettingsOpen, state, syncNow],
   );
   const mountCbRef = useRef<IEngineMountCallbacks>(null!);
-  mountCbRef.current = buildMountCallbacks(state, cctvPa, modals, photo, session);
+  mountCbRef.current = buildMountCallbacks(state, cctvPa, modals, photo, session, gameplay.handle3dCabControlClick);
   useEngineMountEffect(mountRef, state.refs, mountCbRef);
   return { ...buildTelemetrySnapshotFields(state, viewport), ...cctvPa, ...modals, ...photo, ...session, ...gameplay };
 }

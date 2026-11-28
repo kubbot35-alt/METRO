@@ -3,6 +3,7 @@ import { evaluateChallengeOutcome } from '../challengeCatalog';
 import { buildSemaphoreDistances } from '../signalSystem';
 import { getTimeOfDaySpec } from '../timeOfDayCatalog';
 import { getLineTrackAlignment } from '../trackAlignment';
+import { buildTrainspottingSpots, pickDefaultTrainspottingSpotIndex } from '../trainspottingSystem';
 import type { IMetroLineSpec } from '../types';
 import {
   evaluateAcademyStepRun,
@@ -45,16 +46,21 @@ export class ModeRulesCoordinator implements IModeRulesCoordinator {
     state.line = nextLine;
     state.stations = nextLine.stations;
     state.speedZones = nextLine.speedZones;
+    const surface = alignmentOverride?.hasSurfaceStart ?? nextLine.hasSurfaceStart;
     state.alignment = getLineTrackAlignment(nextLine.id, nextLine.stations, {
-      hasSurfaceStart: alignmentOverride?.hasSurfaceStart ?? nextLine.hasSurfaceStart,
+      hasSurfaceStart: surface,
       tunnelPortalDistanceM: alignmentOverride?.tunnelPortalDistanceM ?? nextLine.tunnelPortalDistanceM,
       alignmentIntensity: nextLine.alignmentIntensity,
+      depotHallStart: state.depotHallStart && surface,
     });
     state.stationIndex = 0;
+    state.trainspottingSpotIndex = pickDefaultTrainspottingSpotIndex(buildTrainspottingSpots(nextLine, nextLine.stations));
+    state.trainspottingWalkOffsetM = 0;
     sys.signals.setDistances?.(buildSemaphoreDistances(nextLine.stations));
     sys.schedule.setStations?.(nextLine.stations);
     sys.incidents.setStations?.(nextLine.stations);
     sys.traffic.setStations?.(nextLine.stations);
+    sys.leadingTrain.setStations(nextLine.stations);
     sys.radio.setStations(nextLine.stations);
     sys.nightInspection.setStations(nextLine.stations);
     sys.turnaround.setStations(nextLine.stations);
@@ -87,6 +93,9 @@ export class ModeRulesCoordinator implements IModeRulesCoordinator {
       ? (state.sop2SandboxOverride ? state.sop2SettingEnabled : false)
       : state.sop2SettingEnabled;
     sys.sop2.setInterventionEnabled(sop2Enabled);
+    sys.leadingTrain.setEnabled(state.gameMode === 'duty' && state.timeOfDay.id === 'rush');
+    const lead = sys.leadingTrain.getState();
+    sys.signals.syncLeadingTrainBlocks?.(lead.active ? lead.positionM : null);
   }
 
   public evaluateNightInspection(state: ISimulationState, sys: ISimulationSystems): INightEvalOutcome {
@@ -121,6 +130,8 @@ export class ModeRulesCoordinator implements IModeRulesCoordinator {
     sys.radio.setAutoTrigger?.(false);
     sys.nightInspection.setActive(false);
     sys.sop2.setInterventionEnabled(state.sop2SettingEnabled);
+    sys.leadingTrain.setEnabled(false);
+    sys.signals.syncLeadingTrainBlocks?.(null);
   }
 
   private finalizeTerminusArrival(state: ISimulationState, sys: ISimulationSystems): void {

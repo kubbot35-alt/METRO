@@ -1,26 +1,7 @@
-import {
-  LUT_SAMPLE_STEP_M,
-  LUT_START_M,
-  buildTrackLut,
-  interpolateLutSample,
-  type ILutPoint,
-} from './trackAlignmentLut';
-import {
-  M1_SURFACE_ELEVATION_M,
-  M1_TUNNEL_PORTAL_M,
-  buildCurveZones,
-  buildGradeZones,
-  raisedCosinePulse,
-  smoothstep01,
-  type IGradeZoneSpec,
-} from './trackAlignmentZones';
-import type {
-  ICurveZoneSpec,
-  IStationSpec,
-  ITrackSample,
-  MetroLineId,
-  TrackAlignmentIntensity,
-} from './types';
+import { evaluateDepotHallLateralX, evaluateDepotHallTurnoutSway, evaluateDepotHallYawRad } from './depotHallSystem';
+import { LUT_SAMPLE_STEP_M, LUT_START_M, buildTrackLut, interpolateLutSample, type ILutPoint } from './trackAlignmentLut';
+import { M1_SURFACE_ELEVATION_M, M1_TUNNEL_PORTAL_M, buildCurveZones, buildGradeZones, raisedCosinePulse, smoothstep01, type IGradeZoneSpec } from './trackAlignmentZones';
+import type { ICurveZoneSpec, IStationSpec, ITrackSample, MetroLineId, TrackAlignmentIntensity } from './types';
 
 export { M1_SURFACE_ELEVATION_M, M1_TUNNEL_PORTAL_M } from './trackAlignmentZones';
 
@@ -28,11 +9,13 @@ export interface ITrackAlignmentOptions {
   readonly hasSurfaceStart?: boolean;
   readonly tunnelPortalDistanceM?: number | null;
   readonly alignmentIntensity?: TrackAlignmentIntensity;
+  readonly depotHallStart?: boolean;
 }
 
 export class TrackAlignment {
   public readonly lineId: MetroLineId;
   public readonly hasSurfaceStart: boolean;
+  public readonly depotHallStart: boolean;
   public readonly tunnelPortalDistanceM: number | null;
   public readonly alignmentIntensity: TrackAlignmentIntensity;
   public readonly curveZones: readonly ICurveZoneSpec[];
@@ -45,6 +28,7 @@ export class TrackAlignment {
     this.lineId = lineId;
     this.stations = stations;
     this.hasSurfaceStart = options?.hasSurfaceStart ?? lineId === 'M1';
+    this.depotHallStart = Boolean(options?.depotHallStart && this.hasSurfaceStart);
     this.tunnelPortalDistanceM =
       options?.tunnelPortalDistanceM !== undefined
         ? options.tunnelPortalDistanceM
@@ -66,14 +50,20 @@ export class TrackAlignment {
     const idxFloat = (clamped - LUT_START_M) / LUT_SAMPLE_STEP_M;
     const idx0 = Math.min(this.lut.length - 2, Math.max(0, Math.floor(idxFloat)));
     const frac = Math.max(0, Math.min(1, idxFloat - idx0));
-    return interpolateLutSample(
+    const base = interpolateLutSample(
       this.lut[idx0],
       this.lut[idx0 + 1],
       frac,
       clamped,
-      this.evaluateTurnoutSway(clamped),
+      this.evaluateTurnoutSway(clamped) + evaluateDepotHallTurnoutSway(clamped, this.depotHallStart),
       this.evaluateOutdoorBlend(clamped),
     );
+    if (!this.depotHallStart || clamped >= -8) return base;
+    return {
+      ...base,
+      x: base.x + evaluateDepotHallLateralX(clamped, true),
+      yaw: base.yaw + evaluateDepotHallYawRad(clamped, true),
+    };
   }
 
   public toWorldPoint(
@@ -184,8 +174,9 @@ export function getLineTrackAlignment(
   options?: ITrackAlignmentOptions,
 ): TrackAlignment {
   const surface = options?.hasSurfaceStart ?? lineId === 'M1';
+  const hall = Boolean(options?.depotHallStart && surface);
   const intensity = options?.alignmentIntensity ?? 'moderate';
-  const key = `${lineId}:${surface ? 1 : 0}:${intensity}:${stations.map((s) => s.distanceM).join(',')}`;
+  const key = `${lineId}:${surface ? 1 : 0}:${hall ? 1 : 0}:${intensity}:${stations.map((s) => s.distanceM).join(',')}`;
   const cached = alignmentCache.get(key);
   if (cached) {
     return cached;

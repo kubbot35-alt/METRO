@@ -86,14 +86,14 @@ export class KeyboardInputController implements IInputController {
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
     this.callbacks?.onFirstInteraction();
-    if (event.code === 'Space' || event.code === 'ArrowUp' || event.code === 'ArrowDown') {
+    const isTitle = document.body.dataset.state === 'title';
+    const isModalOpen = document.body.dataset.modalOpen === '1';
+    if (event.code === 'Space' || event.code === 'ArrowUp' || event.code === 'ArrowDown' || (event.code === 'Tab' && !isTitle && !isModalOpen)) {
       event.preventDefault();
     }
     if (['KeyW', 'KeyS', 'ArrowUp', 'ArrowDown', 'Space'].includes(event.code)) {
       this.virtualLeverAxis = null;
     }
-    const isTitle = document.body.dataset.state === 'title';
-    const isModalOpen = document.body.dataset.modalOpen === '1';
     if (document.body.dataset.photoMode === '1') {
       if (!event.repeat && (event.code === 'KeyF' || event.code === 'Escape')) {
         this.callbacks?.onPhotoModeToggle?.();

@@ -1,9 +1,22 @@
 import * as THREE from 'three';
 import type { IStationSpec, PlatformLayout } from '../domain/types';
 import { addEscalatorStructure, type IStationFurnitureMaterials } from './stationEscalatorBuilder';
-import { ISLAND_PLATFORM_CENTER_X, SIDE_LEFT_PLATFORM_CENTER_X, SIDE_RIGHT_PLATFORM_CENTER_X } from './stationHallBuilder';
+import { ISLAND_PLATFORM_CENTER_X } from './stationHallBuilder';
+import {
+  addInstancedBenches,
+  addInstancedCeilingBaffles,
+  addInstancedIslandColumns,
+  addInstancedSideColumns,
+  addInstancedTrashBins,
+} from './stationInstancedFurniture';
 
 export type { IStationFurnitureMaterials };
+
+const COLUMN_OFFSETS = [-44, -31, -18, -5, 8, 21, 34, 45];
+const BENCH_OFFSETS = [-38, -24, -10, 10, 24, 38];
+const BIN_OFFSETS = [-42, -28, -14, 0, 14, 28, 42];
+const SIP_CLOCK_OFFSETS = [-42, -14, 14, 42];
+const ESCALATOR_END_OFFSET = 57;
 
 export function addPlatformFurniture(
   group: THREE.Group,
@@ -13,6 +26,7 @@ export function addPlatformFurniture(
   mats: IStationFurnitureMaterials,
   disposables: Array<{ dispose(): void }>,
 ): void {
+  addInstancedCeilingBaffles(group, layout, centerZ, mats, disposables);
   if (layout === 'island') addIslandFurniture(group, station.platformLengthM, centerZ, mats, disposables);
   else addSidePlatformsFurniture(group, station.platformLengthM, centerZ, mats, disposables);
 }
@@ -22,26 +36,20 @@ function addIslandFurniture(
 ): void {
   addSafetyEdgeStrip(group, -1.78, platformLengthM, centerZ, mats.safetyYellow, disposables);
   addSafetyEdgeStrip(group, -8.02, platformLengthM, centerZ, mats.safetyYellow, disposables);
-  addIslandColumns(group, centerZ, mats, disposables);
-  addEscalatorStructure(group, ISLAND_PLATFORM_CENTER_X, centerZ - 4, 2.5, mats, disposables);
-  addBenchesAt(group, ISLAND_PLATFORM_CENTER_X + 0.56, [-34, 10, 30], 1, centerZ, mats, disposables);
-  addBenchesAt(group, ISLAND_PLATFORM_CENTER_X - 0.56, [-34, 10, 30], -1, centerZ, mats, disposables);
-  addTrashBinsAt(group, ISLAND_PLATFORM_CENTER_X, [-28, 22, 42], centerZ, mats, disposables);
-  addDepartureClockBoards(group, -3.15, [-26, 22], centerZ, mats.clockScreenPlayer, mats, disposables);
-  addDepartureClockBoards(group, -6.65, [-26, 22], centerZ, mats.clockScreenOpposite, mats, disposables);
-}
-
-function addIslandColumns(group: THREE.Group, centerZ: number, mats: IStationFurnitureMaterials, disposables: Array<{ dispose(): void }>): void {
-  const colGeo = new THREE.CylinderGeometry(0.28, 0.32, 4.5, 12);
-  const colBaseGeo = new THREE.CylinderGeometry(0.38, 0.42, 0.22, 12);
-  disposables.push(colGeo, colBaseGeo);
-  [-42, -24, 18, 36].forEach((offset) => {
-    const col = new THREE.Mesh(colGeo, mats.column);
-    col.position.set(ISLAND_PLATFORM_CENTER_X, 3.33, centerZ + offset);
-    const base = new THREE.Mesh(colBaseGeo, mats.benchMetal);
-    base.position.set(ISLAND_PLATFORM_CENTER_X, 1.19, centerZ + offset);
-    group.add(col, base);
-  });
+  addInstancedIslandColumns(group, centerZ, COLUMN_OFFSETS, mats, disposables);
+  addEscalatorStructure(group, ISLAND_PLATFORM_CENTER_X, centerZ - ESCALATOR_END_OFFSET, 2.5, mats, disposables, 1);
+  addEscalatorStructure(group, ISLAND_PLATFORM_CENTER_X, centerZ + ESCALATOR_END_OFFSET, 2.5, mats, disposables, -1);
+  addInstancedBenches(
+    group,
+    [
+      { xPos: ISLAND_PLATFORM_CENTER_X + 0.56, facingDirX: 1, offsets: BENCH_OFFSETS },
+      { xPos: ISLAND_PLATFORM_CENTER_X - 0.56, facingDirX: -1, offsets: BENCH_OFFSETS },
+    ],
+    centerZ, mats, disposables,
+  );
+  addInstancedTrashBins(group, [{ xPos: ISLAND_PLATFORM_CENTER_X, offsets: BIN_OFFSETS }], centerZ, mats, disposables);
+  addDepartureClockBoards(group, -3.15, SIP_CLOCK_OFFSETS, centerZ, mats.clockScreenPlayer, mats, disposables);
+  addDepartureClockBoards(group, -6.65, SIP_CLOCK_OFFSETS, centerZ, mats.clockScreenOpposite, mats, disposables);
 }
 
 function addSidePlatformsFurniture(
@@ -49,27 +57,29 @@ function addSidePlatformsFurniture(
 ): void {
   addSafetyEdgeStrip(group, 1.78, platformLengthM, centerZ, mats.safetyYellow, disposables);
   addSafetyEdgeStrip(group, -6.18, platformLengthM, centerZ, mats.safetyYellow, disposables);
-  addSidePlatformColumns(group, centerZ, mats.column, disposables);
-  addEscalatorStructure(group, 5.45, centerZ - 4, 1.7, mats, disposables);
-  addEscalatorStructure(group, -9.85, centerZ - 4, 1.7, mats, disposables);
-  addBenchesAt(group, 5.65, [-32, 16, 36], -1, centerZ, mats, disposables);
-  addBenchesAt(group, -10.05, [-32, 16, 36], 1, centerZ, mats, disposables);
-  addTrashBinsAt(group, 5.1, [-22, 26], centerZ, mats, disposables);
-  addTrashBinsAt(group, -9.5, [-22, 26], centerZ, mats, disposables);
-  addDepartureClockBoards(group, 3.35, [-24, 18], centerZ, mats.clockScreenPlayer, mats, disposables);
-  addDepartureClockBoards(group, -7.75, [-24, 18], centerZ, mats.clockScreenOpposite, mats, disposables);
-}
-
-function addSidePlatformColumns(group: THREE.Group, centerZ: number, colMat: THREE.MeshStandardMaterial, disposables: Array<{ dispose(): void }>): void {
-  const colGeo = new THREE.CylinderGeometry(0.24, 0.28, 4.5, 10);
-  disposables.push(colGeo);
-  [-38, -18, 12, 34].forEach((offset) => {
-    const colR = new THREE.Mesh(colGeo, colMat);
-    colR.position.set(SIDE_RIGHT_PLATFORM_CENTER_X + 0.4, 3.33, centerZ + offset);
-    const colL = new THREE.Mesh(colGeo, colMat);
-    colL.position.set(SIDE_LEFT_PLATFORM_CENTER_X - 0.4, 3.33, centerZ + offset);
-    group.add(colR, colL);
-  });
+  addInstancedSideColumns(group, centerZ, COLUMN_OFFSETS, mats, disposables);
+  addEscalatorStructure(group, 5.45, centerZ - ESCALATOR_END_OFFSET, 1.7, mats, disposables, 1);
+  addEscalatorStructure(group, 5.45, centerZ + ESCALATOR_END_OFFSET, 1.7, mats, disposables, -1);
+  addEscalatorStructure(group, -9.85, centerZ - ESCALATOR_END_OFFSET, 1.7, mats, disposables, 1);
+  addEscalatorStructure(group, -9.85, centerZ + ESCALATOR_END_OFFSET, 1.7, mats, disposables, -1);
+  addInstancedBenches(
+    group,
+    [
+      { xPos: 5.65, facingDirX: -1, offsets: BENCH_OFFSETS },
+      { xPos: -10.05, facingDirX: 1, offsets: BENCH_OFFSETS },
+    ],
+    centerZ, mats, disposables,
+  );
+  addInstancedTrashBins(
+    group,
+    [
+      { xPos: 5.1, offsets: BIN_OFFSETS },
+      { xPos: -9.5, offsets: BIN_OFFSETS },
+    ],
+    centerZ, mats, disposables,
+  );
+  addDepartureClockBoards(group, 3.35, SIP_CLOCK_OFFSETS, centerZ, mats.clockScreenPlayer, mats, disposables);
+  addDepartureClockBoards(group, -7.75, SIP_CLOCK_OFFSETS, centerZ, mats.clockScreenOpposite, mats, disposables);
 }
 
 function addSafetyEdgeStrip(
@@ -80,43 +90,6 @@ function addSafetyEdgeStrip(
   strip.position.set(xPos, 1.095, centerZ);
   group.add(strip);
   disposables.push(stripGeo);
-}
-
-function addBenchesAt(
-  group: THREE.Group, xPos: number, offsets: readonly number[], facingDirX: -1 | 1, centerZ: number, mats: IStationFurnitureMaterials, disposables: Array<{ dispose(): void }>,
-): void {
-  const seatGeo = new THREE.BoxGeometry(0.62, 0.07, 2.5);
-  const backGeo = new THREE.BoxGeometry(0.07, 0.36, 2.5);
-  const legGeo = new THREE.BoxGeometry(0.56, 0.44, 0.12);
-  disposables.push(seatGeo, backGeo, legGeo);
-  offsets.forEach((offset) => {
-    const z = centerZ + offset;
-    const seat = new THREE.Mesh(seatGeo, mats.benchWood);
-    seat.position.set(xPos, 1.52, z);
-    const back = new THREE.Mesh(backGeo, mats.benchWood);
-    back.position.set(xPos - facingDirX * 0.29, 1.78, z);
-    const legA = new THREE.Mesh(legGeo, mats.benchMetal);
-    legA.position.set(xPos, 1.3, z - 0.96);
-    const legB = new THREE.Mesh(legGeo, mats.benchMetal);
-    legB.position.set(xPos, 1.3, z + 0.96);
-    group.add(seat, back, legA, legB);
-  });
-}
-
-function addTrashBinsAt(
-  group: THREE.Group, xPos: number, offsets: readonly number[], centerZ: number, mats: IStationFurnitureMaterials, disposables: Array<{ dispose(): void }>,
-): void {
-  const binGeo = new THREE.CylinderGeometry(0.2, 0.18, 0.78, 12);
-  const rimGeo = new THREE.CylinderGeometry(0.22, 0.22, 0.07, 12);
-  disposables.push(binGeo, rimGeo);
-  offsets.forEach((offset) => {
-    const z = centerZ + offset;
-    const body = new THREE.Mesh(binGeo, mats.binBody);
-    body.position.set(xPos, 1.47, z);
-    const rim = new THREE.Mesh(rimGeo, mats.binRim);
-    rim.position.set(xPos, 1.88, z);
-    group.add(body, rim);
-  });
 }
 
 function addDepartureClockBoards(

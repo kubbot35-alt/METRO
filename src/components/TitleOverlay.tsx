@@ -25,6 +25,8 @@ interface ITitleOverlayProps {
   readonly baseLineSpec: IMetroLineSpec;
   readonly routeDirection: RouteDirection;
   readonly startStationIndex: number;
+  readonly depotHallStart: boolean;
+  readonly trainspottingSpotIndex: number;
   readonly customLines: readonly ICustomLineDraft[];
   readonly driverProfile: IDriverProfileStats;
   readonly gamepadStatus: IGamepadStatus;
@@ -40,6 +42,8 @@ interface ITitleOverlayProps {
   readonly onSelectLine: (lineId: MetroLineId) => void;
   readonly onSelectRouteDirection: (direction: RouteDirection) => void;
   readonly onSelectStartStation: (startIndex: number) => void;
+  readonly onToggleDepotHallStart: (enabled: boolean) => void;
+  readonly onSelectTrainspottingSpot: (spotIndex: number) => void;
   readonly onOpenLineBuilder: () => void;
   readonly onEditCustomLine: (draft: ICustomLineDraft) => void;
   readonly onDeleteCustomLine: (id: string) => void;
@@ -65,9 +69,9 @@ export function TitleOverlay(props: ITitleOverlayProps) {
       <div className="w-full max-w-6xl mx-auto my-auto pointer-events-auto grid grid-cols-1 lg:grid-cols-[minmax(0,1fr)_280px] gap-5 items-start">
         <div className="min-w-0">
           <TitleHeaderBar activeLine={props.activeLine} achievementsUnlocked={props.achievementsUnlocked} achievementsTotal={props.achievementsTotal} onOpenProfile={props.onOpenProfile} onOpenSettings={props.onOpenSettings} onOpenAchievements={props.onOpenAchievements} onToggleHelp={props.onToggleHelp} />
-          <LineAndVariantSection activeLine={props.activeLine} baseLineSpec={props.baseLineSpec} routeDirection={props.routeDirection} startStationIndex={props.startStationIndex} customLines={props.customLines} onSelectLine={props.onSelectLine} onSelectRouteDirection={props.onSelectRouteDirection} onSelectStartStation={props.onSelectStartStation} onOpenLineBuilder={props.onOpenLineBuilder} onEditCustomLine={props.onEditCustomLine} onDeleteCustomLine={props.onDeleteCustomLine} />
+          <LineAndVariantSection activeLine={props.activeLine} baseLineSpec={props.baseLineSpec} routeDirection={props.routeDirection} startStationIndex={props.startStationIndex} depotHallStart={props.depotHallStart} customLines={props.customLines} onSelectLine={props.onSelectLine} onSelectRouteDirection={props.onSelectRouteDirection} onSelectStartStation={props.onSelectStartStation} onToggleDepotHallStart={props.onToggleDepotHallStart} onOpenLineBuilder={props.onOpenLineBuilder} onEditCustomLine={props.onEditCustomLine} onDeleteCustomLine={props.onDeleteCustomLine} />
           <TrainAndLiverySection selectedModelId={props.selectedModelId} selectedLiveryId={props.selectedLiveryId} currentRankId={rankProgress.currentRank.id} selectedGameMode={props.selectedGameMode} onSelectModel={props.onSelectModel} onSelectLivery={props.onSelectLivery} />
-          <ConditionsAndModeSection activeLine={props.activeLine} selectedTimeOfDayId={props.selectedTimeOfDayId} selectedWeatherMode={props.selectedWeatherMode} selectedGameMode={props.selectedGameMode} selectedChallengeId={props.selectedChallengeId} onSelectTimeOfDay={props.onSelectTimeOfDay} onSelectWeatherMode={props.onSelectWeatherMode} onSelectGameMode={props.onSelectGameMode} onSelectChallenge={props.onSelectChallenge} onStart={props.onStart} onStartPassengerAto={props.onStartPassengerAto} onStartAcademy={props.onStartAcademy} />
+          <ConditionsAndModeSection activeLine={props.activeLine} selectedTimeOfDayId={props.selectedTimeOfDayId} selectedWeatherMode={props.selectedWeatherMode} selectedGameMode={props.selectedGameMode} selectedChallengeId={props.selectedChallengeId} trainspottingSpotIndex={props.trainspottingSpotIndex} onSelectTimeOfDay={props.onSelectTimeOfDay} onSelectWeatherMode={props.onSelectWeatherMode} onSelectGameMode={props.onSelectGameMode} onSelectChallenge={props.onSelectChallenge} onSelectTrainspottingSpot={props.onSelectTrainspottingSpot} onStart={props.onStart} onStartPassengerAto={props.onStartPassengerAto} onStartAcademy={props.onStartAcademy} />
         </div>
         <TitleSidebar driverProfile={props.driverProfile} leaderboard={props.leaderboard} onOpenProfile={props.onOpenProfile} />
       </div>

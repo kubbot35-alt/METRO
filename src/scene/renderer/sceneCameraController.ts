@@ -1,28 +1,17 @@
 import * as THREE from 'three';
 import { resolveStationCameraMode } from '../../domain/mirrorCctvSystem';
+import { resolvePassengerCameraAnchor } from '../../domain/passengerViewModel';
 import { getStationPlatformSide } from '../../domain/trackGeometry';
-import type { TrackAlignment } from '../../domain/trackAlignment';
+import { M1_SURFACE_ELEVATION_M, type TrackAlignment } from '../../domain/trackAlignment';
 import type { IPhotoCameraState, ISimulationSnapshot } from '../../domain/types';
 import type { ICabMotionController } from '../cabMotionController';
 import type { IPhotoAnchorPose } from '../types';
 import type { ISceneRendererContext } from './rendererContext';
 
 export interface ISceneCameraController {
-  updateCameraView(
-    ctx: ISceneRendererContext,
-    snapshot: ISimulationSnapshot,
-    posM: number,
-    frame: ReturnType<TrackAlignment['sample']>,
-    state: ReturnType<ICabMotionController['step']>,
-    dtSec: number,
-  ): void;
+  updateCameraView(ctx: ISceneRendererContext, snapshot: ISimulationSnapshot, posM: number, frame: ReturnType<TrackAlignment['sample']>, state: ReturnType<ICabMotionController['step']>, dtSec: number): void;
   getPhotoAnchorPose(ctx: ISceneRendererContext, snapshot: ISimulationSnapshot): IPhotoAnchorPose | null;
-  setPhotoModePose(
-    ctx: ISceneRendererContext,
-    pose: IPhotoCameraState | null,
-    snapshot: ISimulationSnapshot,
-    keepInteriorVisible?: boolean,
-  ): void;
+  setPhotoModePose(ctx: ISceneRendererContext, pose: IPhotoCameraState | null, snapshot: ISimulationSnapshot, keepInteriorVisible?: boolean): void;
 }
 
 export class SceneCameraController implements ISceneCameraController {
@@ -31,9 +20,10 @@ export class SceneCameraController implements ISceneCameraController {
     frame: ReturnType<TrackAlignment['sample']>, state: ReturnType<ICabMotionController['step']>, dtSec: number,
   ): void {
     if (!ctx.camera || !ctx.cabRig || !ctx.playerTrainRig) return;
+    if (snapshot.gameMode === 'trainspotting') { this.applyTrainspottingCamera(ctx, snapshot, dtSec); return; }
     if (snapshot.cameraMode === 'cab') { this.applyCabCamera(ctx, snapshot, posM, frame, state, dtSec); return; }
     ctx.cabRig.group.visible = false;
-    if (snapshot.cameraMode === 'interior') { this.applyInteriorCamera(ctx, snapshot, posM, state, dtSec); return; }
+    if (snapshot.cameraMode === 'interior') { this.applyInteriorCamera(ctx, snapshot, posM, frame, state, dtSec); return; }
     if (ctx.passengerInteriorRig) ctx.passengerInteriorRig.group.visible = false;
     ctx.playerTrainRig.group.visible = true;
     if (ctx.cabFillLight) { ctx.cabFillLight.intensity = 28; ctx.cabFillLight.distance = 32; }
@@ -78,7 +68,7 @@ export class SceneCameraController implements ISceneCameraController {
     ctx.cabRig.group.visible = false;
     const showInterior = keepInteriorVisible && Boolean(ctx.passengerInteriorRig);
     if (ctx.passengerInteriorRig) ctx.passengerInteriorRig.group.visible = showInterior;
-    ctx.playerTrainRig.group.visible = !showInterior;
+    ctx.playerTrainRig.group.visible = !showInterior && snapshot.gameMode !== 'trainspotting';
     if (ctx.cabFillLight) {
       ctx.cabFillLight.intensity = showInterior ? 0 : snapshot.trackProfile.outdoorBlend > 0.35 ? 12 : 34;
       if (!showInterior) ctx.cabFillLight.distance = 38;
@@ -114,20 +104,43 @@ export class SceneCameraController implements ISceneCameraController {
     this.updateCameraFov(ctx, desiredFov, dtSec);
   }
 
+  private applyTrainspottingCamera(ctx: ISceneRendererContext, snapshot: ISimulationSnapshot, dtSec: number): void {
+    ctx.cabRig!.group.visible = false;
+    ctx.playerTrainRig!.group.visible = false;
+    if (ctx.passengerInteriorRig) ctx.passengerInteriorRig.group.visible = false;
+    if (ctx.cabFillLight) ctx.cabFillLight.intensity = 0;
+    const sp = snapshot.trainspotting;
+    const cam = ctx.camera!;
+    cam.rotation.order = 'YXZ';
+    if (sp.isDepot) {
+      cam.position.set(2.4, M1_SURFACE_ELEVATION_M + 3.4, 34 - sp.walkOffsetM * 0.65);
+      cam.rotation.set(-0.08 + ctx.freeLookPitchRad, 0.36 + ctx.freeLookYawRad, 0);
+      this.updateCameraFov(ctx, 62, dtSec);
+      return;
+    }
+    const sideSign = sp.platformSide === 'left' ? -1 : 1;
+    const obsDist = sp.baseDistanceM + sp.walkOffsetM;
+    const obsFrame = ctx.alignment.sample(obsDist);
+    const pt = ctx.alignment.toWorldPoint(obsDist, sideSign * 3.15, 2.55, false);
+    cam.position.set(pt.x, pt.y, pt.z);
+    cam.rotation.set(obsFrame.pitch - 0.04 + ctx.freeLookPitchRad, obsFrame.yaw + (sideSign > 0 ? 0.24 : -0.24) + ctx.freeLookYawRad, 0);
+    this.updateCameraFov(ctx, 64, dtSec);
+  }
+
   private applyInteriorCamera(
     ctx: ISceneRendererContext, snapshot: ISimulationSnapshot, posM: number,
-    state: ReturnType<ICabMotionController['step']>, dtSec: number,
+    frame: ReturnType<TrackAlignment['sample']>, state: ReturnType<ICabMotionController['step']>, dtSec: number,
   ): void {
     ctx.playerTrainRig!.group.visible = false;
-    if (ctx.passengerInteriorRig) ctx.passengerInteriorRig.group.visible = true;
+    const anchor = resolvePassengerCameraAnchor(snapshot.passengerView);
+    if (ctx.passengerInteriorRig) ctx.passengerInteriorRig.group.visible = snapshot.passengerView.seatId !== 'behind_cab';
     if (ctx.cabFillLight) ctx.cabFillLight.intensity = 0;
-    const targetSide = getStationPlatformSide(snapshot.currentStation.station) === 'right' ? -1 : 1;
-    ctx.interiorSideBlend += (targetSide - ctx.interiorSideBlend) * Math.min(1, dtSec * 2.4);
-    const eyePt = ctx.alignment.toWorldPoint(posM - 15.2, ctx.interiorSideBlend * 0.64 + state.offsetX * 0.45, 2.28 + state.offsetY * 0.5, true);
-    const lookPt = ctx.alignment.toWorldPoint(posM - 3.6, -ctx.interiorSideBlend * 0.52, 2.06, true);
+    const eyePt = ctx.alignment.toWorldPoint(posM - anchor.eyeBackFromLeadM, anchor.eyeLateralM + state.offsetX * 0.35, anchor.eyeHeightM + state.offsetY * 0.4, true);
+    const camFrame = anchor.carShiftBackM > 0.1 ? ctx.alignment.sample(posM - anchor.carShiftBackM) : frame;
+    ctx.camera!.rotation.order = 'YXZ';
     ctx.camera!.position.set(eyePt.x, eyePt.y, eyePt.z);
-    ctx.camera!.lookAt(lookPt.x, lookPt.y, lookPt.z);
-    this.updateCameraFov(ctx, 68, dtSec);
+    ctx.camera!.rotation.set(camFrame.pitch + anchor.basePitchRad + ctx.freeLookPitchRad, camFrame.yaw + anchor.baseYawRad + ctx.freeLookYawRad, state.rollRad * 0.45);
+    this.updateCameraFov(ctx, anchor.fovDeg, dtSec);
   }
 
   private applyMirrorCamera(ctx: ISceneRendererContext, snapshot: ISimulationSnapshot, posM: number, dtSec: number): void {

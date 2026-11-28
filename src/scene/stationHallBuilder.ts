@@ -137,7 +137,7 @@ function addStationWallSigns(
 ): void {
   const signGeo = new THREE.BoxGeometry(4.2, 1.0, 0.14);
   disposables.push(signGeo);
-  [-36, 0, 28].forEach((offset) => {
+  [0, 30, 60, 90, 118].forEach((offset) => {
     const rightSign = new THREE.Mesh(signGeo, signMat);
     rightSign.position.set(rightWallX - 0.28, 3.25, -station.distanceM + offset);
     rightSign.rotation.y = -Math.PI / 2;
@@ -146,7 +146,9 @@ function addStationWallSigns(
     leftSign.rotation.y = Math.PI / 2;
     group.add(rightSign, leftSign);
   });
-  const overheadSign = new THREE.Mesh(signGeo, signMat);
-  overheadSign.position.set(layout === 'island' ? -2.8 : 2.8, 4.45, -(station.distanceM - 52));
-  group.add(overheadSign);
+  [24, 92].forEach((zOff) => {
+    const overheadSign = new THREE.Mesh(signGeo, signMat);
+    overheadSign.position.set(layout === 'island' ? -2.8 : 2.8, 4.45, -station.distanceM + zOff);
+    group.add(overheadSign);
+  });
 }

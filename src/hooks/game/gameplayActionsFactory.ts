@@ -1,5 +1,7 @@
+import type { CabControlId } from '../../domain/cabControlsCatalog';
 import { compileCustomLineSpec } from '../../domain/customLines';
 import { getRankForXp } from '../../domain/driverProfile';
+import type { PassengerSeatId } from '../../domain/passengerViewModel';
 import { getMetroLineSpec, METRO_LINE_M1 } from '../../domain/routeData';
 import { compileRouteVariant } from '../../domain/routeVariant';
 import { isLiverySelectable, type SelectedLiveryMap } from '../../domain/trainLiveryCatalog';
@@ -23,6 +25,7 @@ export interface IGameplayActionDeps {
   readonly setRouteDirection: (dir: RouteDirection) => void;
   readonly setStartStationIndex: (idx: number) => void;
   readonly setSelectedLiveries: (map: SelectedLiveryMap) => void;
+  readonly togglePaPanel?: () => void;
 }
 
 function resolveEffectiveLivery(refs: IGameRuntimeRefs, modelId: TrainModelId, mode: GameModeId): TrainLiveryId {
@@ -104,6 +107,31 @@ function createCabSystemActions(refs: IGameRuntimeRefs, syncNow: () => void) {
   };
 }
 
+function createObserverAndDepotActions(deps: IGameplayActionDeps) {
+  const { refs, syncNow } = deps;
+  return {
+    setDepotHallStart: (enabled: boolean): void => { refs.sim.current.setDepotHallStart?.(enabled); syncNow(); },
+    setPassengerSeat: (seatId: PassengerSeatId): void => { refs.sim.current.setPassengerSeat?.(seatId); syncNow(); },
+    setPassengerCarIndex: (carIndex: number): void => { refs.sim.current.setPassengerCarIndex?.(carIndex); syncNow(); },
+    selectTrainspottingSpot: (spotIndex: number): void => { refs.sim.current.setTrainspottingSpotIndex?.(spotIndex); syncNow(); },
+    stepTrainspottingWalk: (deltaM: number): void => { refs.sim.current.stepTrainspottingWalk?.(deltaM); syncNow(); },
+    handle3dCabControlClick: (controlId: CabControlId): void => {
+      refs.audio.current?.unlock();
+      if (controlId === 'doors_left') refs.input.current?.triggerDoorLeftToggle();
+      else if (controlId === 'doors_right') refs.input.current?.triggerDoorRightToggle();
+      else if (controlId === 'lights') { refs.sim.current.cycleHeadlightMode?.(); syncNow(); }
+      else if (controlId === 'wipers') refs.input.current?.triggerWipersToggle();
+      else if (controlId === 'czuwak') refs.input.current?.triggerCzuwakAck();
+      else if (controlId === 'emergency') refs.input.current?.triggerEmergencyBrake();
+      else if (controlId === 'intercom') deps.togglePaPanel?.();
+      else if (controlId === 'horn') {
+        refs.input.current?.setVirtualHorn(true);
+        window.setTimeout(() => refs.input.current?.setVirtualHorn(false), 420);
+      }
+    },
+  };
+}
+
 export function createGameplayQuickActions(deps: IGameplayActionDeps) {
   const { refs, syncNow } = deps;
   const applyRouteVariant = createRouteVariantApplicator(deps);
@@ -121,5 +149,6 @@ export function createGameplayQuickActions(deps: IGameplayActionDeps) {
     ...createTrainAndLiveryActions(deps),
     ...createCabInputActions(refs),
     ...createCabSystemActions(refs, syncNow),
+    ...createObserverAndDepotActions(deps),
   };
 }

@@ -6,7 +6,7 @@ import type { IStationSpec } from '../../domain/types';
 
 export const PLATFORM_TOP_Y = 1.08;
 const COAT_COLORS = [0x1e3a5f, 0x334155, 0x7c2d12, 0x3f3f46, 0x1e40af, 0x4c1d95, 0x0f766e, 0x9a3412];
-const TRAIN_DOOR_Z_OFFSETS = [6, 13, 21, 29, 37, 45, 53, 61, 69, 76];
+const TRAIN_DOOR_Z_OFFSETS = [7, 15, 25, 34, 44, 53, 63, 72, 82, 91, 101, 110];
 
 export interface IPassengerUnit {
   readonly group: THREE.Group;
@@ -112,7 +112,7 @@ function spawnPlatformUnits(
     const seed = stationId * 31 + i * seedPrime;
     const waitX = waitBaseX + spreadDir * (((seed * 13) % 16) * 0.11);
     const spanT = maxCount > 1 ? i / (maxCount - 1) : 0.5;
-    const baseZ = 4 + spanT * 74 + ((seed % 5) - 2) * 0.55;
+    const baseZ = 5 + spanT * 108 + ((seed % 5) - 2) * 0.55;
     const targetDoorZ = findNearestDoorZ(baseZ);
     const pax = buildSilhouetteMesh(assets, seed, 0.92 + ((seed * 7) % 16) * 0.01);
     pax.position.set(waitX, PLATFORM_TOP_Y, baseZ);
@@ -132,7 +132,7 @@ function spawnAlightingUnits(
   awayYaw: number, assets: IPassengerAssets,
 ): readonly IAlightingPassengerUnit[] {
   const units: IAlightingPassengerUnit[] = [];
-  for (let i = 0; i < 8; i += 1) {
+  for (let i = 0; i < 10; i += 1) {
     const seed = stationId * 43 + i * 23;
     const doorZ = TRAIN_DOOR_Z_OFFSETS[(i * 2 + (seed % 2)) % TRAIN_DOOR_Z_OFFSETS.length];
     const disperseX = doorEntryX + spreadDir * (1.85 + ((seed * 11) % 10) * 0.14);
@@ -142,7 +142,7 @@ function spawnAlightingUnits(
     pax.rotation.y = awayYaw + (((seed % 7) - 3) * 0.12);
     pax.visible = false;
     root.add(pax);
-    const startProgress = 0.04 + (i / 8) * 0.36;
+    const startProgress = 0.04 + (i / 10) * 0.36;
     units.push({
       group: pax, doorEntryX, disperseX, doorZ, disperseZ,
       startProgress, endProgress: Math.min(0.95, startProgress + 0.48), phaseOffset: seed * 0.35,

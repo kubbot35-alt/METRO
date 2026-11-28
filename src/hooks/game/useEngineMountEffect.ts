@@ -1,6 +1,7 @@
 import { useEffect, useRef, type RefObject } from 'react';
 import { MetroAudioEngine } from '../../audio/metroAudioEngine';
 import { WebSpeechAnnouncer } from '../../audio/speechAnnouncer';
+import type { CabControlId, ICabHoverTooltip } from '../../domain/cabControlsCatalog';
 import type { DoorSide, IGamepadStatus } from '../../domain/types';
 import { BrowserGamepadController } from '../../input/gamepadController';
 import { KeyboardInputController } from '../../input/keyboardInputController';
@@ -16,6 +17,8 @@ export interface IEngineMountCallbacks extends Omit<IFrameRunnerCallbacks, 'hand
   readonly togglePhotoMode: () => void;
   readonly toggleCctvPreview: () => void;
   readonly togglePaPanel: () => void;
+  readonly toggleDispatchMap: () => void;
+  readonly closeDispatchMap: () => void;
   readonly triggerCabSwitch: () => void;
   readonly toggleMute: () => void;
   readonly restartGame: () => void;
@@ -26,10 +29,13 @@ export interface IEngineMountCallbacks extends Omit<IFrameRunnerCallbacks, 'hand
   readonly closeSettings: () => void;
   readonly closeHelp: () => void;
   readonly handle3dMonitorClick: (side: DoorSide) => void;
+  readonly setCabHoverTooltip: (tooltip: ICabHoverTooltip | null) => void;
+  readonly handle3dCabControlClick: (controlId: CabControlId) => void;
 }
 
 function invokePauseToggle(refs: IGameRuntimeRefs, cb: IEngineMountCallbacks): void {
   if (refs.photoModeActiveRef.current) return cb.exitPhotoMode();
+  if (refs.dispatchMapOpenRef.current) return cb.closeDispatchMap();
   if (refs.paPanelOpenRef.current) return cb.closePaPanel();
   if (refs.settingsOpenRef.current) return cb.closeSettings();
   if (refs.helpOpenRef.current) return cb.closeHelp();
@@ -67,6 +73,8 @@ function configureRendererAndAudio(
   refs.sim.current.setSop2InterventionEnabled?.(s.sop2InterventionEnabled);
   renderer.applySettings?.(s);
   renderer.setOnCctvMonitorClick?.((side) => cbRef.current.handle3dMonitorClick(side));
+  renderer.setOnCabControlHover?.((tooltip) => cbRef.current.setCabHoverTooltip(tooltip));
+  renderer.setOnCabControlClick?.((controlId) => cbRef.current.handle3dCabControlClick(controlId));
   renderer.setCctvPreviewState?.(refs.cctvPreviewOpenRef.current, refs.cctvChannelRef.current, refs.cctvCanvasRef.current);
   audio.setAudioSettings?.(s.masterVolume, s.trainVolume, s.voiceVolume, s.alertsVolume);
   renderer.mount(container);
@@ -92,6 +100,7 @@ function attachKeyboard(refs: IGameRuntimeRefs, cbRef: RefObject<IEngineMountCal
     onPhotoModeToggle: () => cbRef.current.togglePhotoMode(),
     onCctvPreviewToggle: () => cbRef.current.toggleCctvPreview(),
     onPaPanelToggle: () => cbRef.current.togglePaPanel(),
+    onDispatchMapToggle: () => cbRef.current.toggleDispatchMap(),
     onSwitchCabRequested: () => cbRef.current.triggerCabSwitch(),
     onPauseToggle: () => invokePauseToggle(refs, cbRef.current),
     onMuteToggle: () => cbRef.current.toggleMute(),

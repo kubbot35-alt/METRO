@@ -12,6 +12,7 @@ export interface ICabRig {
   setLeverAngle(angleRad: number): void;
   setMirrorTextures(leftTex: THREE.Texture, rightTex: THREE.Texture): void;
   getActiveInteractiveMonitorMeshes(): readonly THREE.Mesh[];
+  getActiveInteractiveControls(): readonly THREE.Mesh[];
   update(snapshot: ISimulationSnapshot, dtSec: number): void;
   dispose(): void;
 }
@@ -56,6 +57,10 @@ class MetroCabRig implements ICabRig {
 
   public getActiveInteractiveMonitorMeshes(): readonly THREE.Mesh[] {
     return this.cabs.get(this.activeTheme)?.mirrorHardware.interactiveMeshes ?? [];
+  }
+
+  public getActiveInteractiveControls(): readonly THREE.Mesh[] {
+    return this.cabs.get(this.activeTheme)?.getInteractiveControlMeshes() ?? [];
   }
 
   public update(snapshot: ISimulationSnapshot, dtSec: number): void {

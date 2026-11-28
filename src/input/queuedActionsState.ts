@@ -36,6 +36,7 @@ function dispatchContextualKey(
   if (code === 'KeyM') { if (shiftKey || !activeRun) callbacks?.onMuteToggle(); else callbacks?.onCctvPreviewToggle?.(); return true; }
   if (!activeRun) return false;
   if (code === 'KeyF') callbacks?.onPhotoModeToggle?.();
+  else if (code === 'Tab') callbacks?.onDispatchMapToggle?.();
   else if (code === 'KeyA') queued.add('ato');
   else if (code === 'KeyI') callbacks?.onPaPanelToggle?.();
   else if (code === 'KeyT') callbacks?.onSwitchCabRequested?.();

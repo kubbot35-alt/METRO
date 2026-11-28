@@ -8,8 +8,10 @@ interface ITopHudBarProps {
   readonly ghostDelta: IGhostDeltaSnapshot | null;
   readonly muted: boolean;
   readonly cctvPreviewOpen: boolean;
+  readonly dispatchMapOpen: boolean;
   readonly onToggleMute: () => void;
   readonly onToggleCctvPreview: () => void;
+  readonly onToggleDispatchMap: () => void;
   readonly onCycleCamera: () => void;
   readonly onToggleHelp: () => void;
   readonly onPause: () => void;
@@ -38,10 +40,10 @@ export function TopHudBar(props: ITopHudBarProps) {
       />
       <TopHudCenterAlerts snapshot={props.snapshot} onAcknowledgeRadio={props.onAcknowledgeRadio} />
       <TopHudActionButtons
-        muted={props.muted} cctvPreviewOpen={props.cctvPreviewOpen}
+        muted={props.muted} cctvPreviewOpen={props.cctvPreviewOpen} dispatchMapOpen={props.dispatchMapOpen}
         onToggleMute={props.onToggleMute} onToggleCctvPreview={props.onToggleCctvPreview}
-        onCycleCamera={props.onCycleCamera} onToggleHelp={props.onToggleHelp}
-        onPause={props.onPause} onRestart={props.onRestart}
+        onToggleDispatchMap={props.onToggleDispatchMap} onCycleCamera={props.onCycleCamera}
+        onToggleHelp={props.onToggleHelp} onPause={props.onPause} onRestart={props.onRestart}
       />
     </div>
   );

@@ -32,7 +32,7 @@ export function buildNightServiceFixtures(
   const emergGeo = new THREE.BoxGeometry(0.42, 0.14, 1.8);
   disposables.push(emergGeo);
   const lampX = layout === 'island' ? ISLAND_PLATFORM_CENTER_X : SIDE_RIGHT_PLATFORM_CENTER_X - 1.2;
-  [-34, 0, 34].forEach((zOff) => {
+  [-50, -16, 18, 50].forEach((zOff) => {
     const lamp = new THREE.Mesh(emergGeo, mats.emergencyLamp);
     lamp.position.set(lampX, 5.26, centerZ + zOff);
     nightGroup.add(lamp);
@@ -48,7 +48,7 @@ function addNightBeacons(
   const domeGeo = new THREE.CylinderGeometry(0.11, 0.13, 0.22, 10);
   const haloGeo = new THREE.SphereGeometry(0.45, 10, 10);
   disposables.push(poleGeo, domeGeo, haloGeo);
-  [-42, 6, 44].forEach((zOff) => {
+  [-54, -18, 18, 54].forEach((zOff) => {
     const pole = new THREE.Mesh(poleGeo, mats.column); pole.position.set(beaconX, 1.08 + 0.675, centerZ + zOff);
     const dome = new THREE.Mesh(domeGeo, mats.yellowBeacon); dome.position.set(beaconX, 1.08 + 1.44, centerZ + zOff);
     const halo = new THREE.Mesh(haloGeo, mats.yellowBeaconHalo); halo.position.set(beaconX, 1.08 + 1.44, centerZ + zOff);
@@ -86,11 +86,17 @@ export function addSidePlatformsAndPortals(
   const leftPlat = new THREE.Mesh(platGeo, mats.platform); leftPlat.position.set(SIDE_LEFT_PLATFORM_CENTER_X, 0.54, centerZ);
   group.add(rightPlat, leftPlat);
   const dividerGeo = new THREE.CylinderGeometry(0.18, 0.22, 5.4, 10);
-  for (let offset = -40; offset <= 40; offset += 20) {
-    const pillar = new THREE.Mesh(dividerGeo, mats.column);
-    pillar.position.set(-2.2, 2.7, centerZ + offset);
-    group.add(pillar);
-  }
+  const pillarOffsets = [-56, -40, -24, -8, 8, 24, 40, 56];
+  const pillars = new THREE.InstancedMesh(dividerGeo, mats.column, pillarOffsets.length);
+  const dummy = new THREE.Object3D();
+  pillarOffsets.forEach((offset, idx) => {
+    dummy.position.set(-2.2, 2.7, centerZ + offset);
+    dummy.updateMatrix();
+    pillars.setMatrixAt(idx, dummy.matrix);
+  });
+  pillars.instanceMatrix.needsUpdate = true;
+  pillars.computeBoundingSphere();
+  group.add(pillars);
   disposables.push(platGeo, dividerGeo);
   addSidePlatformEndPortals(group, centerZ, hallLength, mats.portalConcrete, disposables);
 }

@@ -22,8 +22,10 @@ interface IRouteVariantBarProps {
 
 interface ILineAndVariantSectionProps extends IRouteVariantBarProps {
   readonly activeLine: IMetroLineSpec;
+  readonly depotHallStart: boolean;
   readonly customLines: readonly ICustomLineDraft[];
   readonly onSelectLine: (lineId: MetroLineId) => void;
+  readonly onToggleDepotHallStart: (enabled: boolean) => void;
   readonly onOpenLineBuilder: () => void;
   readonly onEditCustomLine: (draft: ICustomLineDraft) => void;
   readonly onDeleteCustomLine: (id: string) => void;
@@ -102,6 +104,22 @@ export function LineAndVariantSection(props: ILineAndVariantSectionProps) {
         ))}
       </div>
       <RouteVariantBar baseLineSpec={props.baseLineSpec} routeDirection={props.routeDirection} startStationIndex={props.startStationIndex} onSelectRouteDirection={props.onSelectRouteDirection} onSelectStartStation={props.onSelectStartStation} />
+      {props.activeLine.hasSurfaceStart && (
+        <button
+          type="button"
+          data-testid="toggle-depot-hall-start"
+          aria-pressed={props.depotHallStart}
+          onClick={(e) => { e.currentTarget.blur(); props.onToggleDepotHallStart(!props.depotHallStart); }}
+          className={`mt-1.5 w-full rounded-md border px-2.5 py-1.5 flex items-center justify-between gap-2 text-left transition-colors cursor-pointer ${props.depotHallStart ? 'border-amber-400 bg-amber-950/50 text-amber-100' : 'border-slate-700/80 bg-[#0b1019]/90 text-slate-300 hover:border-slate-500'}`}
+        >
+          <span className="text-[11px] font-mono-tabular font-bold">
+            {tr('Start z hali STP Kabaty (wyjazd przez myjnię 10 km/h i rozjazd 20 km/h)', 'Start from STP Kabaty Hall (exit via 10 km/h wash & 20 km/h turnout)')}
+          </span>
+          <span className={`px-2 py-0.5 rounded text-[10px] font-mono-tabular font-bold shrink-0 ${props.depotHallStart ? 'bg-amber-400 text-slate-950' : 'bg-slate-800 text-slate-400'}`}>
+            {props.depotHallStart ? tr('WŁ.', 'ON') : tr('WYŁ.', 'OFF')}
+          </span>
+        </button>
+      )}
     </div>
   );
 }

@@ -16,6 +16,7 @@ import {
 } from './seria81Textures';
 import { attachSeria81Sop2Display, type IRetroSop2Display } from './seria81Sop2Module';
 import { BaseCabInterior, type ICabInterior } from './shared/baseCabInterior';
+import { attachInteractiveCabButtons, SERIA81_BUTTON_LAYOUT } from './shared/cabInteractiveButtons';
 import { createGlowMaterial } from './shared/canvasTextureFactory';
 
 export class Seria81CabInterior extends BaseCabInterior {
@@ -48,6 +49,7 @@ export class Seria81CabInterior extends BaseCabInterior {
     this.wiperPivot = wipers.pivotR;
     this.mirrorHardware = addSeria81CabWingMirrors(this.group, mats.steelTrimMat, mats.gasketMat, this.disposables);
     this.sop2Display = attachSeria81Sop2Display(this.group, mats.deskGreyMat, mats.steelTrimMat, maxAnisotropy, this.disposables);
+    this.interactiveButtons = attachInteractiveCabButtons(this.group, SERIA81_BUTTON_LAYOUT, this.disposables);
     this.addWarmGaugeLighting();
   }
 

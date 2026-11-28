@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { CabControlId, ICabHoverTooltip } from '../../domain/cabControlsCatalog';
 import { LINE_M1_STATIONS, METRO_LINE_M1 } from '../../domain/routeData';
 import { DEFAULT_GAME_SETTINGS } from '../../domain/settingsService';
 import { getLineTrackAlignment, type TrackAlignment } from '../../domain/trackAlignment';
@@ -45,6 +46,7 @@ export interface ISceneRendererContext {
   playerTrainRig: ITrainConsistRig | null;
   passengerInteriorRig: IPassengerInteriorRig | null;
   oncomingTrainRig: ITrainConsistRig | null;
+  leadingTrainRig: ITrainConsistRig | null;
   semaphoreRig: ISemaphoreRig | null;
   passengerRig: IPassengerRig | null;
   trackworkRig: ITrackworkRig | null;
@@ -58,7 +60,12 @@ export interface ISceneRendererContext {
   adTexturePool: IAdTexturePool | null;
   liveMirrorSystem: ILiveMirrorSystem | null;
   interiorSideBlend: number;
+  freeLookYawRad: number;
+  freeLookPitchRad: number;
+  lastSeatSpotSig: string | null;
   onCctvMonitorClick: ((side: DoorSide) => void) | null;
+  onCabControlHover: ((tooltip: ICabHoverTooltip | null) => void) | null;
+  onCabControlClick: ((controlId: CabControlId) => void) | null;
   pipOpen: boolean;
   pipChannel: CctvPreviewChannel;
   pipCanvas: HTMLCanvasElement | null;
@@ -77,6 +84,7 @@ export interface ISceneRendererContext {
   appliedLineSignature: string | null;
   appliedModelSignature: string | null;
   appliedOncomingModelId: TrainModelId | null;
+  appliedLeadingModelId: TrainModelId | null;
   appliedTimeOfDayId: TimeOfDayId | null;
 }
 
@@ -86,17 +94,18 @@ export function createRendererContext(isSoftwareGl: boolean): ISceneRendererCont
     renderer: null, scene: null, camera: null, headlight: null, headlightTarget: null,
     hemiLight: null, sunLight: null, stationLightA: null, stationLightB: null,
     signalLight: null, oncomingLight: null, cabFillLight: null, cabRig: null,
-    playerTrainRig: null, passengerInteriorRig: null, oncomingTrainRig: null,
+    playerTrainRig: null, passengerInteriorRig: null, oncomingTrainRig: null, leadingTrainRig: null,
     semaphoreRig: null, passengerRig: null, trackworkRig: null, surfaceDepotRig: null,
     tunnelRig: null, stationsRig: null, rainRig: null, tunnelEffectsRig: null,
     nightCrewRig: null, turnaroundSidingRig: null, adTexturePool: null, liveMirrorSystem: null,
-    interiorSideBlend: 1, onCctvMonitorClick: null, pipOpen: false, pipChannel: 'auto',
+    interiorSideBlend: 1, freeLookYawRad: 0, freeLookPitchRad: 0, lastSeatSpotSig: null,
+    onCctvMonitorClick: null, onCabControlHover: null, onCabControlClick: null, pipOpen: false, pipChannel: 'auto',
     pipCanvas: null, lastSnapshot: null, lastDtSec: 0.016, usingLiveMirrorTextures: null,
     settings: DEFAULT_GAME_SETTINGS, passengerDensity: 1.0, fogDensityScale: 1.0,
     alignment: getLineTrackAlignment(METRO_LINE_M1.id, LINE_M1_STATIONS),
     worldResources: [], envTexture: null, container: null, resizeObserver: null,
     maxAniso: 4, appliedLineSignature: null, appliedModelSignature: null,
-    appliedOncomingModelId: null, appliedTimeOfDayId: null,
+    appliedOncomingModelId: null, appliedLeadingModelId: null, appliedTimeOfDayId: null,
   };
 }
 
@@ -121,6 +130,7 @@ export function disposeAllRendererResources(ctx: ISceneRendererContext): void {
   ctx.playerTrainRig?.dispose();
   ctx.passengerInteriorRig?.dispose();
   ctx.oncomingTrainRig?.dispose();
+  ctx.leadingTrainRig?.dispose();
   ctx.trackworkRig?.dispose();
   ctx.cabRig?.dispose();
   ctx.envTexture?.dispose();

@@ -15,11 +15,13 @@ function TitleScreenLayer({ game }: { readonly game: IMetroGameController }) {
   return (
     <TitleOverlay
       activeLine={snapshot.line} baseLineSpec={game.baseLineSpec} routeDirection={game.routeDirection} startStationIndex={game.startStationIndex}
+      depotHallStart={snapshot.depotZone.depotHallStartEnabled} trainspottingSpotIndex={snapshot.trainspotting.spotIndex}
       customLines={game.customLines} driverProfile={game.driverProfile} gamepadStatus={game.gamepadStatus}
       selectedModelId={snapshot.trainModel.id} selectedLiveryId={game.selectedLiveryId} selectedTimeOfDayId={snapshot.timeOfDay.id}
       selectedWeatherMode={snapshot.weather.mode} selectedGameMode={snapshot.gameMode} selectedChallengeId={snapshot.challenge?.id ?? 'inverter_fault'}
       leaderboard={game.leaderboard} achievementsUnlocked={game.unlockedAchievements.length} achievementsTotal={game.achievementCatalog.length}
       onSelectLine={game.selectMetroLine} onSelectRouteDirection={game.selectRouteDirection} onSelectStartStation={game.selectStartStation}
+      onToggleDepotHallStart={game.setDepotHallStart} onSelectTrainspottingSpot={game.selectTrainspottingSpot}
       onOpenLineBuilder={() => game.openLineBuilder()} onEditCustomLine={(draft) => game.openLineBuilder(draft)} onDeleteCustomLine={game.deleteCustomLine}
       onSelectModel={game.selectTrainModel} onSelectLivery={game.selectTrainLivery} onSelectTimeOfDay={game.selectTimeOfDay}
       onSelectWeatherMode={game.selectWeatherMode} onSelectGameMode={game.selectGameMode} onSelectChallenge={game.selectChallenge}

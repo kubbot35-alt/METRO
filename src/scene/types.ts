@@ -1,3 +1,4 @@
+import type { CabControlId, ICabHoverTooltip } from '../domain/cabControlsCatalog';
 import type {
   CctvPreviewChannel,
   DoorSide,
@@ -30,6 +31,8 @@ export interface IMetroSceneRenderer {
     canvas: HTMLCanvasElement | null,
   ): void;
   setOnCctvMonitorClick?(callback: ((side: DoorSide) => void) | null): void;
+  setOnCabControlHover?(callback: ((tooltip: ICabHoverTooltip | null) => void) | null): void;
+  setOnCabControlClick?(callback: ((controlId: CabControlId) => void) | null): void;
   update(snapshot: ISimulationSnapshot, dtSec: number): void;
   getPhotoAnchorPose?(snapshot: ISimulationSnapshot): IPhotoAnchorPose | null;
   setPhotoModePose?(

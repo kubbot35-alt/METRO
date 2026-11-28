@@ -88,3 +88,23 @@ export function updateOncomingTrainPose(
   const lampPt = ctx.alignment.toWorldPoint(oncoming.positionM - 1.8, oncomingX, 1.65, false);
   ctx.oncomingLight.position.set(lampPt.x, lampPt.y, lampPt.z);
 }
+
+export function updateLeadingTrainPose(
+  ctx: ISceneRendererContext,
+  snapshot: ISimulationSnapshot,
+  dtSec: number,
+): void {
+  if (!ctx.leadingTrainRig) return;
+  const lead = snapshot.leadingTrain;
+  const distAhead = lead.positionM - snapshot.kinematics.positionM;
+  const visible = lead.active && distAhead > -140 && distAhead < 680;
+  ctx.leadingTrainRig.group.visible = visible;
+  if (!visible) return;
+  const frame = ctx.alignment.sample(lead.positionM);
+  ctx.leadingTrainRig.group.rotation.order = 'YXZ';
+  ctx.leadingTrainRig.group.position.set(frame.x, frame.y, frame.z);
+  ctx.leadingTrainRig.group.rotation.set(frame.pitch, frame.yaw, frame.cantRollRad * 0.7);
+  ctx.leadingTrainRig.setDoorsOpen(lead.doorsOpen ? lead.doorSide : null, dtSec);
+  ctx.leadingTrainRig.setHeadlights(lead.headlightsOn);
+  ctx.leadingTrainRig.updateMotion?.(lead.speedMs, dtSec);
+}

@@ -40,8 +40,8 @@ function resetUiBeforeStart(deps: ISessionActionDeps): void {
 }
 
 function resolveRestoredMode(snap: ISimulationSnapshot, preMode: GameModeId): GameModeId {
-  if (snap.gameMode !== 'academy' && snap.gameMode !== 'passenger') return snap.gameMode;
-  return preMode === 'academy' || preMode === 'passenger' ? 'duty' : preMode;
+  if (snap.gameMode !== 'academy' && snap.gameMode !== 'passenger' && snap.gameMode !== 'trainspotting') return snap.gameMode;
+  return preMode === 'academy' || preMode === 'passenger' || preMode === 'trainspotting' ? 'duty' : preMode;
 }
 
 function buildRestoredSimulation(refs: IGameRuntimeRefs, snap: ISimulationSnapshot | undefined, restoredLine: IMetroLineSpec | null | undefined): void {

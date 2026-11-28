@@ -29,6 +29,7 @@ import type {
   PaAnnouncementId,
 } from './gameplaySystemsTypes';
 import type {
+  ILeadingTrainState,
   IMetroLineSpec,
   IOncomingTrainState,
   ISemaphoreProgress,
@@ -45,6 +46,9 @@ import type {
   ITrainKinematics,
   ITrainModelSpec,
 } from './trainAndPhysicsTypes';
+import type { IDepotZoneState } from '../depotHallSystem';
+import type { IPassengerViewState } from '../passengerViewModel';
+import type { ITrainspottingState } from '../trainspottingSystem';
 
 export interface IStopEvaluation {
   readonly points: number;
@@ -122,6 +126,7 @@ export interface ISimulationSnapshot {
   readonly cameraMode: CameraMode;
   readonly cameraNotice: ICameraNotice | null;
   readonly oncomingTrain: IOncomingTrainState;
+  readonly leadingTrain: ILeadingTrainState;
   readonly kinematics: ITrainKinematics;
   readonly trackProfile: ITrackProfileSnapshot;
   readonly speedLimitKmh: number;
@@ -180,4 +185,7 @@ export interface ISimulationSnapshot {
   readonly atoStatus: AtoStatus;
   readonly tachograph: ITachographSnapshot;
   readonly stationSplits: readonly IGhostStationSplit[];
+  readonly depotZone: IDepotZoneState;
+  readonly passengerView: IPassengerViewState;
+  readonly trainspotting: ITrainspottingState;
 }

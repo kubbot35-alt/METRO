@@ -8,7 +8,7 @@ import type {
 export const STATION_SPACING_M = 600;
 export const BOARDING_DURATION_SEC = 5.0;
 export const STOP_ZONE_HALF_WIDTH_M = 14;
-export const PLATFORM_LENGTH_M = 110;
+export const PLATFORM_LENGTH_M = 138;
 export const ROUTE_END_BUFFER_M = 45;
 
 interface IStationSeed {

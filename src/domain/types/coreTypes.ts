@@ -28,7 +28,7 @@ export type RouteDirection = 'normal' | 'reverse';
 
 export type TrackAlignmentIntensity = 'flat' | 'moderate' | 'curvy';
 
-export type GameModeId = 'duty' | 'sandbox' | 'challenge' | 'academy' | 'passenger';
+export type GameModeId = 'duty' | 'sandbox' | 'challenge' | 'academy' | 'passenger' | 'trainspotting';
 
 export type LanguageId = 'pl' | 'en';
 

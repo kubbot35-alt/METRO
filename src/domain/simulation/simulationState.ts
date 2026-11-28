@@ -2,12 +2,15 @@ import { AcademyController } from '../academySystem';
 import { StationAnnouncementTracker } from '../announcementTracker';
 import { MetroAtoController } from '../atoSystem';
 import { PassengerComfortSystem } from '../comfortSystem';
+import { DEPOT_HALL_START_M } from '../depotHallSystem';
 import { EcoDrivingSystem } from '../ecoDrivingSystem';
 import { FeedbackTracker } from '../feedbackTracker';
 import { MetroIncidentSystem } from '../incidentSystem';
+import { LeadingTrainSystem } from '../leadingTrainSystem';
 import { LightingAndSparksSystem } from '../lightingAndSparksSystem';
 import { NightInspectionSystem } from '../nightInspectionSystem';
 import { PaIntercomSystem } from '../paIntercomSystem';
+import type { PassengerSeatId } from '../passengerViewModel';
 import { DispatcherRadioSystem } from '../radioSystem';
 import { METRO_LINE_M1 } from '../routeData';
 import { MetroScheduleController } from '../scheduleSystem';
@@ -20,6 +23,7 @@ import { OppositeTrackTrafficSystem } from '../trafficSystem';
 import { getTrainModelSpec } from '../trainCatalog';
 import { applyLiveryToTrainSpec } from '../trainLiveryCatalog';
 import { createInitialKinematics } from '../trainPhysics';
+import { buildTrainspottingSpots, pickDefaultTrainspottingSpotIndex } from '../trainspottingSystem';
 import { TerminusTurnaroundSystem } from '../turnaroundSystem';
 import type {
   AtoStatus,
@@ -64,6 +68,7 @@ export function buildDefaultSystems(
     paIntercom: overrides.paIntercom ?? new PaIntercomSystem(),
     turnaround: overrides.turnaround ?? new TerminusTurnaroundSystem(),
     sop2: overrides.sop2 ?? new Sop2System(),
+    leadingTrain: overrides.leadingTrain ?? new LeadingTrainSystem(stations),
   };
 }
 
@@ -123,18 +128,29 @@ export function createInitialSimulationState(
     turnoutThudCooldownSec: 0,
     sop2SettingEnabled: true,
     sop2SandboxOverride: false,
+    depotHallStart: false,
+    passengerSeatId: 'window_left' as PassengerSeatId,
+    passengerCarIndex: 0,
+    trainspottingSpotIndex: pickDefaultTrainspottingSpotIndex(buildTrainspottingSpots(METRO_LINE_M1, stations)),
+    trainspottingWalkOffsetM: -18,
   };
+}
+
+export function resolveInitialTrainPositionM(state: ISimulationState): number {
+  const canUseHall = state.depotHallStart && state.line.hasSurfaceStart && state.gameMode !== 'academy' && state.gameMode !== 'trainspotting';
+  return canUseHall ? DEPOT_HALL_START_M : 0;
 }
 
 export function resetRunMetrics(state: ISimulationState): void {
   Object.assign(state, createInitialTelemetryCounters());
+  state.kinematics = { ...state.kinematics, positionM: resolveInitialTrainPositionM(state) };
   state.phase = 'playing';
   state.activeScheduleStartClockSec = null;
   state.hornActive = false;
   state.atpActive = false;
   state.activeCautionLimitKmh = null;
   state.leverTarget = 0;
-  state.cameraMode = state.gameMode === 'passenger' ? 'interior' : 'cab';
+  state.cameraMode = state.gameMode === 'passenger' ? 'interior' : state.gameMode === 'trainspotting' ? 'station' : 'cab';
   state.atoEnabled = state.gameMode === 'passenger';
   state.atoStatus = 'off';
   state.cameraNotice = null;
@@ -147,6 +163,7 @@ export function resetRunMetrics(state: ISimulationState): void {
   state.prevContactorNotch = 0;
   state.prevAirBrakeHeld = false;
   state.turnoutThudCooldownSec = 0;
+  state.trainspottingWalkOffsetM = -18;
 }
 
 export function resetSubsystemControllers(state: ISimulationState, sys: ISimulationSystems): void {
@@ -168,4 +185,5 @@ export function resetSubsystemControllers(state: ISimulationState, sys: ISimulat
   sys.paIntercom.reset();
   sys.turnaround.reset();
   sys.sop2.reset();
+  sys.leadingTrain.reset();
 }

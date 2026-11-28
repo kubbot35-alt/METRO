@@ -3,8 +3,8 @@ import type { DoorSide, IStationSpec, PlatformLayout } from './types';
 export const STANDARD_OPPOSITE_TRACK_X = -4.4;
 export const ISLAND_OPPOSITE_TRACK_X = -9.8;
 export const ISLAND_TRANSITION_LEN_M = 72;
-export const STATION_HALL_START_OFFSET_M = 98;
-export const STATION_HALL_END_OFFSET_M = 28;
+export const STATION_HALL_START_OFFSET_M = 132;
+export const STATION_HALL_END_OFFSET_M = 16;
 
 export function getStationPlatformLayout(station: IStationSpec): PlatformLayout {
   return station.platformLayout ?? 'island';

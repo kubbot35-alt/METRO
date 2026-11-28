@@ -10,6 +10,7 @@ import {
 import { createInspiroCabScreens, type IInspiroCabScreens } from './inspiroTextures';
 import { BaseCabInterior, type ICabInterior } from './shared/baseCabInterior';
 import { addSingleCabWiper } from './shared/cabDeskHelpers';
+import { attachInteractiveCabButtons, INSPIRO_BUTTON_LAYOUT } from './shared/cabInteractiveButtons';
 import { createGlowMaterial } from './shared/canvasTextureFactory';
 
 export class InspiroCabInterior extends BaseCabInterior {
@@ -38,6 +39,7 @@ export class InspiroCabInterior extends BaseCabInterior {
       x: 0.28, y: -0.22, z: -1.0, parkRad: 1.34,
       armWidth: 0.018, armLength: 0.56, bladeWidth: 0.024, bladeLength: 0.44, armColor: 0x0c1017,
     }, this.disposables);
+    this.interactiveButtons = attachInteractiveCabButtons(this.group, INSPIRO_BUTTON_LAYOUT, this.disposables);
     this.addAmbientLight();
   }
 

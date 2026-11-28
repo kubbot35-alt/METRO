@@ -36,6 +36,11 @@ export interface IMetroSimulation {
   enterTurnaroundSiding?(): boolean;
   beginCabSwitch?(): boolean;
   completeCabSwitch?(reversedLine: IMetroLineSpec): boolean;
+  setDepotHallStart?(enabled: boolean): void;
+  setPassengerSeat?(seatId: 'window_left' | 'window_right' | 'behind_cab'): void;
+  setPassengerCarIndex?(carIndex: number): void;
+  setTrainspottingSpotIndex?(spotIndex: number): void;
+  stepTrainspottingWalk?(deltaM: number): void;
   start(): void;
   pause(): void;
   resume(): void;

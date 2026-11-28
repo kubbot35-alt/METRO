@@ -64,6 +64,10 @@ function buildSystemAndUiAttrs(game: IMetroGameController): Record<string, strin
     'data-sop2-status': s.sop2.status, 'data-sop2-intervention': s.sop2.interventionActive ? '1' : '0',
     'data-sop2-enabled': s.sop2.interventionEnabled ? '1' : '0',
     'data-waiting-pax': s.effectiveWaitingPassengers, 'data-boarding-pct': Math.round(s.boardingProgress * 100),
+    'data-leading-ai-active': s.leadingTrain.active ? '1' : '0',
+    'data-leading-ai-dist': s.leadingTrain.distanceAheadM !== null ? Math.round(s.leadingTrain.distanceAheadM) : 'none',
+    'data-leading-ai-blocks': s.leadingTrain.blocksAhead ?? 'none',
+    'data-dispatch-map-open': game.dispatchMapOpen ? '1' : '0',
   };
 }
 

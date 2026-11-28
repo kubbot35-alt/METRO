@@ -1,11 +1,15 @@
 import { canEnableAtoForMode } from '../atoSystem';
+import { clampPassengerCarIndex, type PassengerSeatId } from '../passengerViewModel';
 import { getTimeOfDaySpec } from '../timeOfDayCatalog';
+import { getLineTrackAlignment } from '../trackAlignment';
 import { getTrainModelSpec } from '../trainCatalog';
 import { applyLiveryToTrainSpec } from '../trainLiveryCatalog';
+import { buildTrainspottingSpots, clampTrainspottingWalkOffset } from '../trainspottingSystem';
 import type { HeadlightMode, IMetroLineSpec, PaAnnouncementId, TimeOfDayId, TrainModelId } from '../types';
 import type { IModeRulesCoordinator } from './modeRulesCoordinator';
 import type { ISimulationState, ISimulationSystems } from './simulationContracts';
 import { buildNextSignalProgress, buildStationProgress, getActiveBoardingDurationSec, isFreeRideMode } from './simulationHelpers';
+import { resolveInitialTrainPositionM } from './simulationState';
 import { executeBeginCabSwitch, executeCompleteCabSwitch, executeEnterTurnaroundSiding } from './turnaroundCommandHandler';
 
 export interface ISimulationCommandHandler {
@@ -19,6 +23,11 @@ export interface ISimulationCommandHandler {
   cycleSandboxNextSignal(state: ISimulationState, sys: ISimulationSystems): void;
   applyTrainModel(state: ISimulationState, sys: ISimulationSystems, modelId: TrainModelId): void;
   applyTimeOfDay(state: ISimulationState, sys: ISimulationSystems, modeRules: IModeRulesCoordinator, timeOfDayId: TimeOfDayId): void;
+  setDepotHallStart(state: ISimulationState, enabled: boolean): void;
+  setPassengerSeat(state: ISimulationState, seatId: PassengerSeatId): void;
+  setPassengerCarIndex(state: ISimulationState, carIndex: number): void;
+  setTrainspottingSpotIndex(state: ISimulationState, sys: ISimulationSystems, spotIndex: number): void;
+  stepTrainspottingWalk(state: ISimulationState, deltaM: number): void;
 }
 
 export class SimulationCommandHandler implements ISimulationCommandHandler {
@@ -111,5 +120,43 @@ export class SimulationCommandHandler implements ISimulationCommandHandler {
     state.timeOfDay = getTimeOfDaySpec(timeOfDayId);
     state.timeOfDayConfigured = true;
     modeRules.applyActiveModeOverrides(state, sys);
+  }
+
+  public setDepotHallStart(state: ISimulationState, enabled: boolean): void {
+    state.depotHallStart = enabled;
+    state.alignment = getLineTrackAlignment(state.line.id, state.stations, {
+      hasSurfaceStart: state.line.hasSurfaceStart,
+      tunnelPortalDistanceM: state.line.tunnelPortalDistanceM,
+      alignmentIntensity: state.line.alignmentIntensity,
+      depotHallStart: enabled && state.line.hasSurfaceStart,
+    });
+    if (state.phase === 'title') {
+      state.kinematics = { ...state.kinematics, positionM: resolveInitialTrainPositionM(state) };
+    }
+  }
+
+  public setPassengerSeat(state: ISimulationState, seatId: PassengerSeatId): void {
+    state.passengerSeatId = seatId;
+  }
+
+  public setPassengerCarIndex(state: ISimulationState, carIndex: number): void {
+    state.passengerCarIndex = clampPassengerCarIndex(carIndex);
+  }
+
+  public setTrainspottingSpotIndex(state: ISimulationState, sys: ISimulationSystems, spotIndex: number): void {
+    const spots = buildTrainspottingSpots(state.line, state.stations);
+    state.trainspottingSpotIndex = Math.max(0, Math.min(Math.max(0, spots.length - 1), spotIndex));
+    state.trainspottingWalkOffsetM = 0;
+    const spot = spots[state.trainspottingSpotIndex];
+    if (spot && state.gameMode === 'trainspotting') {
+      state.stationIndex = Math.max(0, spot.stationIndex);
+      state.kinematics = { ...state.kinematics, positionM: spot.distanceM, speedMs: 0, speedKmh: 0 };
+      sys.traffic.reset();
+      sys.leadingTrain.reset();
+    }
+  }
+
+  public stepTrainspottingWalk(state: ISimulationState, deltaM: number): void {
+    state.trainspottingWalkOffsetM = clampTrainspottingWalkOffset(state.trainspottingWalkOffsetM + deltaM);
   }
 }

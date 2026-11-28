@@ -5,10 +5,13 @@ import { createDepotMaterials } from './depot/depotMaterials';
 import { addConcreteTunnelPortal, addDescentRetainingWalls, addTreesAndHorizonBlocks } from './depot/depotPortalAndFloraBuilder';
 import { createDepotSkyController } from './depot/depotSkyController';
 import { addDepotHangarAndGantry, addFloodlightMasts } from './depot/depotStructuresBuilder';
+import { addStablingHallAndParkedFleet } from './depot/depotHallBuilder';
+import { addAutomaticTrainWash } from './depot/depotWashBuilder';
 import { addOutdoorTerrainAndEmbankment, addStablingSidingsAndTrains } from './depot/depotYardBuilder';
 
 export interface ISurfaceDepotRig {
   sync(outdoorBlend: number, timeOfDayId: TimeOfDayId, weatherMode: WeatherModeId, cameraPos: THREE.Vector3): void;
+  updateWash?(dtSec: number, washSprayActive: boolean, depotVisible: boolean): void;
   dispose(): void;
 }
 
@@ -18,12 +21,14 @@ export function buildSurfaceDepot(scene: THREE.Scene, alignment: TrackAlignment,
   root.name = 'SurfaceDepotStpKabaty';
   scene.add(root);
   if (!alignment.hasSurfaceStart) {
-    return { sync: () => {}, dispose: () => { scene.remove(root); } };
+    return { sync: () => {}, updateWash: () => {}, dispose: () => { scene.remove(root); } };
   }
   const sky = createDepotSkyController(root, disposables);
   const sharedMats = createDepotMaterials(maxAnisotropy, disposables);
   addOutdoorTerrainAndEmbankment(root, alignment, sharedMats, disposables);
   addStablingSidingsAndTrains(root, sharedMats, disposables);
+  addStablingHallAndParkedFleet(root, maxAnisotropy, disposables);
+  const washRig = addAutomaticTrainWash(root, maxAnisotropy, disposables);
   addDepotHangarAndGantry(root, sharedMats, disposables);
   addFloodlightMasts(root, sharedMats, disposables);
   addTreesAndHorizonBlocks(root, sharedMats, disposables);
@@ -32,6 +37,7 @@ export function buildSurfaceDepot(scene: THREE.Scene, alignment: TrackAlignment,
 
   return {
     sync: (outdoorBlend, timeOfDayId, weatherMode, cameraPos) => sky.sync(outdoorBlend, timeOfDayId, weatherMode, cameraPos, sharedMats),
+    updateWash: (dtSec, washSprayActive, depotVisible) => washRig.update(dtSec, washSprayActive, depotVisible),
     dispose: () => { scene.remove(root); disposables.forEach((d) => d.dispose()); },
   };
 }

@@ -9,6 +9,7 @@ import { addStationAdvertisements, createStationAdsContext } from './stationAdsB
 import { addPlatformFurniture } from './stationFurnitureBuilder';
 import { buildStationHallShell } from './stationHallBuilder';
 import { createSharedStationMaterials, type ISharedStationMats } from './stationMaterials';
+import { createExitSignTexture } from './textures/exitSignTexture';
 import { LivePlatformClockDisplay, type ILivePlatformClock } from './textures/platformClockDisplay';
 import type { ISceneResources } from './types';
 
@@ -72,8 +73,9 @@ function initSharedAssets(
   const stopTex = createStopMarkerTexture(maxAnisotropy);
   const clockTexPlayer = createPlatformClockTexture(lineBadge, destLed, lineCss, maxAnisotropy);
   const clockTexOpp = createPlatformClockTexture(lineBadge, oppDestLed, lineCss, maxAnisotropy);
-  const sharedMats = createSharedStationMaterials(platformTex, stopTex, clockTexPlayer, clockTexOpp, liveClock.texture);
-  disposables.push(platformTex, stopTex, clockTexPlayer, clockTexOpp, liveClock, ...Object.values(sharedMats));
+  const exitSignTex = createExitSignTexture(maxAnisotropy);
+  const sharedMats = createSharedStationMaterials(platformTex, stopTex, clockTexPlayer, clockTexOpp, liveClock.texture, exitSignTex);
+  disposables.push(platformTex, stopTex, clockTexPlayer, clockTexOpp, exitSignTex, liveClock, ...Object.values(sharedMats));
   return sharedMats;
 }
 
@@ -132,6 +134,7 @@ function applyStationNightLighting(
   sharedMats.liveDigitalClock.emissiveIntensity = active ? 0.55 : 1.25;
   sharedMats.stopStrip.emissiveIntensity = active ? 0.45 : 1.9;
   sharedMats.stopBoard.emissiveIntensity = active ? 0.65 : 1.15;
+  sharedMats.exitSign.emissiveIntensity = active ? 0.55 : 1.35;
   accentGlowMats.forEach((m) => { m.emissiveIntensity = active ? 0.16 : 1.15; });
   signMats.forEach((m) => { m.emissiveIntensity = active ? 0.24 : 0.82; });
   nightGroups.forEach((ng) => { ng.visible = active; });
@@ -168,7 +171,9 @@ function createSingleStation(
   const signMat = new THREE.MeshStandardMaterial({ map: signTex, emissiveMap: signTex, emissive: 0xffffff, emissiveIntensity: 0.82, roughness: 0.35 });
   const accentGlowMat = new THREE.MeshStandardMaterial({ color: station.accentHex, emissive: station.accentHex, emissiveIntensity: 1.15, roughness: 0.28 });
   disposables.push(wallTex, wallMat, signTex, signMat, accentGlowMat);
-  const nightGroup = buildStationHallShell(group, localStation, layout, 36, station.platformLengthM + 18, wallMat, accentGlowMat, signMat, mats, disposables);
-  addPlatformFurniture(group, localStation, layout, 36, mats, disposables);
+  const platformCenterZ = 58.5;
+  const hallLength = station.platformLengthM + 10;
+  const nightGroup = buildStationHallShell(group, localStation, layout, platformCenterZ, hallLength, wallMat, accentGlowMat, signMat, mats, disposables);
+  addPlatformFurniture(group, localStation, layout, platformCenterZ, mats, disposables);
   return { group, nightGroup, accentGlowMat, signMat };
 }

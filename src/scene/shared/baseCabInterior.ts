@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { getStationPlatformSide } from '../../domain/trackGeometry';
 import type { ISimulationSnapshot } from '../../domain/types';
 import type { ICabMirrorHardware } from '../cabMirrorAttachments';
+import type { IInteractiveCabButtonsRig } from './cabInteractiveButtons';
 import type { IDisposableResource } from './baseTrainConsist';
 
 export interface ICabLampMaterials {
@@ -15,6 +16,7 @@ export interface ICabInterior {
   readonly leverPivot: THREE.Group;
   readonly wiperPivot: THREE.Group;
   readonly mirrorHardware: ICabMirrorHardware;
+  getInteractiveControlMeshes(): readonly THREE.Mesh[];
   update(snapshot: ISimulationSnapshot, dtSec: number): void;
   dispose(): void;
 }
@@ -30,11 +32,16 @@ export abstract class BaseCabInterior implements ICabInterior {
   public abstract readonly wiperPivot: THREE.Group;
   public abstract readonly mirrorHardware: ICabMirrorHardware;
   protected readonly disposables: IDisposableResource[] = [];
+  protected interactiveButtons: IInteractiveCabButtonsRig | null = null;
   private readonly wiperSweep: IWiperSweepConfig;
 
   protected constructor(name: string, wiperSweep: IWiperSweepConfig) {
     this.group.name = name;
     this.wiperSweep = wiperSweep;
+  }
+
+  public getInteractiveControlMeshes(): readonly THREE.Mesh[] {
+    return this.interactiveButtons?.interactiveMeshes ?? [];
   }
 
   public update(snapshot: ISimulationSnapshot, dtSec: number): void {
@@ -46,6 +53,7 @@ export abstract class BaseCabInterior implements ICabInterior {
       this.wiperSweep.sweepRad,
       snapshot.weather.wiperPhaseRad,
     );
+    this.interactiveButtons?.update(snapshot, snapshot.elapsedTimeSec);
     this.updateCabDetails(snapshot, dtSec);
   }
 
@@ -58,7 +66,12 @@ export abstract class BaseCabInterior implements ICabInterior {
   }
 
   protected isWarningActive(snapshot: ISimulationSnapshot): boolean {
-    return snapshot.isOverspeeding || snapshot.kinematics.emergencyBrake || snapshot.atpActive;
+    return (
+      snapshot.isOverspeeding ||
+      snapshot.kinematics.emergencyBrake ||
+      snapshot.atpActive ||
+      snapshot.sop2.status !== 'normal'
+    );
   }
 
   protected abstract updateCabDetails(snapshot: ISimulationSnapshot, dtSec: number): void;

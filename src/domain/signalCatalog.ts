@@ -19,6 +19,7 @@ export interface ISignalController {
   setDistances?(distances: readonly number[]): void;
   configureScriptedSignals?(configs: readonly IScriptedSignalConfig[]): void;
   cycleNextSignalAspect?(positionM: number): SignalAspect | null;
+  syncLeadingTrainBlocks?(leadPosM: number | null, trainLengthM?: number): void;
   reset(): void;
   step(prevPosM: number, nextPosM: number, speedKmh: number, dtSec: number): ISignalStepResult;
   getSignals(): readonly ISemaphoreState[];
@@ -29,6 +30,8 @@ export interface IMutableSemaphore {
   readonly id: number;
   readonly distanceM: number;
   aspect: SignalAspect;
+  baseAspect: SignalAspect;
+  blockOverride: SignalAspect | null;
   waitRequiredSec: number;
   waitElapsedSec: number;
   violated: boolean;
@@ -57,4 +60,35 @@ export function toSemaphoreSnapshot(s: IMutableSemaphore): ISemaphoreState {
         ? Math.max(0, s.waitRequiredSec - s.waitElapsedSec)
         : null,
   };
+}
+
+function setBlockOverride(sig: IMutableSemaphore | undefined, aspect: SignalAspect): void {
+  if (!sig || (aspect === 'yellow' && sig.aspect === 'red')) return;
+  sig.blockOverride = aspect;
+  sig.aspect = aspect;
+}
+
+export function applyLeadingTrainBlockOverrides(
+  signals: readonly IMutableSemaphore[],
+  leadPosM: number | null,
+  trainLengthM: number,
+): void {
+  for (let i = 0; i < signals.length; i += 1) {
+    const sig = signals[i];
+    if (sig.blockOverride !== null) { sig.blockOverride = null; sig.aspect = sig.baseAspect; }
+  }
+  if (leadPosM === null) return;
+  let occIdx = -1;
+  for (let i = 0; i < signals.length; i += 1) {
+    if (signals[i].distanceM <= leadPosM) occIdx = i;
+    else break;
+  }
+  if (occIdx < 0) return;
+  setBlockOverride(signals[occIdx], 'red');
+  if (leadPosM - trainLengthM < signals[occIdx].distanceM && occIdx - 1 >= 0) {
+    setBlockOverride(signals[occIdx - 1], 'red');
+    setBlockOverride(signals[occIdx - 2], 'yellow');
+  } else {
+    setBlockOverride(signals[occIdx - 1], 'yellow');
+  }
 }

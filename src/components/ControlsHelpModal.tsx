@@ -23,6 +23,7 @@ const SHORTCUTS: readonly IShortcutEntry[] = [
   { keyPl: 'O', keyEn: 'O', actionPl: 'Tryb Sandbox: automatyczna strona peronu', actionEn: 'Sandbox mode: automatic platform side' },
   { keyPl: 'V', keyEn: 'V', actionPl: 'Zmiana kamery (Kabina · Lusterko · Zewn. · Wnętrze · Wózek · Peronowa)', actionEn: 'Cycle camera (Cab · Mirror · Exterior · Interior · Bogie · Station)' },
   { keyPl: 'M / Klik na monitor 3D', keyEn: 'M / Click 3D Monitor', actionPl: 'Powiększony podgląd CCTV (L/P/Wnętrze) w rogu ekranu', actionEn: 'Enlarged CCTV PiP monitor (L/R/Interior) in screen corner' },
+  { keyPl: 'Tab', keyEn: 'Tab', actionPl: 'Mapa Linii na żywo (stacje, semafory, pociągi AI na obu torach)', actionEn: 'Live Dispatch Map (stations, signals, AI trains on both tracks)' },
   { keyPl: 'F', keyEn: 'F', actionPl: 'Tryb Fotograficzny (stop-klatka, wolna kamera WASD/Q/E, filtry, PNG)', actionEn: 'Photo Mode (freeze frame, free camera WASD/Q/E, filters, PNG)' },
   { keyPl: 'R', keyEn: 'R', actionPl: 'Potwierdzenie komunikatu radia dyspozytora (+40 pkt)', actionEn: 'Confirm dispatcher radio message (+40 pts)' },
   { keyPl: 'I', keyEn: 'I', actionPl: 'Interkom PA — ręczne komunikaty maszynisty dla pasażerów', actionEn: 'PA Intercom — manual driver announcements to passengers' },

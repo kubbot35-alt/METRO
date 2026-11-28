@@ -105,6 +105,12 @@ function localizeCategoryRadioEn(radio: IRadioDispatchState): ILocalizedRadio {
     };
   }
   if (radio.category === 'inspection') return localizeInspectionRadio(radio);
+  if (radio.category === 'headway') {
+    return {
+      displayText: 'Dispatcher: Slow down, delayed train ahead on your track — maintain block headway!',
+      spokenText: 'Attention from Dispatch. Slow down, delayed train ahead on your track.',
+    };
+  }
   return {
     displayText: 'Dispatcher: Train ahead has a minor delay, proceed with caution to the next semaphore.',
     spokenText: 'Attention from Dispatch. Train ahead is slightly delayed, watch the next signal.',

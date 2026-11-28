@@ -13,7 +13,8 @@ import { LINE_M1_SPEED_ZONES, LINE_M1_STATIONS, getMetroLineSpec } from './route
 import type { IScheduleController } from './scheduleSystem';
 import type { ISignalController } from './signalSystem';
 import { createEngineRuntimeContext, type IEngineRuntimeContext, type IMetroSimulationCollaborators } from './simulation/simulationContextFactory';
-import { resetRunMetrics, resetSubsystemControllers } from './simulation/simulationState';
+import { resetRunMetrics, resetSubsystemControllers, resolveInitialTrainPositionM } from './simulation/simulationState';
+import type { PassengerSeatId } from './passengerViewModel';
 import type { ITachographRecorder } from './tachographSystem';
 import type { ITrafficController } from './trafficSystem';
 import { getTrainModelSpec } from './trainCatalog';
@@ -63,10 +64,9 @@ export class MetroSimulationEngine implements IMetroSimulation {
       this.ctx.state.atoEnabled = false;
       this.ctx.state.atoStatus = 'off';
     } else if (mode === 'passenger') {
-      this.ctx.state.atoEnabled = true;
-      this.ctx.state.cameraMode = 'interior';
-      this.ctx.sys.ato.reset();
+      this.ctx.state.atoEnabled = true; this.ctx.state.cameraMode = 'interior'; this.ctx.sys.ato.reset();
     }
+    if (mode === 'trainspotting') { this.ctx.state.cameraMode = 'station'; this.ctx.state.atoEnabled = false; }
     if (mode === 'academy' && this.ctx.state.line.id !== ACADEMY_LINE_SPEC.id) {
       this.setMetroLineSpec(ACADEMY_LINE_SPEC);
       return;
@@ -142,23 +142,25 @@ export class MetroSimulationEngine implements IMetroSimulation {
     this.ctx.commands.applyTimeOfDay(this.ctx.state, this.ctx.sys, this.ctx.modeRules, timeOfDayId);
   }
 
+  public setDepotHallStart(enabled: boolean): void { this.ctx.commands.setDepotHallStart(this.ctx.state, enabled); }
+  public setPassengerSeat(seatId: PassengerSeatId): void { this.ctx.commands.setPassengerSeat(this.ctx.state, seatId); }
+  public setPassengerCarIndex(carIndex: number): void { this.ctx.commands.setPassengerCarIndex(this.ctx.state, carIndex); }
+  public setTrainspottingSpotIndex(spotIndex: number): void { this.ctx.commands.setTrainspottingSpotIndex(this.ctx.state, this.ctx.sys, spotIndex); }
+  public stepTrainspottingWalk(deltaM: number): void { this.ctx.commands.stepTrainspottingWalk(this.ctx.state, deltaM); }
+
   public start(): void {
-    if (this.ctx.state.phase === 'gameover') this.reset();
-    if (this.ctx.state.gameMode === 'academy') {
-      this.ctx.sys.lighting.setHeadlightMode('off');
-      this.ctx.sys.academy.reset();
+    const s = this.ctx.state;
+    if (s.phase === 'gameover') this.reset();
+    if (s.gameMode === 'academy') { this.ctx.sys.lighting.setHeadlightMode('off'); this.ctx.sys.academy.reset(); }
+    if (s.gameMode === 'passenger') { s.cameraMode = 'interior'; s.atoEnabled = true; this.ctx.sys.ato.reset(); }
+    else if (s.gameMode === 'trainspotting') { s.cameraMode = 'station'; s.atoEnabled = false; this.ctx.commands.setTrainspottingSpotIndex(s, this.ctx.sys, s.trainspottingSpotIndex); }
+    else if (!canEnableAtoForMode(s.gameMode)) { s.atoEnabled = false; s.atoStatus = 'off'; }
+    if (s.gameMode !== 'trainspotting' && s.phase === 'title') {
+      s.kinematics = { ...s.kinematics, positionM: resolveInitialTrainPositionM(s) };
     }
-    if (this.ctx.state.gameMode === 'passenger') {
-      this.ctx.state.cameraMode = 'interior';
-      this.ctx.state.atoEnabled = true;
-      this.ctx.sys.ato.reset();
-    } else if (!canEnableAtoForMode(this.ctx.state.gameMode)) {
-      this.ctx.state.atoEnabled = false;
-      this.ctx.state.atoStatus = 'off';
-    }
-    this.ctx.state.challengeOutcome = null;
-    this.ctx.modeRules.applyActiveModeOverrides(this.ctx.state, this.ctx.sys);
-    this.ctx.state.phase = 'playing';
+    s.challengeOutcome = null;
+    this.ctx.modeRules.applyActiveModeOverrides(s, this.ctx.sys);
+    s.phase = 'playing';
   }
 
   public pause(): void {

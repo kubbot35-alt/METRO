@@ -32,7 +32,7 @@ export interface IChallengeOutcome {
   readonly reason: string;
 }
 
-export type RadioDispatchCategory = 'traffic' | 'platform' | 'slippery' | 'inspection';
+export type RadioDispatchCategory = 'traffic' | 'platform' | 'slippery' | 'inspection' | 'headway';
 
 export interface IRadioDispatchState {
   readonly active: boolean;

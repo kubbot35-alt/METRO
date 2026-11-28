@@ -1,7 +1,7 @@
 import type { ITrackSample } from './types';
 
 export const LUT_SAMPLE_STEP_M = 2.0;
-export const LUT_START_M = -140;
+export const LUT_START_M = -180;
 
 export interface ILutPoint {
   readonly x: number;
